@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    touch-action: manipulation;
+  }
+}
+
+.font-display {
+  font-family: 'Cinzel', Georgia, serif;
+  letter-spacing: 0.02em;
+}
+
+.text-gold-gradient {
+  background: linear-gradient(135deg, #fef08a 0%, #fbbf24 50%, #d97706 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.font-mono-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dark translucent obsidian glass surfaces with gold hairline (compositor-safe over WebGL) */
+.glass-panel {
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.9) 0%, rgba(7, 11, 24, 0.94) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  box-shadow:
+    0 24px 48px -12px rgba(2, 6, 23, 0.78),
+    inset 0 1px 0 rgba(253, 230, 138, 0.14);
+}
+
+.glass-panel-soft {
+  background: rgba(10, 16, 32, 0.84);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  box-shadow:
+    0 14px 30px -10px rgba(2, 6, 23, 0.65),
+    inset 0 1px 0 rgba(253, 230, 138, 0.08);
+}
+
+@keyframes ringGlowPulse {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.045);
+  }
+}
+
+.animate-ring-glow {
+  animation: ringGlowPulse 1.35s ease-in-out infinite;
+}
+
+.animate-ring-urgent {
+  animation: ringGlowPulse 0.72s ease-in-out infinite;
+}
+
+@keyframes emotePop {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.88);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-emote-pop {
+  animation: emotePop 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ring-glow,
+  .animate-ring-urgent,
+  .animate-emote-pop {
+    animation: none;
+  }
+}
+
+/* Subtle dark custom scrollbar for modal drawers & menu panels */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.35);
+  border-radius: 9999px;
+}

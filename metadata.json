@@ -1,0 +1,6 @@
+{
+  "name": "Aether Serpent 3D",
+  "description": "Game Ular Tangga 3D bertema fantasi dengan animasi halus, multiplayer lokal & daring, mode offline, sinkronisasi awan, papan peringkat global, dan pencapaian.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
