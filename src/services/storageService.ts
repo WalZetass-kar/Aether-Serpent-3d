@@ -1,9 +1,13 @@
 import {
   ACHIEVEMENTS,
+  DICE_SKINS,
+  generateUniqueDevicePlayerName,
   getDailyChallengeForDate,
   getTodayDateString,
+  isDiceSkinUnlocked,
   type BoardGameMode,
   type ConnectionMode,
+  type DiceSkinId,
   type DifficultyMode,
 } from '../../shared/gameConfig';
 
@@ -32,6 +36,7 @@ export interface PlayerProfile {
   playerId: string;
   name: string;
   archetypeIndex: number;
+  diceSkinId: DiceSkinId;
   totalGames: number;
   wins: number;
   losses: number;
@@ -68,16 +73,28 @@ const PROFILE_KEY = 'aether_serpent_profile_v1';
 const SCORES_KEY = 'aether_serpent_local_scores_v1';
 const PENDING_LB_KEY = 'aether_serpent_pending_lb_v1';
 
+const GENERIC_DEFAULT_NAMES = new Set([
+  'penjelajah aether',
+  'penjelajah',
+  'pemain',
+  'pemain 1',
+  'player',
+  'player 1',
+]);
+
 function createDefaultProfile(): PlayerProfile {
   const today = getTodayDateString();
   const id =
     typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const uniqueName = generateUniqueDevicePlayerName(id);
+  const archSeed = id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 4;
   return {
     playerId: id,
-    name: 'Penjelajah Aether',
-    archetypeIndex: 0,
+    name: uniqueName,
+    archetypeIndex: archSeed,
+    diceSkinId: 'royal_obsidian',
     totalGames: 0,
     wins: 0,
     losses: 0,
@@ -121,14 +138,36 @@ export function loadProfile(): PlayerProfile {
     }
     const parsed = JSON.parse(raw) as Partial<PlayerProfile>;
     const base = createDefaultProfile();
+    const unlockedAchievements = Array.isArray(parsed.unlockedAchievements)
+      ? parsed.unlockedAchievements
+      : [];
+    const validSkinIds = new Set<string>(DICE_SKINS.map((s) => s.id));
+    const candidateSkin: DiceSkinId =
+      parsed.diceSkinId && validSkinIds.has(parsed.diceSkinId)
+        ? parsed.diceSkinId
+        : 'royal_obsidian';
+    const resolvedSkin: DiceSkinId = isDiceSkinUnlocked(candidateSkin, unlockedAchievements)
+      ? candidateSkin
+      : 'royal_obsidian';
+
+    const resolvedPlayerId = parsed.playerId || base.playerId;
+    const rawName = (parsed.name || '').trim();
+    const isGenericName = !rawName || GENERIC_DEFAULT_NAMES.has(rawName.toLowerCase());
+    const resolvedName = isGenericName
+      ? generateUniqueDevicePlayerName(resolvedPlayerId)
+      : rawName;
+
     const merged: PlayerProfile = {
       ...base,
       ...parsed,
+      playerId: resolvedPlayerId,
+      name: resolvedName,
+      diceSkinId: resolvedSkin,
       dailyProgress: {
         ...base.dailyProgress,
         ...(parsed.dailyProgress || {}),
       },
-      unlockedAchievements: Array.isArray(parsed.unlockedAchievements) ? parsed.unlockedAchievements : [],
+      unlockedAchievements,
       recentResults: Array.isArray(parsed.recentResults) ? parsed.recentResults : [],
     };
     const today = getTodayDateString();
@@ -136,6 +175,8 @@ export function loadProfile(): PlayerProfile {
       merged.dailyActiveDate = today;
       merged.dailyProgress = { games_played: 0, ladders_climbed: 0, wins: 0, special_tiles: 0 };
       merged.dailyRewardClaimed = false;
+      saveProfile(merged);
+    } else if (isGenericName) {
       saveProfile(merged);
     }
     return merged;

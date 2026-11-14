@@ -262,7 +262,7 @@ export class AdaptivePerformanceManager {
   public getEffectivePixelRatio(): number {
     if (this.capabilities.isSoftwareGl) return 1;
     const baseDpr = Math.min(this.capabilities.devicePixelRatio || 1, 2);
-    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.55, 2.0);
+    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.9, 2.0);
   }
 
   public setPreset(preset: QualityPresetId, autoAdjust: boolean): { changed: boolean } {

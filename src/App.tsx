@@ -2,16 +2,20 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ACHIEVEMENTS,
   BOARD_GAME_MODES,
+  DICE_SKINS,
   ONLINE_TURN_TIMEOUT_SEC,
   PLAYER_ARCHETYPES,
   TIME_ATTACK_DEFAULT_SEC,
   applyTurnEffectsToPlayers,
+  buildJumpMap,
   getAdaptiveTierLabel,
+  isDiceSkinUnlocked,
   pickTimeAttackWinner,
   resolveTurnMove,
   rollAdaptiveAIDice,
   type BoardGameMode,
   type ConnectionMode,
+  type DiceSkinId,
   type DifficultyMode,
   type PlayerState,
   type SpecialTileType,
@@ -20,6 +24,8 @@ import {
 } from '../shared/gameConfig';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementsDailyModal } from './components/AchievementsDailyModal';
+import { AetherOracleChatDrawer } from './components/AetherOracleChatDrawer';
+import { BoardManagerView } from './components/BoardManagerView';
 import { BottomControlDock } from './components/BottomControlDock';
 import { CameraSettingsModal } from './components/CameraSettingsModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
@@ -56,6 +62,14 @@ import {
   type PlayerProfile,
 } from './services/storageService';
 import {
+  DEFAULT_BOARD_CONFIGS,
+  type BoardConfig,
+} from '../shared/boardThemes';
+import {
+  resolveBoardForMatch,
+  selectBoard,
+} from './services/boardStorageService';
+import {
   DEFAULT_CAMERA_SETTINGS,
   FantasyBoardEngine,
   type CameraSettings,
@@ -83,6 +97,7 @@ type AppScreen =
   | 'mode_selection'
   | 'game_config'
   | 'multiplayer_lobby'
+  | 'board_manager'
   | 'loading_arena'
   | 'arena';
 
@@ -133,6 +148,7 @@ interface SerializedRoomPayload {
   name?: string;
   isPublic?: boolean;
   boardMode?: BoardGameMode;
+  boardConfig?: BoardConfig;
   timeLimitSec?: number;
   endsAt?: number | null;
   turnDeadlineAt?: number | null;
@@ -170,6 +186,14 @@ export default function App() {
   const [multiplayerTabIntent, setMultiplayerTabIntent] = useState<'create' | 'join'>(
     hasInitialRoom ? 'join' : 'create',
   );
+  const [boardManagerTab, setBoardManagerTab] = useState<'collection' | 'creator'>('collection');
+  const [boardManagerReturnScreen, setBoardManagerReturnScreen] =
+    useState<AppScreen>('main_menu');
+  const [activeBoardConfig, setActiveBoardConfig] = useState<BoardConfig>(() =>
+    resolveBoardForMatch(),
+  );
+  const activeBoardRef = useRef<BoardConfig>(activeBoardConfig);
+  activeBoardRef.current = activeBoardConfig;
   const loadingTimerRef = useRef<number>(0);
 
   // Core game state
@@ -225,6 +249,7 @@ export default function App() {
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [oracleAiOpen, setOracleAiOpen] = useState(false);
   const [victoryOpen, setVictoryOpen] = useState(false);
 
   // WebSocket Online Multiplayer State
@@ -260,6 +285,14 @@ export default function App() {
   currentTurnIndexRef.current = currentTurnIndex;
   const winnerRef = useRef<PlayerState | null>(winner);
   winnerRef.current = winner;
+  const diceSkinIdRef = useRef<DiceSkinId>(profile.diceSkinId);
+  diceSkinIdRef.current = profile.diceSkinId;
+  const modeRef = useRef<ConnectionMode>(mode);
+  modeRef.current = mode;
+  const boardModeRef = useRef<BoardGameMode>(boardMode);
+  boardModeRef.current = boardMode;
+  const timeLimitSecRef = useRef<number>(timeLimitSec);
+  timeLimitSecRef.current = timeLimitSec;
 
   const showToast = useCallback((title: string, subtitle?: string) => {
     setToast({ title, subtitle });
@@ -341,11 +374,32 @@ export default function App() {
     return activeEngine.runBenchmark(3000);
   }, []);
 
-  const isArenaMounted = screen === 'loading_arena' || screen === 'arena';
+  const handleSelectDiceSkin = useCallback(
+    (skinId: DiceSkinId) => {
+      soundEngine.playUiClick();
+      setProfile((prev) => {
+        if (!isDiceSkinUnlocked(skinId, prev.unlockedAchievements)) {
+          return prev;
+        }
+        const next: PlayerProfile = { ...prev, diceSkinId: skinId };
+        saveProfile(next);
+        return next;
+      });
+      engineRef.current?.setDiceSkin(skinId);
+      const skinMeta = DICE_SKINS.find((s) => s.id === skinId);
+      if (skinMeta) {
+        showToast(`Skin Dadu 3D Aktif: ${skinMeta.name}`, skinMeta.subtitle);
+      }
+    },
+    [showToast],
+  );
 
-  // 1. Mount MainMenuEngine ONLY when outside the 3D Arena & Loading Screen
+  const isArenaMounted = screen === 'loading_arena' || screen === 'arena';
+  const isMenuBackdropMounted = !isArenaMounted && screen !== 'board_manager';
+
+  // 1. Mount MainMenuEngine ONLY when outside the 3D Arena, Loading Screen & 3D Board Manager
   useEffect(() => {
-    if (isArenaMounted) {
+    if (!isMenuBackdropMounted) {
       menuEngineRef.current?.dispose();
       menuEngineRef.current = null;
       return;
@@ -361,7 +415,7 @@ export default function App() {
       menuEngine.dispose();
       menuEngineRef.current = null;
     };
-  }, [isArenaMounted]);
+  }, [isMenuBackdropMounted]);
 
   // 2. Mount FantasyBoardEngine during Loading & Arena (staged progressive build)
   useEffect(() => {
@@ -389,6 +443,8 @@ export default function App() {
       },
       {
         graphicsPrefs: graphicsPrefsRef.current,
+        diceSkinId: diceSkinIdRef.current,
+        boardConfig: activeBoardRef.current ?? DEFAULT_BOARD_CONFIGS[0],
         onBuildProgress: (pct, stage) => {
           setArenaLoadProgress(pct);
           setArenaLoadStage(stage);
@@ -397,9 +453,13 @@ export default function App() {
           window.clearTimeout(loadingTimerRef.current);
           loadingTimerRef.current = window.setTimeout(() => {
             if (screenRef.current === 'loading_arena') {
+              if (modeRef.current !== 'online' && boardModeRef.current === 'time_attack') {
+                setTimeEndsAt(Date.now() + timeLimitSecRef.current * 1000);
+                setTimeLeftSec(timeLimitSecRef.current);
+              }
               setScreen('arena');
             }
-          }, 220);
+          }, 260);
         },
       },
     );
@@ -528,8 +588,16 @@ export default function App() {
         );
       } else if (achRes.newlyUnlocked.length > 0) {
         const firstAch = ACHIEVEMENTS.find((a) => a.id === achRes.newlyUnlocked[0]);
+        const rewardSkin = DICE_SKINS.find((s) =>
+          achRes.newlyUnlocked.includes(s.requiredAchievementId ?? ''),
+        );
         if (firstAch) {
-          showToast(`Pencapaian Terbuka: ${firstAch.title}`, firstAch.description);
+          showToast(
+            `Pencapaian Terbuka: ${firstAch.title}`,
+            rewardSkin
+              ? `Skin Dadu 3D baru terbuka: ${rewardSkin.name}!`
+              : firstAch.description,
+          );
         }
       }
 
@@ -650,6 +718,10 @@ export default function App() {
       setIsAnimating(true);
       soundEngine.playDiceRoll();
 
+      const activeJumpMap = buildJumpMap(
+        activeBoardRef.current.ladders,
+        activeBoardRef.current.snakes,
+      );
       const bestHumanTile = Math.max(
         1,
         ...players.filter((p) => !p.isAI).map((p) => p.tile),
@@ -657,7 +729,13 @@ export default function App() {
       const roll =
         forcedRoll ??
         (actor.isAI
-          ? rollAdaptiveAIDice(actor.tile, bestHumanTile, difficulty, profile.recentResults)
+          ? rollAdaptiveAIDice(
+              actor.tile,
+              bestHumanTile,
+              difficulty,
+              profile.recentResults,
+              activeJumpMap,
+            )
           : Math.floor(Math.random() * 6) + 1);
 
       const resolution = resolveTurnMove(actor.tile, roll, actor.shields, {
@@ -665,6 +743,7 @@ export default function App() {
         actorId: actor.id,
         actorTeam: actor.team,
         otherPlayers: players,
+        customJumpMap: activeJumpMap,
       });
 
       const nextPlayers = applyTurnEffectsToPlayers(players, actor.id, resolution, difficulty);
@@ -921,6 +1000,11 @@ export default function App() {
             error: null,
           }));
 
+          if (room.boardConfig) {
+            setActiveBoardConfig(room.boardConfig);
+            activeBoardRef.current = room.boardConfig;
+          }
+
           if (type === 'room:started' || room.status === 'playing') {
             lastProcessedEventIdRef.current = room.lastEventId || 0;
             setMode('online');
@@ -945,6 +1029,9 @@ export default function App() {
               if (screenRef.current !== 'arena') {
                 enterArenaWithTransition();
               } else {
+                if (room.boardConfig) {
+                  engineRef.current?.updateBoardConfig(room.boardConfig);
+                }
                 engineRef.current?.resetCameraPhase();
               }
             }
@@ -1331,8 +1418,15 @@ export default function App() {
       setTimeEndsAt(null);
       setTimeLeftSec(null);
     }
+    const resolvedBoard = resolveBoardForMatch();
+    setActiveBoardConfig(resolvedBoard);
+    activeBoardRef.current = resolvedBoard;
+
     const modeLabel = BOARD_GAME_MODES.find((m) => m.id === nextBoardMode)?.label ?? 'Classic';
-    showToast(`${modeLabel} · Solo Dimulai`, `Kesulitan AI: ${diff === 'adaptive' ? 'Adaptif' : diff}`);
+    showToast(
+      `${modeLabel} · ${resolvedBoard.name}`,
+      `Kesulitan AI: ${diff === 'adaptive' ? 'Adaptif' : diff}`,
+    );
     enterArenaWithTransition();
   };
 
@@ -1365,15 +1459,24 @@ export default function App() {
       setTimeEndsAt(null);
       setTimeLeftSec(null);
     }
+
+    const resolvedBoard = resolveBoardForMatch();
+    setActiveBoardConfig(resolvedBoard);
+    activeBoardRef.current = resolvedBoard;
+
     const modeLabel = BOARD_GAME_MODES.find((m) => m.id === nextBoardMode)?.label ?? 'Classic';
-    showToast(`${modeLabel} · Lokal Dimulai`, `${nextPlayers.length} pemain siap bertanding!`);
+    showToast(
+      `${modeLabel} · ${resolvedBoard.name}`,
+      `${nextPlayers.length} pemain siap bertanding!`,
+    );
     enterArenaWithTransition();
   };
 
   const handleRematch = () => {
     if (mode === 'online') {
       if (wsRef.current?.readyState === WebSocket.OPEN && onlineLobby.hostId === onlineLobby.myPlayerId) {
-        wsRef.current.send(JSON.stringify({ type: 'room:rematch' }));
+        const nextOnlineBoard = resolveBoardForMatch();
+        wsRef.current.send(JSON.stringify({ type: 'room:rematch', boardConfig: nextOnlineBoard }));
       }
       setVictoryOpen(false);
       return;
@@ -1390,6 +1493,11 @@ export default function App() {
       shieldsUsed: 0,
       battleHits: 0,
     }));
+    const nextBoard = resolveBoardForMatch();
+    setActiveBoardConfig(nextBoard);
+    activeBoardRef.current = nextBoard;
+    engineRef.current?.updateBoardConfig(nextBoard);
+
     setTurnDeadlineAt(null);
     setTurnTimeLeftSec(null);
     setPlayers(reset);
@@ -1431,8 +1539,8 @@ export default function App() {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950">
-      {/* 1. Dedicated 3D Fantasy Forest / Waterfall / Serpent Mascot Backdrop (outside Arena & Loading) */}
-      {!isArenaMounted && <div ref={menuCanvasRef} className="fixed inset-0 z-0" />}
+      {/* 1. Dedicated 3D Fantasy Forest / Waterfall / Serpent Mascot Backdrop (outside Arena, Loading & 3D Board Studio) */}
+      {isMenuBackdropMounted && <div ref={menuCanvasRef} className="fixed inset-0 z-0" />}
 
       {/* 2. Dedicated 3D Snakes & Ladders Board Canvas (mounted during Loading & Arena) */}
       {isArenaMounted && (
@@ -1481,6 +1589,39 @@ export default function App() {
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
           onOpenAchievements={() => setAchievementsOpen(true)}
           onOpenCloud={() => setCloudOpen(true)}
+          onOpenBoardManager={(tab = 'collection') => {
+            soundEngine.playUiClick();
+            setBoardManagerTab(tab);
+            setBoardManagerReturnScreen('main_menu');
+            setScreen('board_manager');
+          }}
+          onOpenOracleAI={() => {
+            soundEngine.playUiClick();
+            setOracleAiOpen(true);
+          }}
+        />
+      )}
+
+      {screen === 'board_manager' && (
+        <BoardManagerView
+          initialTab={boardManagerTab}
+          graphicsPrefs={graphicsPrefs}
+          diceSkinId={profile.diceSkinId}
+          onBack={() => {
+            soundEngine.playUiClick();
+            setScreen(boardManagerReturnScreen);
+          }}
+          onBoardSelectionChanged={(board) => {
+            setActiveBoardConfig(board);
+            activeBoardRef.current = board;
+          }}
+          onPlayWithBoard={(board) => {
+            soundEngine.playUiClick();
+            selectBoard(board.id, board.isCustom ? 'custom' : 'manual');
+            setActiveBoardConfig(board);
+            activeBoardRef.current = board;
+            setScreen('game_config');
+          }}
         />
       )}
 
@@ -1516,6 +1657,9 @@ export default function App() {
           defaultArchetypeIndex={profile.archetypeIndex}
           adaptiveTier={adaptiveInfo.tier}
           muted={profile.muted}
+          selectedDiceSkinId={profile.diceSkinId}
+          unlockedAchievements={profile.unlockedAchievements}
+          onSelectDiceSkin={handleSelectDiceSkin}
           cameraSettings={cameraSettings}
           onChangeCameraMode={(nextMode) =>
             handleUpdateCameraSettings({ ...cameraSettings, mode: nextMode })
@@ -1533,6 +1677,12 @@ export default function App() {
           }}
           onStartSolo={handleStartSolo}
           onStartLocal={handleStartLocal}
+          onOpenBoardManager={(tab = 'creator') => {
+            soundEngine.playUiClick();
+            setBoardManagerTab(tab);
+            setBoardManagerReturnScreen('game_config');
+            setScreen('board_manager');
+          }}
         />
       )}
 
@@ -1557,6 +1707,9 @@ export default function App() {
           }}
           onOpenCameraSettings={() => setCameraSettingsOpen(true)}
           onOnlineCreateRoom={(opts) => {
+            const chosenBoard = resolveBoardForMatch();
+            setActiveBoardConfig(chosenBoard);
+            activeBoardRef.current = chosenBoard;
             void ensureWebSocket().then((ws) => {
               ws.send(
                 JSON.stringify({
@@ -1568,6 +1721,7 @@ export default function App() {
                   isPublic: opts.isPublic,
                   boardMode: opts.boardMode,
                   timeLimitSec: opts.timeLimitSec,
+                  boardConfig: chosenBoard,
                 }),
               );
             });
@@ -1589,7 +1743,10 @@ export default function App() {
             wsRef.current?.send(JSON.stringify({ type: 'room:ready', ready }));
           }}
           onOnlineStart={() => {
-            wsRef.current?.send(JSON.stringify({ type: 'room:start' }));
+            const chosenBoard = resolveBoardForMatch();
+            setActiveBoardConfig(chosenBoard);
+            activeBoardRef.current = chosenBoard;
+            wsRef.current?.send(JSON.stringify({ type: 'room:start', boardConfig: chosenBoard }));
           }}
           onOnlineLeave={leaveOnlineRoomIfAny}
           onOnlineChat={(text) => {
@@ -1613,6 +1770,9 @@ export default function App() {
       {screen === 'loading_arena' && (
         <LoadingArenaScreen
           boardMode={boardMode}
+          boardConfig={activeBoardConfig}
+          connectionMode={mode}
+          difficulty={difficulty}
           players={players}
           progress={arenaLoadProgress}
           stageText={arenaLoadStage}
@@ -1657,6 +1817,10 @@ export default function App() {
               setProfile(next);
             }}
             onOpenTutorial={() => setTutorialOpen(true)}
+            onOpenOracleAI={() => {
+              soundEngine.playUiClick();
+              setOracleAiOpen(true);
+            }}
             onReturnToMenu={handleReturnToMenu}
           />
 
@@ -1791,6 +1955,7 @@ export default function App() {
           saveProfile(next);
           setProfile(next);
         }}
+        onSelectDiceSkin={handleSelectDiceSkin}
       />
 
       <CloudSyncModal
@@ -1838,6 +2003,7 @@ export default function App() {
         isLocalWinner={isLocalWinner}
         canRematch={mode !== 'online' || onlineLobby.hostId === onlineLobby.myPlayerId}
         globalRank={globalRank}
+        boardName={activeBoardConfig.name}
         onRematch={handleRematch}
         onMainMenu={handleReturnToMenu}
         onClose={() => setVictoryOpen(false)}
@@ -1862,6 +2028,17 @@ export default function App() {
         graphicsPrefs={graphicsPrefs}
         onGraphicsChange={handleUpdateGraphicsPrefs}
         deviceCaps={deviceCaps}
+      />
+
+      <AetherOracleChatDrawer
+        open={oracleAiOpen}
+        onClose={() => setOracleAiOpen(false)}
+        screen={screen}
+        boardConfig={activeBoardConfig}
+        boardMode={boardMode}
+        difficulty={difficulty}
+        players={players}
+        currentTurnIndex={currentTurnIndex}
       />
     </div>
   );

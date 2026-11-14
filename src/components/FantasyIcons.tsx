@@ -162,3 +162,62 @@ export const ArchetypeEmblem: React.FC<{ archetypeIndex: number; className?: str
     </svg>
   );
 };
+
+/**
+ * Isometric 3D Custom Dice Skin Preview Emblem.
+ */
+export const DiceSkinCubePreview: React.FC<{
+  coreBg: string;
+  plateBg: string;
+  borderHex: string;
+  pipHex: string;
+  pipOneHex: string;
+  glowHex: string;
+  className?: string;
+}> = ({ coreBg, plateBg, borderHex, pipHex, pipOneHex, glowHex, className = 'w-11 h-11' }) => (
+  <svg viewBox="0 0 44 44" fill="none" className={className} aria-hidden="true">
+    {/* Subtle outer aura */}
+    <circle cx="22" cy="22" r="19" fill={glowHex} fillOpacity="0.14" />
+    {/* Top face (1 pip) */}
+    <polygon
+      points="22,4 38,13 22,22 6,13"
+      fill={plateBg}
+      stroke={borderHex}
+      strokeWidth="1.7"
+      strokeLinejoin="round"
+    />
+    {/* Left face (2 pips) */}
+    <polygon
+      points="6,13 22,22 22,40 6,31"
+      fill={coreBg}
+      stroke={borderHex}
+      strokeWidth="1.7"
+      strokeLinejoin="round"
+    />
+    {/* Right face (3 pips) */}
+    <polygon
+      points="22,22 38,13 38,31 22,40"
+      fill={plateBg}
+      fillOpacity="0.92"
+      stroke={borderHex}
+      strokeWidth="1.7"
+      strokeLinejoin="round"
+    />
+    {/* Top face center pip (1) */}
+    <circle cx="22" cy="13" r="2.7" fill={pipOneHex} stroke={borderHex} strokeWidth="0.8" />
+    {/* Left face pips (2) */}
+    <circle cx="11.5" cy="21.5" r="1.8" fill={pipHex} />
+    <circle cx="16.5" cy="30.5" r="1.8" fill={pipHex} />
+    {/* Right face pips (3) */}
+    <circle cx="33" cy="20" r="1.65" fill={pipHex} />
+    <circle cx="30" cy="26" r="1.65" fill={pipHex} />
+    <circle cx="27" cy="32" r="1.65" fill={pipHex} />
+    {/* Corner crystal studs */}
+    <circle cx="22" cy="4" r="1.5" fill={glowHex} />
+    <circle cx="38" cy="13" r="1.5" fill={glowHex} />
+    <circle cx="6" cy="13" r="1.5" fill={glowHex} />
+    <circle cx="22" cy="22" r="1.6" fill={glowHex} />
+    <circle cx="22" cy="40" r="1.5" fill={glowHex} />
+  </svg>
+);
+

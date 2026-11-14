@@ -5,6 +5,7 @@ export interface PbrTextureSet {
   normalMap: THREE.Texture;
   roughnessMap: THREE.Texture;
   aoMap: THREE.Texture;
+  metalnessMap?: THREE.Texture;
 }
 
 // Fast deterministic 2D hash & value noise (tileable via period wrapping)
@@ -51,7 +52,8 @@ function clampByte(v: number): number {
 }
 
 /**
- * Converts a scalar heightfield [0..1] (row-major size*size) into a tileable tangent-space normal map.
+ * Converts a scalar heightfield [0..1] (row-major size*size) into a tileable tangent-space normal map
+ * using a Hybrid Sobel + Central-Difference Micro-Detail kernel for crisp edges across all mip levels.
  */
 export function buildNormalDataTexture(
   height: Float32Array,
@@ -69,7 +71,6 @@ export function buildNormalDataTexture(
       const xm = (x - 1 + size) % size;
       const xp = (x + 1) % size;
 
-      // Sobel filter for crisp normal gradients
       const tl = height[ym * size + xm];
       const t = height[ym * size + x];
       const tr = height[ym * size + xp];
@@ -79,8 +80,14 @@ export function buildNormalDataTexture(
       const b = height[yp * size + x];
       const br = height[yp * size + xp];
 
-      const dX = (tr + 2 * r + br - (tl + 2 * l + bl)) * strength;
-      const dY = (bl + 2 * b + br - (tl + 2 * t + tr)) * strength;
+      // Hybrid Sobel (macro bevels) + sharp central difference (micro pores/scales)
+      const sobelX = tr + 2 * r + br - (tl + 2 * l + bl);
+      const sobelY = bl + 2 * b + br - (tl + 2 * t + tr);
+      const microX = (r - l) * 2.4;
+      const microY = (b - t) * 2.4;
+
+      const dX = (sobelX * 0.72 + microX * 0.28) * strength;
+      const dY = (sobelY * 0.72 + microY * 0.28) * strength;
       const invLen = 1 / Math.sqrt(dX * dX + dY * dY + 1);
 
       const idx = (y * size + x) * 4;
@@ -104,22 +111,37 @@ export function buildNormalDataTexture(
   return tex;
 }
 
-export function buildGrayscaleDataTexture(
-  values: Float32Array,
+/**
+ * Builds a single Packed ORM DataTexture following the glTF / Three.js standard:
+ * - Red   (R) = Ambient Occlusion (sampled by material.aoMap)
+ * - Green (G) = Roughness         (sampled by material.roughnessMap)
+ * - Blue  (B) = Metalness         (sampled by material.metalnessMap)
+ * Sharing one DataTexture across aoMap, roughnessMap, and metalnessMap cuts non-albedo VRAM
+ * and GPU texture cache bandwidth in half while enabling per-texel metalness!
+ */
+export function buildPackedOrmDataTexture(
+  ao: Float32Array,
+  rough: Float32Array,
+  metal: Float32Array | number,
   size: number,
   repeatX: number,
   repeatY: number,
   maxAnisotropy: number,
 ): THREE.DataTexture {
   const data = new Uint8Array(size * size * 4);
+  const isConstMetal = typeof metal === 'number';
+  const constMetalByte = isConstMetal ? clampByte((metal as number) * 255) : 0;
+
   for (let i = 0; i < size * size; i++) {
-    const byte = clampByte(values[i] * 255);
     const idx = i * 4;
-    data[idx] = byte;
-    data[idx + 1] = byte;
-    data[idx + 2] = byte;
+    data[idx] = clampByte(ao[i] * 255); // R: Ambient Occlusion
+    data[idx + 1] = clampByte(rough[i] * 255); // G: Roughness
+    data[idx + 2] = isConstMetal
+      ? constMetalByte
+      : clampByte((metal as Float32Array)[i] * 255); // B: Metalness
     data[idx + 3] = 255;
   }
+
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
@@ -131,6 +153,16 @@ export function buildGrayscaleDataTexture(
   tex.anisotropy = maxAnisotropy;
   tex.needsUpdate = true;
   return tex;
+}
+
+export function buildGrayscaleDataTexture(
+  values: Float32Array,
+  size: number,
+  repeatX: number,
+  repeatY: number,
+  maxAnisotropy: number,
+): THREE.DataTexture {
+  return buildPackedOrmDataTexture(values, values, values, size, repeatX, repeatY, maxAnisotropy);
 }
 
 export function buildAlbedoDataTexture(
@@ -240,11 +272,13 @@ export function createOrientalDragonPbrMaps(
     }
   }
 
+  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.22, size, 7, 1, maxAnisotropy);
   return {
     map: buildAlbedoDataTexture(albedo, size, 7, 1, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 2.8, 7, 1, maxAnisotropy),
-    roughnessMap: buildGrayscaleDataTexture(rough, size, 7, 1, maxAnisotropy),
-    aoMap: buildGrayscaleDataTexture(ao, size, 7, 1, maxAnisotropy),
+    normalMap: buildNormalDataTexture(height, size, 4.2, 7, 1, maxAnisotropy),
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
   };
 }
 
@@ -297,11 +331,13 @@ export function createRockPbrMaps(
     }
   }
 
+  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.08, size, repeat, repeat, maxAnisotropy);
   return {
     map: buildAlbedoDataTexture(albedo, size, repeat, repeat, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 3.6, repeat, repeat, maxAnisotropy),
-    roughnessMap: buildGrayscaleDataTexture(rough, size, repeat, repeat, maxAnisotropy),
-    aoMap: buildGrayscaleDataTexture(ao, size, repeat, repeat, maxAnisotropy),
+    normalMap: buildNormalDataTexture(height, size, 4.5, repeat, repeat, maxAnisotropy),
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
   };
 }
 
@@ -348,11 +384,13 @@ export function createBarkPbrMaps(
     }
   }
 
+  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.03, size, 2, 4, maxAnisotropy);
   return {
     map: buildAlbedoDataTexture(albedo, size, 2, 4, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 3.4, 2, 4, maxAnisotropy),
-    roughnessMap: buildGrayscaleDataTexture(rough, size, 2, 4, maxAnisotropy),
-    aoMap: buildGrayscaleDataTexture(ao, size, 2, 4, maxAnisotropy),
+    normalMap: buildNormalDataTexture(height, size, 4.8, 2, 4, maxAnisotropy),
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
   };
 }
 
@@ -387,33 +425,35 @@ export function createCastleStonePbrMaps(
       const colI = Math.floor(colF);
       const fx = colF - colI;
 
-      const mortar = fx < 0.055 || fx > 0.945 || fy < 0.08 || fy > 0.92;
-      const edgeDist = Math.min(fx, 1 - fx, fy * 0.7, (1 - fy) * 0.7);
-      const bevel = Math.min(1, edgeDist / 0.11);
+      const mortar = fx < 0.058 || fx > 0.942 || fy < 0.085 || fy > 0.915;
+      const edgeDist = Math.min(fx, 1 - fx, fy * 0.72, (1 - fy) * 0.72);
+      const bevel = Math.min(1, edgeDist / 0.12);
 
-      const blockTint = hash2(colI % blockCols, rowI, 91.5) * 26 - 13;
+      const blockTint = hash2(colI % blockCols, rowI, 91.5) * 32 - 16;
       const grain = tileFbm(u, v, 14, 3, 71.3);
 
-      const hVal = mortar ? 0.12 + grain * 0.08 : 0.35 + bevel * 0.45 + grain * 0.2;
-      const aoVal = mortar ? 0.34 : 0.52 + bevel * 0.48;
-      const rVal = mortar ? 0.95 : 0.68 + grain * 0.22;
+      const hVal = mortar ? 0.08 + grain * 0.07 : 0.34 + bevel * 0.5 + grain * 0.22;
+      const aoVal = mortar ? 0.26 : 0.48 + bevel * 0.52;
+      const rVal = mortar ? 0.95 : 0.62 + grain * 0.24;
 
-      const base = (mortar ? 68 : 112 + blockTint) + grain * 26;
+      const base = (mortar ? 56 : 118 + blockTint) + grain * 28;
       height[idx] = hVal;
       ao[idx] = aoVal;
       rough[idx] = rVal;
-      albedo[pIdx] = clampByte((base - 4) * (0.7 + 0.3 * aoVal));
-      albedo[pIdx + 1] = clampByte((base + 1) * (0.7 + 0.3 * aoVal));
-      albedo[pIdx + 2] = clampByte((base + 11) * (0.7 + 0.3 * aoVal));
+      albedo[pIdx] = clampByte((base - 4) * (0.64 + 0.36 * aoVal));
+      albedo[pIdx + 1] = clampByte((base + 1) * (0.64 + 0.36 * aoVal));
+      albedo[pIdx + 2] = clampByte((base + 11) * (0.64 + 0.36 * aoVal));
       albedo[pIdx + 3] = 255;
     }
   }
 
+  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.12, size, 2, 2, maxAnisotropy);
   return {
     map: buildAlbedoDataTexture(albedo, size, 2, 2, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 3.2, 2, 2, maxAnisotropy),
-    roughnessMap: buildGrayscaleDataTexture(rough, size, 2, 2, maxAnisotropy),
-    aoMap: buildGrayscaleDataTexture(ao, size, 2, 2, maxAnisotropy),
+    normalMap: buildNormalDataTexture(height, size, 4.6, 2, 2, maxAnisotropy),
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
   };
 }
 
@@ -448,39 +488,41 @@ export function createCastleSlateRoofPbrMaps(
       const colI = Math.floor(colF);
       const fx = colF - colI;
 
-      const seamX = fx < 0.06 || fx > 0.94;
-      const seamY = fy < 0.08;
-      const slateVar = hash2(colI % cols, rowI, 33.7) * 20 - 10;
+      const seamX = fx < 0.065 || fx > 0.935;
+      const seamY = fy < 0.095;
+      const slateVar = hash2(colI % cols, rowI, 33.7) * 24 - 12;
       const grain = tileFbm(u, v, 16, 2, 5.2);
 
-      const hVal = seamX || seamY ? 0.15 : 0.35 + fy * 0.55 + grain * 0.1;
-      const aoVal = seamY ? 0.35 : 0.55 + fy * 0.45;
-      const rVal = 0.42 + grain * 0.24;
+      const hVal = seamX || seamY ? 0.1 : 0.32 + fy * 0.6 + grain * 0.12;
+      const aoVal = seamY ? 0.28 : 0.5 + fy * 0.5;
+      const rVal = 0.38 + grain * 0.26;
 
       height[idx] = hVal;
       ao[idx] = aoVal;
       rough[idx] = rVal;
-      albedo[pIdx] = clampByte((36 + slateVar + grain * 14) * (0.72 + 0.28 * aoVal));
-      albedo[pIdx + 1] = clampByte((54 + slateVar + grain * 18) * (0.72 + 0.28 * aoVal));
-      albedo[pIdx + 2] = clampByte((94 + slateVar + grain * 24) * (0.72 + 0.28 * aoVal));
+      albedo[pIdx] = clampByte((38 + slateVar + grain * 16) * (0.66 + 0.34 * aoVal));
+      albedo[pIdx + 1] = clampByte((58 + slateVar + grain * 20) * (0.66 + 0.34 * aoVal));
+      albedo[pIdx + 2] = clampByte((102 + slateVar + grain * 26) * (0.66 + 0.34 * aoVal));
       albedo[pIdx + 3] = 255;
     }
   }
 
+  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.18, size, 3, 3, maxAnisotropy);
   return {
     map: buildAlbedoDataTexture(albedo, size, 3, 3, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 2.8, 3, 3, maxAnisotropy),
-    roughnessMap: buildGrayscaleDataTexture(rough, size, 3, 3, maxAnisotropy),
-    aoMap: buildGrayscaleDataTexture(ao, size, 3, 3, maxAnisotropy),
+    normalMap: buildNormalDataTexture(height, size, 3.8, 3, 3, maxAnisotropy),
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
   };
 }
 
 /**
- * Aged Castle Oak Timber PBR Set (256x256).
+ * Aged Castle Oak Timber PBR Set (512x512).
  */
 export function createTimberPbrMaps(
   maxAnisotropy: number,
-  texSize: 256 | 512 | 1024 = 256,
+  texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize >= 512 ? 512 : 256;
   const height = new Float32Array(size * size);
@@ -498,27 +540,30 @@ export function createTimberPbrMaps(
       const idx = y * size + x;
       const pIdx = idx * 4;
 
-      const grain = Math.sin((v * 28 + tileFbm(u, v, 8, 2, 12) * 2.5) * Math.PI) * 0.5 + 0.5;
-      const hVal = seam ? 0.15 : 0.45 + grain * 0.4;
-      const aoVal = seam ? 0.35 : 0.72 + grain * 0.28;
-      const rVal = 0.65 + (1 - grain) * 0.22;
+      const fine = tileFbm(u, v, 24, 3, 39.2);
+      const grain = Math.sin((v * 38 + tileFbm(u, v, 10, 3, 12) * 3.1) * Math.PI) * 0.5 + 0.5;
+      const hVal = seam ? 0.08 : 0.34 + grain * 0.5 + fine * 0.16;
+      const aoVal = seam ? 0.26 : 0.62 + grain * 0.38;
+      const rVal = 0.52 + (1 - grain) * 0.28;
 
-      const tint = (plank % 2) * 8;
+      const tint = (plank % 2) * 12;
       height[idx] = hVal;
       ao[idx] = aoVal;
       rough[idx] = rVal;
-      albedo[pIdx] = clampByte((86 + tint + grain * 24) * aoVal);
-      albedo[pIdx + 1] = clampByte((56 + tint * 0.6 + grain * 18) * aoVal);
-      albedo[pIdx + 2] = clampByte((34 + grain * 10) * aoVal);
+      albedo[pIdx] = clampByte((96 + tint + grain * 32 + fine * 12) * aoVal);
+      albedo[pIdx + 1] = clampByte((62 + tint * 0.65 + grain * 22 + fine * 9) * aoVal);
+      albedo[pIdx + 2] = clampByte((36 + grain * 14 + fine * 6) * aoVal);
       albedo[pIdx + 3] = 255;
     }
   }
 
+  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.05, size, 2, 2, maxAnisotropy);
   return {
     map: buildAlbedoDataTexture(albedo, size, 2, 2, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 2.4, 2, 2, maxAnisotropy),
-    roughnessMap: buildGrayscaleDataTexture(rough, size, 2, 2, maxAnisotropy),
-    aoMap: buildGrayscaleDataTexture(ao, size, 2, 2, maxAnisotropy),
+    normalMap: buildNormalDataTexture(height, size, 4.2, 2, 2, maxAnisotropy),
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
   };
 }
 
@@ -560,11 +605,13 @@ export function createTerrainPbrMaps(
     }
   }
 
+  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.03, size, 14, 14, maxAnisotropy);
   return {
     map: buildAlbedoDataTexture(albedo, size, 14, 14, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 2.5, 14, 14, maxAnisotropy),
-    roughnessMap: buildGrayscaleDataTexture(rough, size, 14, 14, maxAnisotropy),
-    aoMap: buildGrayscaleDataTexture(ao, size, 14, 14, maxAnisotropy),
+    normalMap: buildNormalDataTexture(height, size, 2.8, 14, 14, maxAnisotropy),
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
   };
 }
 
@@ -804,5 +851,10 @@ export function disposePbrTextureSet(set: PbrTextureSet): void {
   set.map.dispose();
   set.normalMap.dispose();
   set.roughnessMap.dispose();
-  set.aoMap.dispose();
+  if (set.aoMap !== set.roughnessMap) {
+    set.aoMap.dispose();
+  }
+  if (set.metalnessMap && set.metalnessMap !== set.roughnessMap && set.metalnessMap !== set.aoMap) {
+    set.metalnessMap.dispose();
+  }
 }

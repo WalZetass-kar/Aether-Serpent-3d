@@ -1,5 +1,5 @@
-import React from 'react';
-import { BookOpen, Home, Volume2, VolumeX } from 'lucide-react';
+import React, { useState } from 'react';
+import { BookOpen, Home, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import {
   BOARD_GAME_MODES,
   ONLINE_TURN_TIMEOUT_SEC,
@@ -26,6 +26,7 @@ interface HUDTopBarProps {
   isAnimating: boolean;
   onToggleMute: () => void;
   onOpenTutorial: () => void;
+  onOpenOracleAI?: () => void;
   onReturnToMenu: () => void;
 }
 
@@ -51,8 +52,11 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   isAnimating,
   onToggleMute,
   onOpenTutorial,
+  onOpenOracleAI,
   onReturnToMenu,
 }) => {
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
   const modeLabel =
     BOARD_GAME_MODES.find((m) => m.id === boardMode)?.label ?? 'Classic';
   const showTurnClock = mode === 'online' && turnTimeLeftSec !== null && !isAnimating;
@@ -77,155 +81,261 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
           : 'text-rose-300';
 
   return (
-    <header className="pointer-events-none fixed top-0 left-0 right-0 z-20 px-2.5 sm:px-4 pt-2 sm:pt-3">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2">
-        {/* Compact Brand & Active Match Mode */}
-        <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-amber-500/30 bg-slate-950/90 backdrop-blur-md px-2.5 sm:px-3 py-1.5 shadow-lg min-w-0">
-          <SerpentCrestEmblem className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
-          <div className="leading-tight min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="font-display text-xs sm:text-sm font-bold text-gold-gradient truncate">
-                <span className="sm:hidden">{modeLabel}</span>
-                <span className="hidden sm:inline">Aether Serpent 3D</span>
-              </span>
-              {mode === 'online' && onlineRoomCode && (
-                <span className="font-mono-num text-[10px] sm:text-[11px] font-semibold text-amber-300">
-                  #{onlineRoomCode}
+    <>
+      <header className="pointer-events-none fixed top-0 left-0 right-0 z-20 px-2.5 sm:px-4 pt-2 sm:pt-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2">
+          {/* Left: Precise Brand & Active Match Title */}
+          <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-amber-500/30 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 shadow-lg min-w-0">
+            <SerpentCrestEmblem className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+            <div className="leading-tight min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-display text-xs sm:text-sm font-bold text-gold-gradient truncate">
+                  Aether Serpent 3D
                 </span>
-              )}
-            </div>
-            <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-400">
-              <span>{modeLabel}</span>
-              <span>·</span>
-              <span>
-                {mode === 'solo'
-                  ? difficulty === 'adaptive'
-                    ? `AI ${adaptiveTier}`
-                    : `AI ${difficulty}`
-                  : mode === 'local'
-                    ? 'Lokal'
-                    : 'Online'}
-              </span>
-              {mode === 'online' && pingMs !== null && (
-                <>
-                  <span>·</span>
-                  <span className={`font-mono-num ${pingTone}`}>{pingMs} ms</span>
-                </>
-              )}
+                {mode === 'online' && onlineRoomCode && (
+                  <span className="font-mono-num text-[10px] sm:text-[11px] font-semibold text-amber-300 shrink-0">
+                    #{onlineRoomCode}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400 truncate">
+                <span className="truncate">{modeLabel}</span>
+                <span>·</span>
+                <span className="truncate">
+                  {mode === 'solo'
+                    ? difficulty === 'adaptive'
+                      ? `AI ${adaptiveTier}`
+                      : `AI ${difficulty}`
+                    : mode === 'local'
+                      ? 'Lokal'
+                      : 'Online'}
+                </span>
+                {mode === 'online' && pingMs !== null && (
+                  <span className={`hidden sm:inline font-mono-num ${pingTone}`}>
+                    · {pingMs} ms
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Center/Right Timers + Slim Actions */}
-        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
-          {showMatchClock && (
-            <div
-              className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-2.5 py-1 shadow-lg bg-slate-950/90 backdrop-blur-md ${
-                matchUrgent ? 'border-rose-500/60' : 'border-amber-500/35'
-              }`}
-              title="Sisa Waktu Time Attack"
-            >
-              <AnimatedProgressRing
-                progress={matchProgress}
-                size={34}
-                strokeWidth={3}
-                tone="amber"
-                urgent={matchUrgent}
+          {/* Right: Timers + Desktop Actions / Mobile Sidebar Button */}
+          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {showMatchClock && (
+              <div
+                className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-2.5 py-1 shadow-lg bg-slate-950/90 backdrop-blur-md ${
+                  matchUrgent ? 'border-rose-500/60' : 'border-amber-500/35'
+                }`}
+                title="Sisa Waktu Time Attack"
               >
-                <span
-                  className={`font-mono-num text-[9px] font-bold ${
-                    matchUrgent ? 'text-rose-200' : 'text-amber-200'
-                  }`}
+                <AnimatedProgressRing
+                  progress={matchProgress}
+                  size={32}
+                  strokeWidth={3}
+                  tone="amber"
+                  urgent={matchUrgent}
                 >
-                  {Math.max(0, Math.ceil(timeLeftSec ?? 0))}
-                </span>
-              </AnimatedProgressRing>
-              <div className="hidden sm:block leading-tight pr-0.5">
-                <div className="text-[10px] text-slate-400">Waktu</div>
-                <div
-                  className={`font-mono-num text-xs font-bold ${
-                    matchUrgent ? 'text-rose-200' : 'text-amber-200'
-                  }`}
-                >
-                  {formatClock(timeLeftSec ?? 0)}
+                  <span
+                    className={`font-mono-num text-[9px] font-bold ${
+                      matchUrgent ? 'text-rose-200' : 'text-amber-200'
+                    }`}
+                  >
+                    {Math.max(0, Math.ceil(timeLeftSec ?? 0))}
+                  </span>
+                </AnimatedProgressRing>
+                <div className="hidden sm:block leading-tight pr-0.5">
+                  <div className="text-[10px] text-slate-400">Waktu</div>
+                  <div
+                    className={`font-mono-num text-xs font-bold ${
+                      matchUrgent ? 'text-rose-200' : 'text-amber-200'
+                    }`}
+                  >
+                    {formatClock(timeLeftSec ?? 0)}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {showTurnClock && (
-            <div
-              className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-2.5 py-1 shadow-lg bg-slate-950/90 backdrop-blur-md ${
-                turnUrgent
-                  ? 'border-rose-500/70'
-                  : isMyOnlineTurn
-                    ? 'border-amber-400/60'
-                    : 'border-sky-500/40'
-              }`}
-              title="Batas Waktu Lempar Dadu"
-            >
-              <AnimatedProgressRing
-                progress={turnProgress}
-                size={34}
-                strokeWidth={3}
-                tone={isMyOnlineTurn ? 'amber' : 'sky'}
-                urgent={turnUrgent}
+            {showTurnClock && (
+              <div
+                className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-2.5 py-1 shadow-lg bg-slate-950/90 backdrop-blur-md ${
+                  turnUrgent
+                    ? 'border-rose-500/70'
+                    : isMyOnlineTurn
+                      ? 'border-amber-400/60'
+                      : 'border-sky-500/40'
+                }`}
+                title="Batas Waktu Lempar Dadu"
               >
-                <span
-                  className={`font-mono-num text-[10px] font-bold ${
-                    turnUrgent
-                      ? 'text-rose-200'
-                      : isMyOnlineTurn
-                        ? 'text-amber-200'
-                        : 'text-sky-200'
-                  }`}
+                <AnimatedProgressRing
+                  progress={turnProgress}
+                  size={32}
+                  strokeWidth={3}
+                  tone={isMyOnlineTurn ? 'amber' : 'sky'}
+                  urgent={turnUrgent}
                 >
-                  {turnTimeLeftSec}
-                </span>
-              </AnimatedProgressRing>
-              <div className="hidden sm:block leading-tight pr-0.5">
-                <div className="text-[10px] text-slate-400">
-                  {isMyOnlineTurn ? 'Giliranmu' : 'Giliran Lawan'}
-                </div>
-                <div className="font-mono-num text-xs font-bold text-slate-100">
-                  {turnTimeLeftSec} dtk
+                  <span
+                    className={`font-mono-num text-[10px] font-bold ${
+                      turnUrgent
+                        ? 'text-rose-200'
+                        : isMyOnlineTurn
+                          ? 'text-amber-200'
+                          : 'text-sky-200'
+                    }`}
+                  >
+                    {turnTimeLeftSec}
+                  </span>
+                </AnimatedProgressRing>
+                <div className="hidden sm:block leading-tight pr-0.5">
+                  <div className="text-[10px] text-slate-400">
+                    {isMyOnlineTurn ? 'Giliranmu' : 'Giliran Lawan'}
+                  </div>
+                  <div className="font-mono-num text-xs font-bold text-slate-100">
+                    {turnTimeLeftSec} dtk
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <button
-            type="button"
-            onClick={onToggleMute}
-            className="inline-flex items-center justify-center rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md min-w-[44px] min-h-[44px] sm:min-w-[38px] sm:min-h-[38px] text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
-            title={muted ? 'Nyalakan Suara' : 'Matikan Suara'}
-            aria-label={muted ? 'Nyalakan Suara' : 'Matikan Suara'}
-          >
-            {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </button>
+            {/* Desktop Action Buttons */}
+            {onOpenOracleAI && (
+              <button
+                type="button"
+                onClick={onOpenOracleAI}
+                className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/50 bg-amber-500/15 backdrop-blur-md min-h-[38px] px-3 text-xs font-bold text-amber-200 hover:border-amber-300 hover:text-amber-100 shadow-lg transition-all cursor-pointer"
+                title="Oracle Aether AI — Penasihat Strategi"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Oracle AI</span>
+              </button>
+            )}
 
-          <button
-            type="button"
-            onClick={onOpenTutorial}
-            className="hidden sm:inline-flex items-center justify-center rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md w-[38px] h-[38px] text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
-            title="Panduan Bermain"
-            aria-label="Panduan Bermain"
-          >
-            <BookOpen className="w-4 h-4" />
-          </button>
+            <button
+              type="button"
+              onClick={onToggleMute}
+              className="hidden sm:inline-flex items-center justify-center rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md w-[38px] h-[38px] text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
+              title={muted ? 'Nyalakan Suara' : 'Matikan Suara'}
+              aria-label={muted ? 'Nyalakan Suara' : 'Matikan Suara'}
+            >
+              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
 
-          <button
-            type="button"
-            onClick={onReturnToMenu}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-[38px] sm:px-3 text-xs font-semibold text-slate-200 hover:border-rose-400/50 hover:text-rose-200 transition-colors cursor-pointer"
-            title="Kembali ke Menu Utama"
-            aria-label="Kembali ke Menu Utama"
-          >
-            <Home className="w-4 h-4" />
-            <span className="hidden sm:inline">Menu</span>
-          </button>
+            <button
+              type="button"
+              onClick={onOpenTutorial}
+              className="hidden sm:inline-flex items-center justify-center rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md w-[38px] h-[38px] text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
+              title="Panduan Bermain"
+              aria-label="Panduan Bermain"
+            >
+              <BookOpen className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={onReturnToMenu}
+              className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md min-h-[38px] px-3 text-xs font-semibold text-slate-200 hover:border-rose-400/50 hover:text-rose-200 transition-colors cursor-pointer"
+              title="Kembali ke Menu Utama"
+            >
+              <Home className="w-4 h-4" />
+              <span>Menu</span>
+            </button>
+
+            {/* Mobile Single Menu Sidebar Button */}
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(true)}
+              aria-label="Menu Arena"
+              className="sm:hidden inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/35 bg-slate-950/90 backdrop-blur-md min-w-[44px] min-h-[44px] px-3 text-xs font-bold text-amber-200 shadow-lg cursor-pointer"
+            >
+              <Menu className="w-4 h-4 text-amber-300" />
+            </button>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Mobile In-Game Sidebar Drawer */}
+      {mobileDrawerOpen && (
+        <div className="pointer-events-auto fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-xs sm:hidden">
+          <aside className="flex h-full w-72 flex-col border-l border-slate-800 bg-slate-950/98 p-4 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <SerpentCrestEmblem className="w-5 h-5" />
+                <span className="font-display text-sm font-bold text-amber-200">
+                  Menu Arena
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                aria-label="Tutup Menu"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-slate-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {onOpenOracleAI && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileDrawerOpen(false);
+                    onOpenOracleAI();
+                  }}
+                  className="w-full flex items-center gap-3 min-h-[46px] px-3.5 rounded-xl border border-amber-400/50 bg-amber-500/15 text-xs font-bold text-amber-200"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>Oracle Aether AI (Strategi)</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onToggleMute();
+                }}
+                className="w-full flex items-center justify-between min-h-[46px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
+              >
+                <span className="inline-flex items-center gap-2.5">
+                  {muted ? (
+                    <VolumeX className="w-4 h-4 text-rose-400" />
+                  ) : (
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                  )}
+                  Suara Permainan
+                </span>
+                <span className={muted ? 'text-rose-300' : 'text-emerald-300'}>
+                  {muted ? 'Mati' : 'Aktif'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileDrawerOpen(false);
+                  onOpenTutorial();
+                }}
+                className="w-full flex items-center gap-2.5 min-h-[46px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
+              >
+                <BookOpen className="w-4 h-4 text-amber-300" />
+                <span>Panduan Bermain</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileDrawerOpen(false);
+                  onReturnToMenu();
+                }}
+                className="w-full flex items-center gap-2.5 min-h-[46px] px-3.5 rounded-xl border border-rose-500/35 bg-rose-950/25 text-xs font-semibold text-rose-200"
+              >
+                <Home className="w-4 h-4 text-rose-400" />
+                <span>Kembali ke Menu Utama</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+    </>
   );
 };

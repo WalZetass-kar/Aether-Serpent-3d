@@ -83,10 +83,107 @@
   animation: emotePop 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+@keyframes aetherDustFloat {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.75);
+  }
+  25% {
+    opacity: 0.85;
+  }
+  75% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dust-drift, 14px), -54px, 0) scale(1.15);
+  }
+}
+
+@keyframes aetherProgressPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.06);
+  }
+}
+
+.animate-aether-dust {
+  animation: aetherDustFloat var(--dust-duration, 4.5s) ease-in-out infinite;
+  animation-delay: var(--dust-delay, 0s);
+}
+
+.animate-progress-pulse {
+  animation: aetherProgressPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes astrolabeSpinCW {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes astrolabeSpinCCW {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes shimmerSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+@keyframes portalFloat {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.03);
+  }
+}
+
+.animate-astrolabe-cw {
+  animation: astrolabeSpinCW 22s linear infinite;
+}
+
+.animate-astrolabe-ccw {
+  animation: astrolabeSpinCCW 30s linear infinite;
+}
+
+.animate-shimmer-sweep {
+  animation: shimmerSweep 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-portal-float {
+  animation: portalFloat 3.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-ring-glow,
   .animate-ring-urgent,
-  .animate-emote-pop {
+  .animate-emote-pop,
+  .animate-aether-dust,
+  .animate-progress-pulse,
+  .animate-astrolabe-cw,
+  .animate-astrolabe-ccw,
+  .animate-shimmer-sweep,
+  .animate-portal-float {
     animation: none;
   }
 }

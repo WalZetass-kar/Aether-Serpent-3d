@@ -298,9 +298,10 @@ export class MainMenuEngine {
       const renderPass = new RenderPass(this.scene, this.camera);
       this.bokehPass = new BokehPass(this.scene, this.camera, {
         focus: 11.4,
-        aperture: 0.00014,
-        maxblur: 0.0042,
+        aperture: 0,
+        maxblur: 0,
       });
+      this.bokehPass.enabled = false;
       this.vignettePass = new ShaderPass(CinematicVignetteShader);
       const outputPass = new OutputPass();
       this.fxaaPass = new FXAAPass();
@@ -313,7 +314,7 @@ export class MainMenuEngine {
     }
 
     if (this.bokehPass) {
-      this.bokehPass.enabled = cfg.postMode !== 'fxaa';
+      this.bokehPass.enabled = false;
     }
     this.composer.setPixelRatio(this.perf.getEffectivePixelRatio());
     this.composer.setSize(width, height);

@@ -193,6 +193,101 @@ export const JUMP_MAP = new Map<number, SnakeOrLadder>(
   [...LADDERS, ...SNAKES].map((item) => [item.from, item]),
 );
 
+export function buildJumpMap(
+  ladders?: SnakeOrLadder[],
+  snakes?: SnakeOrLadder[],
+): Map<number, SnakeOrLadder> {
+  const effectiveLadders = ladders && ladders.length > 0 ? ladders : LADDERS;
+  const effectiveSnakes = snakes && snakes.length > 0 ? snakes : SNAKES;
+  const map = new Map<number, SnakeOrLadder>();
+  for (const item of effectiveLadders) {
+    if (item.from > 1 && item.from < 100 && item.to > item.from && item.to <= 100) {
+      map.set(item.from, item);
+    }
+  }
+  for (const item of effectiveSnakes) {
+    if (item.from > 1 && item.from < 100 && item.to >= 1 && item.to < item.from) {
+      map.set(item.from, item);
+    }
+  }
+  return map;
+}
+
+const FANTASY_TITLES = [
+  'Ksatria',
+  'Penyihir',
+  'Penjelajah',
+  'Alkemis',
+  'Penjaga',
+  'Pengembara',
+  'Arkon',
+  'Pangeran',
+];
+
+const FANTASY_NAMES = [
+  'Aldebaran',
+  'Lyra',
+  'Orion',
+  'Valkyrie',
+  'Zephyr',
+  'Kaelen',
+  'Selena',
+  'Draven',
+  'Aurelia',
+  'Sylph',
+  'Vanguard',
+  'Solstice',
+  'Astrea',
+  'Hyperion',
+  'Caspian',
+  'Seraphina',
+];
+
+/**
+ * Generates a unique, non-duplicate fantasy player name per device based on its seed/playerId.
+ */
+export function generateUniqueDevicePlayerName(seedId: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < seedId.length; i++) {
+    hash ^= seedId.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const unsigned = hash >>> 0;
+  const title = FANTASY_TITLES[unsigned % FANTASY_TITLES.length];
+  const hero = FANTASY_NAMES[(unsigned >>> 4) % FANTASY_NAMES.length];
+  const badgeNum = 100 + ((unsigned >>> 9) % 900);
+  return `${title} ${hero} #${badgeNum}`;
+}
+
+/**
+ * Ensures a joining or local player's name never duplicates an existing player's name.
+ */
+export function disambiguatePlayerName(
+  desiredName: string,
+  existingNames: string[],
+  fallbackSeed?: string,
+): string {
+  const base = desiredName.trim().slice(0, 24) || generateUniqueDevicePlayerName(fallbackSeed || `${Date.now()}`);
+  const lowerExisting = new Set(existingNames.map((n) => n.trim().toLowerCase()));
+  if (!lowerExisting.has(base.toLowerCase())) {
+    return base;
+  }
+  const suffixTag = fallbackSeed
+    ? Math.abs(
+        fallbackSeed.split('').reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) | 0, 7),
+      ) % 900 + 100
+    : Math.floor(100 + Math.random() * 900);
+  const candidate = `${base.slice(0, 19)} #${suffixTag}`;
+  if (!lowerExisting.has(candidate.toLowerCase())) {
+    return candidate;
+  }
+  let counter = 2;
+  while (lowerExisting.has(`${base.slice(0, 20)} (${counter})`.toLowerCase())) {
+    counter++;
+  }
+  return `${base.slice(0, 20)} (${counter})`;
+}
+
 export function tileToWorld(tile: number): { x: number; z: number; row: number; col: number } {
   const clamped = Math.max(1, Math.min(100, tile));
   const zeroBased = clamped - 1;
@@ -246,7 +341,9 @@ export function rollAdaptiveAIDice(
   bestHumanTile: number,
   difficulty: DifficultyMode,
   recentResults: boolean[],
+  customJumpMap?: Map<number, SnakeOrLadder>,
 ): number {
+  const activeJumpMap = customJumpMap ?? JUMP_MAP;
   let bias = 0;
   if (difficulty === 'easy') bias = -0.25;
   else if (difficulty === 'medium') bias = 0.08;
@@ -261,7 +358,7 @@ export function rollAdaptiveAIDice(
   for (let roll = 1; roll <= 6; roll++) {
     let landing = aiTile + roll;
     if (landing > 100) landing = 100 - (landing - 100);
-    const jump = JUMP_MAP.get(landing);
+    const jump = activeJumpMap.get(landing);
     const special = SPECIAL_TILE_MAP.get(landing);
     let utility = roll * 0.4;
     if (landing === 100) utility += 12;
@@ -324,6 +421,7 @@ export function resolveTurnMove(
     actorId?: string;
     actorTeam?: TeamId;
     otherPlayers?: PlayerState[];
+    customJumpMap?: Map<number, SnakeOrLadder>;
   },
 ): TurnResolution {
   const pathTiles: number[] = [];
@@ -370,7 +468,8 @@ export function resolveTurnMove(
     }
   }
 
-  const jumpTriggered = JUMP_MAP.get(postSpecialTile) ?? null;
+  const activeJumpMap = context?.customJumpMap ?? JUMP_MAP;
+  const jumpTriggered = activeJumpMap.get(postSpecialTile) ?? null;
   let finalTile = postSpecialTile;
 
   if (jumpTriggered) {
@@ -646,3 +745,194 @@ export function getDailyChallengeForDate(dateStr = getTodayDateString()): DailyC
   const picked = pool[hash % pool.length];
   return { ...picked, date: dateStr };
 }
+
+// ---------------------------------------------------------------------------
+// Custom 3D Dice Skins (Unlocked via Achievements)
+// ---------------------------------------------------------------------------
+
+export type DiceSkinId =
+  | 'royal_obsidian'
+  | 'celestial_core'
+  | 'molten_rock'
+  | 'emerald_serpent'
+  | 'sovereign_gold';
+
+export interface DiceSkinDef {
+  id: DiceSkinId;
+  name: string;
+  subtitle: string;
+  description: string;
+  requiredAchievementId: string | null;
+  requiredAchievementTitle: string;
+  previewColors: {
+    coreBg: string;
+    plateBg: string;
+    borderHex: string;
+    pipHex: string;
+    pipOneHex: string;
+    glowHex: string;
+  };
+  threeMaterials: {
+    coreColor: number;
+    coreRoughness: number;
+    coreMetalness: number;
+    coreEmissive: number;
+    coreEmissiveIntensity: number;
+    studColor: number;
+    studEmissive: number;
+    studEmissiveIntensity: number;
+    ringColor: number;
+  };
+}
+
+export const DICE_SKINS: DiceSkinDef[] = [
+  {
+    id: 'royal_obsidian',
+    name: 'Royal Obsidian',
+    subtitle: 'Warisan Kuno Aether',
+    description: 'Dadu batu obsidian kerajaan dengan paku sudut emas murni dan pelat gading klasik.',
+    requiredAchievementId: null,
+    requiredAchievementTitle: 'Terbuka Sejak Awal',
+    previewColors: {
+      coreBg: '#0f172a',
+      plateBg: '#fffbeb',
+      borderHex: '#d97706',
+      pipHex: '#1e1b4b',
+      pipOneHex: '#dc2626',
+      glowHex: '#f59e0b',
+    },
+    threeMaterials: {
+      coreColor: 0x0f172a,
+      coreRoughness: 0.25,
+      coreMetalness: 0.55,
+      coreEmissive: 0x1e293b,
+      coreEmissiveIntensity: 0.12,
+      studColor: 0xf59e0b,
+      studEmissive: 0xd97706,
+      studEmissiveIntensity: 0.18,
+      ringColor: 0xfbbf24,
+    },
+  },
+  {
+    id: 'celestial_core',
+    name: 'Celestial Core',
+    subtitle: 'Inti Bintang Astral',
+    description: 'Kristal kosmik safir bercahaya bintang dengan cincin nebula sian dan mata dadu konstelasi.',
+    requiredAchievementId: 'first_step',
+    requiredAchievementTitle: 'Langkah Pertama',
+    previewColors: {
+      coreBg: '#0c1938',
+      plateBg: '#0f172a',
+      borderHex: '#38bdf8',
+      pipHex: '#7dd3fc',
+      pipOneHex: '#fde047',
+      glowHex: '#0ea5e9',
+    },
+    threeMaterials: {
+      coreColor: 0x172554,
+      coreRoughness: 0.14,
+      coreMetalness: 0.78,
+      coreEmissive: 0x0284c7,
+      coreEmissiveIntensity: 0.42,
+      studColor: 0x38bdf8,
+      studEmissive: 0x7dd3fc,
+      studEmissiveIntensity: 0.55,
+      ringColor: 0x38bdf8,
+    },
+  },
+  {
+    id: 'molten_rock',
+    name: 'Molten Rock',
+    subtitle: 'Batu Magma Vulkanik',
+    description: 'Basalt vulkanik yang retak oleh aliran lava membara dengan paku bara api yang berpijar.',
+    requiredAchievementId: 'serpent_shield',
+    requiredAchievementTitle: 'Kebal Bisa Ular',
+    previewColors: {
+      coreBg: '#1c1917',
+      plateBg: '#29150e',
+      borderHex: '#f97316',
+      pipHex: '#fb923c',
+      pipOneHex: '#fef08a',
+      glowHex: '#ea580c',
+    },
+    threeMaterials: {
+      coreColor: 0x271714,
+      coreRoughness: 0.48,
+      coreMetalness: 0.42,
+      coreEmissive: 0xea580c,
+      coreEmissiveIntensity: 0.48,
+      studColor: 0xf97316,
+      studEmissive: 0xfbbf24,
+      studEmissiveIntensity: 0.62,
+      ringColor: 0xf97316,
+    },
+  },
+  {
+    id: 'emerald_serpent',
+    name: 'Emerald Serpent',
+    subtitle: 'Permata Naga Giok',
+    description: 'Dadu batu giok zamrud berukir sisik naga suci dengan paku perunggu keemasan.',
+    requiredAchievementId: 'ladder_climber',
+    requiredAchievementTitle: 'Penakluk Tangga',
+    previewColors: {
+      coreBg: '#022c22',
+      plateBg: '#064e3b',
+      borderHex: '#10b981',
+      pipHex: '#a7f3d0',
+      pipOneHex: '#fbbf24',
+      glowHex: '#10b981',
+    },
+    threeMaterials: {
+      coreColor: 0x064e3b,
+      coreRoughness: 0.2,
+      coreMetalness: 0.64,
+      coreEmissive: 0x059669,
+      coreEmissiveIntensity: 0.34,
+      studColor: 0xfbbf24,
+      studEmissive: 0x10b981,
+      studEmissiveIntensity: 0.35,
+      ringColor: 0x34d399,
+    },
+  },
+  {
+    id: 'sovereign_gold',
+    name: 'Sovereign Monarch',
+    subtitle: 'Mahkota Raja Papan',
+    description: 'Tempaan emas kekaisaran berkilau tinggi dengan permata rubi merah darah di setiap sudut.',
+    requiredAchievementId: 'board_monarch',
+    requiredAchievementTitle: 'Raja Papan Aether',
+    previewColors: {
+      coreBg: '#451a03',
+      plateBg: '#18181b',
+      borderHex: '#fbbf24',
+      pipHex: '#fde68a',
+      pipOneHex: '#f43f5e',
+      glowHex: '#eab308',
+    },
+    threeMaterials: {
+      coreColor: 0xb45309,
+      coreRoughness: 0.16,
+      coreMetalness: 0.92,
+      coreEmissive: 0xd97706,
+      coreEmissiveIntensity: 0.28,
+      studColor: 0xf43f5e,
+      studEmissive: 0xfb7185,
+      studEmissiveIntensity: 0.45,
+      ringColor: 0xfde047,
+    },
+  },
+];
+
+export function getDiceSkinDef(skinId?: string | null): DiceSkinDef {
+  return DICE_SKINS.find((s) => s.id === skinId) ?? DICE_SKINS[0];
+}
+
+export function isDiceSkinUnlocked(
+  skinId: DiceSkinId,
+  unlockedAchievements: string[],
+): boolean {
+  const def = getDiceSkinDef(skinId);
+  if (!def.requiredAchievementId) return true;
+  return unlockedAchievements.includes(def.requiredAchievementId);
+}
+

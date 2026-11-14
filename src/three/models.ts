@@ -4,9 +4,12 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import {
   BOARD_SIZE,
   TILE_SPACING,
+  getDiceSkinDef,
   tileToWorld,
+  type DiceSkinId,
   type SpecialTileType,
 } from '../../shared/gameConfig';
+import type { BoardConfig } from '../../shared/boardThemes';
 import {
   createContactShadowTexture,
   createDiceFaceTexture,
@@ -15,11 +18,13 @@ import {
   createCastleStonePbrMaps,
   createDragonEyeTexture,
   createTimberPbrMaps,
+  disposePbrTextureSet,
   type PbrTextureSet,
 } from './assets/pbrTextures';
 import {
   createBoardStonePbrSet,
   createHammeredBronzePbrMaps,
+  createLadderMaterialPbrMaps,
   createSerpentIdentityPbrMaps,
 } from './assets/arenaPbrMaps';
 import { ensureUv2 } from './assets/rockTerrainBuilder';
@@ -46,7 +51,9 @@ function getBronzePbr(maxAnisotropy: number, texSize: 256 | 512 | 1024 = 512) {
     if (sharedBronzePbr) {
       sharedBronzePbr.normalMap.dispose();
       sharedBronzePbr.roughnessMap.dispose();
-      sharedBronzePbr.aoMap.dispose();
+      if (sharedBronzePbr.aoMap !== sharedBronzePbr.roughnessMap) {
+        sharedBronzePbr.aoMap.dispose();
+      }
     }
     sharedBronzePbr = createHammeredBronzePbrMaps(maxAnisotropy, texSize);
     sharedBronzeKey = key;
@@ -68,15 +75,90 @@ function getTimberPbr(maxAnisotropy: number, texSize: 256 | 512 | 1024 = 512): P
   const key = `${texSize}:${maxAnisotropy}`;
   if (!sharedTimberPbr || sharedTimberKey !== key) {
     if (sharedTimberPbr) {
-      sharedTimberPbr.map.dispose();
-      sharedTimberPbr.normalMap.dispose();
-      sharedTimberPbr.roughnessMap.dispose();
-      sharedTimberPbr.aoMap.dispose();
+      disposePbrTextureSet(sharedTimberPbr);
     }
     sharedTimberPbr = createTimberPbrMaps(maxAnisotropy, texSize);
     sharedTimberKey = key;
   }
   return sharedTimberPbr;
+}
+
+let sharedStonePlinthPbr: PbrTextureSet | null = null;
+let sharedStonePlinthKey = '';
+function getStonePlinthPbr(maxAnisotropy: number, texSize: 256 | 512 | 1024 = 512): PbrTextureSet {
+  const key = `${texSize}:${maxAnisotropy}`;
+  if (!sharedStonePlinthPbr || sharedStonePlinthKey !== key) {
+    if (sharedStonePlinthPbr) {
+      disposePbrTextureSet(sharedStonePlinthPbr);
+    }
+    sharedStonePlinthPbr = createCastleStonePbrMaps(maxAnisotropy, texSize);
+    sharedStonePlinthKey = key;
+  }
+  return sharedStonePlinthPbr;
+}
+
+const sharedSerpentPbrCache = new Map<string, PbrTextureSet>();
+function getSerpentPbr(
+  primaryHex: string,
+  stripeHex: string,
+  bellyHex: string,
+  maxAnisotropy: number,
+  texSize: 256 | 512 | 1024,
+  scalePattern: 'diamond_keel' | 'royal_hex' | 'draconic_plate' | 'frost_shard',
+): PbrTextureSet {
+  const key = `${primaryHex}:${stripeHex}:${bellyHex}:${scalePattern}:${texSize}:${maxAnisotropy}`;
+  let cached = sharedSerpentPbrCache.get(key);
+  if (!cached) {
+    if (sharedSerpentPbrCache.size >= 16) {
+      const oldestKey = sharedSerpentPbrCache.keys().next().value;
+      if (oldestKey) {
+        const oldSet = sharedSerpentPbrCache.get(oldestKey);
+        if (oldSet) disposePbrTextureSet(oldSet);
+        sharedSerpentPbrCache.delete(oldestKey);
+      }
+    }
+    cached = createSerpentIdentityPbrMaps(
+      primaryHex,
+      stripeHex,
+      bellyHex,
+      maxAnisotropy,
+      texSize,
+      scalePattern,
+    );
+    sharedSerpentPbrCache.set(key, cached);
+  }
+  return cached;
+}
+
+const sharedLadderPbrCache = new Map<string, PbrTextureSet>();
+function getLadderPbr(
+  materialStyle: BoardConfig['ladderConfig']['materialStyle'],
+  primaryHex: string,
+  accentHex: string,
+  maxAnisotropy: number,
+  texSize: 256 | 512 | 1024,
+): PbrTextureSet {
+  const key = `${materialStyle}:${primaryHex}:${accentHex}:${texSize}:${maxAnisotropy}`;
+  let cached = sharedLadderPbrCache.get(key);
+  if (!cached) {
+    if (sharedLadderPbrCache.size >= 8) {
+      const oldestKey = sharedLadderPbrCache.keys().next().value;
+      if (oldestKey) {
+        const oldSet = sharedLadderPbrCache.get(oldestKey);
+        if (oldSet) disposePbrTextureSet(oldSet);
+        sharedLadderPbrCache.delete(oldestKey);
+      }
+    }
+    cached = createLadderMaterialPbrMaps(
+      materialStyle,
+      primaryHex,
+      accentHex,
+      maxAnisotropy,
+      texSize,
+    );
+    sharedLadderPbrCache.set(key, cached);
+  }
+  return cached;
 }
 
 let sharedSnakeStaticMats: {
@@ -88,28 +170,40 @@ let sharedSnakeStaticMats: {
 
 function getSharedSnakeStaticMats(maxAnisotropy: number) {
   if (!sharedSnakeStaticMats) {
+    const ivory = new THREE.MeshStandardMaterial({
+      color: 0xfef9c3,
+      roughness: 0.25,
+      metalness: 0.06,
+    });
+    ivory.userData.isSharedStatic = true;
+
+    const gullet = new THREE.MeshStandardMaterial({
+      color: 0x16070d,
+      roughness: 0.92,
+    });
+    gullet.userData.isSharedStatic = true;
+
+    const tongue = new THREE.MeshStandardMaterial({
+      color: 0xe11d48,
+      roughness: 0.32,
+    });
+    tongue.userData.isSharedStatic = true;
+
+    const eye = new THREE.MeshPhysicalMaterial({
+      map: getDragonEyeTex(maxAnisotropy),
+      roughness: 0.06,
+      metalness: 0.05,
+      clearcoat: 1.0,
+      emissive: 0x92400e,
+      emissiveIntensity: 0.28,
+    });
+    eye.userData.isSharedStatic = true;
+
     sharedSnakeStaticMats = {
-      ivory: new THREE.MeshStandardMaterial({
-        color: 0xfef9c3,
-        roughness: 0.25,
-        metalness: 0.06,
-      }),
-      gullet: new THREE.MeshStandardMaterial({
-        color: 0x16070d,
-        roughness: 0.92,
-      }),
-      tongue: new THREE.MeshStandardMaterial({
-        color: 0xe11d48,
-        roughness: 0.32,
-      }),
-      eye: new THREE.MeshPhysicalMaterial({
-        map: getDragonEyeTex(maxAnisotropy),
-        roughness: 0.06,
-        metalness: 0.05,
-        clearcoat: 1.0,
-        emissive: 0x92400e,
-        emissiveIntensity: 0.28,
-      }),
+      ivory,
+      gullet,
+      tongue,
+      eye,
     };
   }
   return sharedSnakeStaticMats;
@@ -127,7 +221,9 @@ export function clearSharedArenaCaches(): void {
   if (sharedBronzePbr) {
     sharedBronzePbr.normalMap.dispose();
     sharedBronzePbr.roughnessMap.dispose();
-    sharedBronzePbr.aoMap.dispose();
+    if (sharedBronzePbr.aoMap !== sharedBronzePbr.roughnessMap) {
+      sharedBronzePbr.aoMap.dispose();
+    }
     sharedBronzePbr = null;
     sharedBronzeKey = '';
   }
@@ -136,13 +232,19 @@ export function clearSharedArenaCaches(): void {
     sharedDragonEyeTex = null;
   }
   if (sharedTimberPbr) {
-    sharedTimberPbr.map.dispose();
-    sharedTimberPbr.normalMap.dispose();
-    sharedTimberPbr.roughnessMap.dispose();
-    sharedTimberPbr.aoMap.dispose();
+    disposePbrTextureSet(sharedTimberPbr);
     sharedTimberPbr = null;
     sharedTimberKey = '';
   }
+  if (sharedStonePlinthPbr) {
+    disposePbrTextureSet(sharedStonePlinthPbr);
+    sharedStonePlinthPbr = null;
+    sharedStonePlinthKey = '';
+  }
+  sharedSerpentPbrCache.forEach((set) => disposePbrTextureSet(set));
+  sharedSerpentPbrCache.clear();
+  sharedLadderPbrCache.forEach((set) => disposePbrTextureSet(set));
+  sharedLadderPbrCache.clear();
   if (sharedSnakeStaticMats) {
     sharedSnakeStaticMats.ivory.dispose();
     sharedSnakeStaticMats.gullet.dispose();
@@ -672,9 +774,15 @@ export function createFantasySnake(
   palette: { primary: string; stripe: string; belly: string; horn: number },
   maxAnisotropy: number,
   quality: QualityConfig = QUALITY_PRESETS.high,
+  boardConfig?: BoardConfig,
 ): SerpentBuildResult {
   const shadows = quality.shadowsEnabled;
   const group = new THREE.Group();
+  const snakeCfg = boardConfig?.snakeConfig;
+  const sizeScale = THREE.MathUtils.clamp(snakeCfg?.sizeScale ?? 1.0, 0.75, 1.35);
+  const scalePattern = snakeCfg?.scalePattern ?? 'diamond_keel';
+  const headModel = snakeCfg?.headModel ?? 'oriental_dragon';
+  const matFinish = snakeCfg?.materialFinish ?? 'glossy_scales';
 
   const start = new THREE.Vector3(fromPos.x, 0.36, fromPos.z);
   const end = new THREE.Vector3(toPos.x, 0.14, toPos.z);
@@ -696,23 +804,36 @@ export function createFantasySnake(
   }
 
   const curve = new THREE.CatmullRomCurve3(points);
-  const scalePbr = createSerpentIdentityPbrMaps(
+  const scalePbr = getSerpentPbr(
     palette.primary,
     palette.stripe,
     palette.belly,
     maxAnisotropy,
     quality.pbrTexSize,
+    scalePattern,
   );
+
+  const bodyRoughness =
+    matFinish === 'crystalline'
+      ? 0.22
+      : matFinish === 'metallic_drake'
+        ? 0.34
+        : matFinish === 'matte_reptile'
+          ? 0.85
+          : 0.56;
+  const bodyMetalness =
+    matFinish === 'metallic_drake' ? 0.82 : matFinish === 'crystalline' ? 0.55 : 0.38;
 
   const bodyMaterial = new THREE.MeshStandardMaterial({
     map: scalePbr.map,
     normalMap: scalePbr.normalMap,
-    normalScale: new THREE.Vector2(1.45, 1.45),
+    normalScale: new THREE.Vector2(1.65, 1.65),
     roughnessMap: scalePbr.roughnessMap,
     aoMap: scalePbr.aoMap,
-    aoMapIntensity: 0.85,
-    roughness: 0.44,
-    metalness: 0.16,
+    metalnessMap: scalePbr.metalnessMap ?? null,
+    aoMapIntensity: 0.92,
+    roughness: bodyRoughness,
+    metalness: bodyMetalness,
     side: THREE.FrontSide,
     transparent: false,
     depthWrite: true,
@@ -748,10 +869,14 @@ export function createFantasySnake(
   };
 
   const bodyRadiusAt = (t: number) => {
-    if (t < 0.08) return THREE.MathUtils.lerp(0.145, 0.2, t / 0.08);
-    if (t < 0.45) return THREE.MathUtils.lerp(0.2, 0.225, (t - 0.08) / 0.37);
-    const tailT = (t - 0.45) / 0.55;
-    return THREE.MathUtils.lerp(0.225, 0.026, Math.pow(tailT, 1.35));
+    let baseR = 0.2;
+    if (t < 0.08) baseR = THREE.MathUtils.lerp(0.145, 0.2, t / 0.08);
+    else if (t < 0.45) baseR = THREE.MathUtils.lerp(0.2, 0.225, (t - 0.08) / 0.37);
+    else {
+      const tailT = (t - 0.45) / 0.55;
+      baseR = THREE.MathUtils.lerp(0.225, 0.026, Math.pow(tailT, 1.35));
+    }
+    return baseR * sizeScale;
   };
 
   const buildSpineMesh = (step: number, mat: THREE.Material): THREE.Mesh | null => {
@@ -773,7 +898,11 @@ export function createFantasySnake(
       spineNormal.set(0, 1, 0).addScaledVector(tang, -0.25).normalize();
 
       const rBody = bodyRadiusAt(t);
-      const spikeSize = (0.095 + Math.sin(t * Math.PI) * 0.075) * (1 - t * 0.35);
+      const spikeSize =
+        (0.095 + Math.sin(t * Math.PI) * 0.075) *
+        (1 - t * 0.35) *
+        sizeScale *
+        (headModel === 'abyssal_wyrm' ? 1.35 : 1.0);
       const fin = new THREE.ConeGeometry(spikeSize * 0.42, spikeSize * 1.45, 4);
       fin.scale(0.55, 1.0, 1.25);
       fin.translate(0, spikeSize * 0.55, 0);
@@ -802,9 +931,13 @@ export function createFantasySnake(
   const hornMat = new THREE.MeshStandardMaterial({
     color: palette.horn,
     normalMap: bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.7, 0.7),
-    roughness: 0.24,
-    metalness: 0.72,
+    normalScale: new THREE.Vector2(0.85, 0.85),
+    roughnessMap: bronzePbr.roughnessMap,
+    aoMap: bronzePbr.aoMap,
+    metalnessMap: bronzePbr.metalnessMap ?? null,
+    aoMapIntensity: 0.78,
+    roughness: 0.28,
+    metalness: 0.84,
   });
   const spineMat = hornMat.clone();
   spineMat.userData.uTime = bodyMaterial.userData.uTime;
@@ -873,17 +1006,23 @@ export function createFantasySnake(
   const craniumMat = new THREE.MeshStandardMaterial({
     map: scalePbr.map,
     normalMap: scalePbr.normalMap,
-    normalScale: new THREE.Vector2(1.4, 1.4),
+    normalScale: new THREE.Vector2(1.5, 1.5),
     roughnessMap: scalePbr.roughnessMap,
     aoMap: scalePbr.aoMap,
-    aoMapIntensity: 0.8,
-    roughness: 0.4,
-    metalness: 0.18,
+    metalnessMap: scalePbr.metalnessMap ?? null,
+    aoMapIntensity: 0.88,
+    roughness: bodyRoughness,
+    metalness: bodyMetalness,
   });
   const bellyMat = new THREE.MeshStandardMaterial({
     color: palette.belly,
-    roughness: 0.56,
-    metalness: 0.08,
+    normalMap: scalePbr.normalMap,
+    normalScale: new THREE.Vector2(0.95, 0.95),
+    roughnessMap: scalePbr.roughnessMap,
+    aoMap: scalePbr.aoMap,
+    aoMapIntensity: 0.75,
+    roughness: 0.52,
+    metalness: 0.14,
   });
   const sharedMats = getSharedSnakeStaticMats(maxAnisotropy);
   const ivoryMat = sharedMats.ivory;
@@ -1041,6 +1180,24 @@ export function createFantasySnake(
   tongueMesh.position.set(0, 0.015, 0.34);
   jawGroup.add(tongueMesh);
   headGroup.add(jawGroup);
+  headGroup.scale.setScalar(sizeScale);
+
+  // Head model specific crest / hood ornament
+  if (headModel === 'crowned_cobra') {
+    const hoodGeo = new THREE.CylinderGeometry(0.28, 0.14, 0.36, 10);
+    hoodGeo.scale(1.4, 0.28, 0.9);
+    const hoodMesh = new THREE.Mesh(hoodGeo, craniumMat);
+    hoodMesh.position.set(0, 0.04, -0.05);
+    hoodMesh.rotation.x = Math.PI * 0.22;
+    upperJawGroup.add(hoodMesh);
+  } else if (headModel === 'abyssal_wyrm') {
+    const finGeo = new THREE.ConeGeometry(0.14, 0.42, 4);
+    finGeo.scale(0.3, 1.0, 1.2);
+    const finMesh = new THREE.Mesh(finGeo, hornMat);
+    finMesh.position.set(0, 0.28, -0.04);
+    finMesh.rotation.x = -0.35;
+    upperJawGroup.add(finMesh);
+  }
 
   group.add(headGroup);
 
@@ -1160,57 +1317,82 @@ export function createEnchantedLadder(
   toPos: { x: number; z: number },
   maxAnisotropy: number,
   quality: QualityConfig = QUALITY_PRESETS.high,
+  boardConfig?: BoardConfig,
 ): LadderBuildResult {
   const shadows = quality.shadowsEnabled;
   const group = new THREE.Group();
+  const ladderCfg = boardConfig?.ladderConfig;
+  const widthScale = THREE.MathUtils.clamp(ladderCfg?.widthScale ?? 1.0, 0.75, 1.35);
+  const modelStyle = ladderCfg?.modelStyle ?? 'arch_bridge';
+  const matStyle = ladderCfg?.materialStyle ?? 'ancient_oak';
 
   const start = new THREE.Vector3(fromPos.x, 0.14, fromPos.z);
   const end = new THREE.Vector3(toPos.x, 0.14, toPos.z);
   const mid = new THREE.Vector3().lerpVectors(start, end, 0.5);
-  mid.y += 0.62;
+  mid.y += modelStyle === 'crystal_spire' ? 0.85 : modelStyle === 'royal_steps' ? 0.45 : 0.62;
   const climbCurve = new THREE.CatmullRomCurve3([start, mid, end]);
 
   const dir = new THREE.Vector3().subVectors(end, start).normalize();
   const perp = new THREE.Vector3(-dir.z, 0, dir.x);
-  const halfWidth = 0.31;
+  const halfWidth = 0.31 * widthScale;
 
-  const timberPbr = getTimberPbr(maxAnisotropy, Math.min(512, quality.pbrTexSize) as 256 | 512);
-  const bronzePbr = getBronzePbr(maxAnisotropy, Math.min(512, quality.pbrTexSize) as 256 | 512);
+  const ladderTexSize = Math.min(512, quality.pbrTexSize) as 256 | 512;
+  const primaryHex = ladderCfg?.primaryColor ?? '#b47b48';
+  const accentHex = ladderCfg?.accentColor ?? '#f59e0b';
+  const ladderPbr = getLadderPbr(matStyle, primaryHex, accentHex, maxAnisotropy, ladderTexSize);
+  const bronzePbr = getBronzePbr(maxAnisotropy, ladderTexSize);
+
+  const primaryLadderColor = new THREE.Color(primaryHex);
+  const accentLadderColor = new THREE.Color(accentHex);
+  const isCrystalOrMarble =
+    matStyle === 'glacier_crystal' || matStyle === 'celestial_marble' || matStyle === 'coral_pearl';
+  const isMetallicLadder =
+    matStyle === 'obsidian_iron' || matStyle === 'shadow_wrought' || matStyle === 'temple_bronze';
 
   const railMat = new THREE.MeshStandardMaterial({
-    map: timberPbr.map,
-    normalMap: timberPbr.normalMap,
-    normalScale: new THREE.Vector2(1.4, 1.4),
-    roughnessMap: timberPbr.roughnessMap,
-    aoMap: timberPbr.aoMap,
-    aoMapIntensity: 0.85,
-    color: 0xd6b48a,
-    roughness: 0.72,
-    metalness: 0.04,
+    map: ladderPbr.map,
+    normalMap: ladderPbr.normalMap,
+    normalScale: new THREE.Vector2(1.55, 1.55),
+    roughnessMap: ladderPbr.roughnessMap,
+    aoMap: ladderPbr.aoMap,
+    metalnessMap: ladderPbr.metalnessMap ?? null,
+    aoMapIntensity: 0.9,
+    color: 0xffffff,
+    roughness: isCrystalOrMarble ? 0.34 : isMetallicLadder ? 0.52 : 0.85,
+    metalness: isMetallicLadder ? 0.88 : isCrystalOrMarble ? 0.45 : 0.25,
   });
   const rungMat = new THREE.MeshStandardMaterial({
-    map: timberPbr.map,
-    normalMap: timberPbr.normalMap,
-    normalScale: new THREE.Vector2(1.2, 1.2),
-    roughnessMap: timberPbr.roughnessMap,
-    aoMap: timberPbr.aoMap,
-    aoMapIntensity: 0.8,
-    color: 0xe6c39c,
-    roughness: 0.68,
-    metalness: 0.04,
+    map: ladderPbr.map,
+    normalMap: ladderPbr.normalMap,
+    normalScale: new THREE.Vector2(1.4, 1.4),
+    roughnessMap: ladderPbr.roughnessMap,
+    aoMap: ladderPbr.aoMap,
+    metalnessMap: ladderPbr.metalnessMap ?? null,
+    aoMapIntensity: 0.86,
+    color: new THREE.Color(0xffffff).lerp(accentLadderColor, 0.14),
+    roughness: isCrystalOrMarble ? 0.3 : isMetallicLadder ? 0.48 : 0.82,
+    metalness: isMetallicLadder ? 0.85 : isCrystalOrMarble ? 0.42 : 0.22,
   });
   const ironBronzeMat = new THREE.MeshStandardMaterial({
-    color: 0xb45309,
+    color: accentLadderColor,
     normalMap: bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.85, 0.85),
+    normalScale: new THREE.Vector2(0.95, 0.95),
     roughnessMap: bronzePbr.roughnessMap,
-    roughness: 0.34,
-    metalness: 0.84,
+    aoMap: bronzePbr.aoMap,
+    metalnessMap: bronzePbr.metalnessMap ?? null,
+    aoMapIntensity: 0.82,
+    roughness: 0.32,
+    metalness: 0.9,
   });
   const ropeMat = new THREE.MeshStandardMaterial({
-    color: 0x92704a,
-    roughness: 0.92,
-    metalness: 0.02,
+    color: accentLadderColor.clone().multiplyScalar(0.78),
+    normalMap: bronzePbr.normalMap,
+    normalScale: new THREE.Vector2(0.75, 0.75),
+    roughnessMap: bronzePbr.roughnessMap,
+    aoMap: bronzePbr.aoMap,
+    aoMapIntensity: 0.75,
+    roughness: 0.78,
+    metalness: 0.18,
   });
 
   // Merge both side stiles -> 1 draw call
@@ -1407,34 +1589,75 @@ export function createSpecialShrineProp(type: SpecialTileType): THREE.Group {
   return group;
 }
 
-export function createFantasyDice(maxAnisotropy: number): THREE.Group {
+export function createFantasyDice(
+  maxAnisotropy: number,
+  skinId: DiceSkinId = 'royal_obsidian',
+): THREE.Group {
   const group = new THREE.Group();
+  group.name = `FantasyDice_${skinId}`;
+  const skin = getDiceSkinDef(skinId);
+  const tm = skin.threeMaterials;
   const bronzePbr = getBronzePbr(maxAnisotropy);
 
+  const useRockNormals = skinId === 'molten_rock';
   const coreMat = new THREE.MeshStandardMaterial({
-    color: 0x0f172a,
+    color: tm.coreColor,
     normalMap: bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.55, 0.55),
-    roughness: 0.3,
-    metalness: 0.72,
+    roughnessMap: useRockNormals ? bronzePbr.roughnessMap : null,
+    normalScale: new THREE.Vector2(useRockNormals ? 1.15 : 0.55, useRockNormals ? 1.15 : 0.55),
+    roughness: tm.coreRoughness,
+    metalness: tm.coreMetalness,
+    emissive: new THREE.Color(tm.coreEmissive),
+    emissiveIntensity: tm.coreEmissiveIntensity,
   });
   const core = new THREE.Mesh(new RoundedBoxGeometry(1.18, 1.18, 1.18, 3, 0.13), coreMat);
   core.castShadow = true;
   group.add(core);
 
-  const goldTrimMat = new THREE.MeshStandardMaterial({
-    color: 0xf59e0b,
-    roughness: 0.2,
-    metalness: 0.9,
+  const studMat = new THREE.MeshStandardMaterial({
+    color: tm.studColor,
+    roughness: 0.18,
+    metalness: 0.88,
+    emissive: new THREE.Color(tm.studEmissive),
+    emissiveIntensity: tm.studEmissiveIntensity,
   });
-  const studGeo = new THREE.OctahedronGeometry(0.075, 0);
+  const studGeo = new THREE.OctahedronGeometry(
+    skinId === 'celestial_core' || skinId === 'sovereign_gold' ? 0.088 : 0.075,
+    0,
+  );
   for (const sx of [-1, 1]) {
     for (const sy of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const stud = new THREE.Mesh(studGeo, goldTrimMat);
+        const stud = new THREE.Mesh(studGeo, studMat);
         stud.position.set(sx * 0.48, sy * 0.48, sz * 0.48);
         group.add(stud);
       }
+    }
+  }
+
+  // Custom skin 3D energy/trim rings on the 6 faces
+  if (skinId !== 'royal_obsidian') {
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: tm.ringColor,
+      roughness: 0.2,
+      metalness: 0.85,
+      emissive: new THREE.Color(tm.ringColor),
+      emissiveIntensity: 0.45,
+    });
+    const ringGeo = new THREE.RingGeometry(0.42, 0.465, 24);
+    const ringRots: Array<[[number, number, number], [number, number, number]]> = [
+      [[0, 0.598, 0], [-Math.PI / 2, 0, 0]],
+      [[0, -0.598, 0], [Math.PI / 2, 0, 0]],
+      [[0, 0, 0.598], [0, 0, 0]],
+      [[0, 0, -0.598], [0, Math.PI, 0]],
+      [[0.598, 0, 0], [0, Math.PI / 2, 0]],
+      [[-0.598, 0, 0], [0, -Math.PI / 2, 0]],
+    ];
+    for (const [pos, rot] of ringRots) {
+      const rMesh = new THREE.Mesh(ringGeo, ringMat);
+      rMesh.position.set(...pos);
+      rMesh.rotation.set(...rot);
+      group.add(rMesh);
     }
   }
 
@@ -1451,13 +1674,17 @@ export function createFantasyDice(maxAnisotropy: number): THREE.Group {
     { pips: 4, pos: [-0.595, 0, 0], rot: [0, -Math.PI / 2, 0] },
   ];
 
+  const isLuminousSkin = skinId === 'celestial_core' || skinId === 'molten_rock';
   const plateGeo = new THREE.PlaneGeometry(0.94, 0.94);
   for (const f of faceConfigs) {
-    const tex = createDiceFaceTexture(f.pips, maxAnisotropy);
+    const tex = createDiceFaceTexture(f.pips, maxAnisotropy, skinId);
     const mat = new THREE.MeshStandardMaterial({
       map: tex,
-      roughness: 0.24,
-      metalness: 0.14,
+      roughness: skinId === 'molten_rock' ? 0.36 : 0.22,
+      metalness: skinId === 'sovereign_gold' ? 0.32 : 0.16,
+      emissiveMap: isLuminousSkin ? tex : null,
+      emissive: isLuminousSkin ? new THREE.Color(0xffffff) : new THREE.Color(0x000000),
+      emissiveIntensity: isLuminousSkin ? 0.24 : 0,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
@@ -1507,6 +1734,7 @@ export function getDiceTargetQuaternion(faceValue: number): THREE.Quaternion {
 export function buildBeveledStoneBoard(
   maxAnisotropy: number,
   quality: QualityConfig = QUALITY_PRESETS.high,
+  boardConfig?: BoardConfig,
 ): {
   boardGroup: THREE.Group;
   boardCollider: THREE.Mesh;
@@ -1515,27 +1743,56 @@ export function buildBeveledStoneBoard(
   const shadows = quality.shadowsEnabled;
   const boardSpan = BOARD_SIZE * TILE_SPACING;
   const boardGroup = new THREE.Group();
+  boardGroup.name = 'BeveledStoneBoard';
 
-  const stonePlinthPbr = createCastleStonePbrMaps(maxAnisotropy, quality.pbrTexSize);
+  const bSettings = boardConfig?.boardSettings;
+  const tConfig = boardConfig?.tileConfig;
+  const boardShape = bSettings?.shape ?? 'classic_square';
+  const boardMatFinish = bSettings?.material ?? 'satin';
+  const primaryBoardColor = new THREE.Color(bSettings?.primaryColor ?? '#1e293b');
+  const secondaryBoardColor = new THREE.Color(bSettings?.secondaryColor ?? '#d97706');
+  const plinthSizeScale = THREE.MathUtils.clamp(bSettings?.sizeScale ?? 1.0, 0.88, 1.15);
+
+  const stonePlinthPbr = getStonePlinthPbr(maxAnisotropy, quality.pbrTexSize);
   const bronzePbr = getBronzePbr(maxAnisotropy, Math.min(512, quality.pbrTexSize) as 256 | 512);
   const boardTilePbr = createBoardStonePbrSet(
     maxAnisotropy,
     quality.boardAtlasSize,
     quality.pbrTexSize,
+    boardConfig,
   );
+
+  const plinthRoughness =
+    boardMatFinish === 'glossy'
+      ? 0.24
+      : boardMatFinish === 'metallic'
+        ? 0.32
+        : boardMatFinish === 'matte'
+          ? 0.88
+          : 0.68;
+  const plinthMetalness = boardMatFinish === 'metallic' ? 0.65 : boardMatFinish === 'glossy' ? 0.25 : 0.18;
 
   const plinthMat = new THREE.MeshStandardMaterial({
     map: stonePlinthPbr.map,
     normalMap: stonePlinthPbr.normalMap,
-    normalScale: new THREE.Vector2(1.2, 1.2),
+    normalScale: new THREE.Vector2(1.3, 1.3),
     roughnessMap: stonePlinthPbr.roughnessMap,
     aoMap: stonePlinthPbr.aoMap,
-    aoMapIntensity: 0.85,
-    color: 0x64748b,
-    roughness: 0.78,
-    metalness: 0.1,
+    metalnessMap: stonePlinthPbr.metalnessMap ?? null,
+    aoMapIntensity: 0.88,
+    color: primaryBoardColor.clone().offsetHSL(0, 0, 0.14),
+    roughness: plinthRoughness,
+    metalness: plinthMetalness,
   });
-  const plinthGeo = new THREE.BoxGeometry(boardSpan + 1.55, 0.54, boardSpan + 1.55);
+
+  const outerSpan = (boardSpan + 1.55) * plinthSizeScale;
+  const plinthGeo =
+    boardShape === 'octagon_bastion'
+      ? new THREE.CylinderGeometry(outerSpan * 0.74, outerSpan * 0.78, 0.56, 8)
+      : new THREE.BoxGeometry(outerSpan, 0.54, outerSpan);
+  if (boardShape === 'octagon_bastion') {
+    plinthGeo.rotateY(Math.PI / 8);
+  }
   ensureUv2(plinthGeo);
   const outerPlinth = new THREE.Mesh(plinthGeo, plinthMat);
   outerPlinth.position.y = -0.34;
@@ -1543,8 +1800,17 @@ export function buildBeveledStoneBoard(
   outerPlinth.castShadow = shadows;
   boardGroup.add(outerPlinth);
 
+  if (boardShape === 'citadel_terrace') {
+    const lowerStepGeo = new THREE.BoxGeometry(outerSpan + 1.2, 0.32, outerSpan + 1.2);
+    ensureUv2(lowerStepGeo);
+    const lowerStep = new THREE.Mesh(lowerStepGeo, plinthMat);
+    lowerStep.position.y = -0.52;
+    lowerStep.receiveShadow = shadows;
+    boardGroup.add(lowerStep);
+  }
+
   const bronzeMat = new THREE.MeshStandardMaterial({
-    color: 0xd97706,
+    color: secondaryBoardColor,
     normalMap: bronzePbr.normalMap,
     normalScale: new THREE.Vector2(0.8, 0.8),
     roughnessMap: bronzePbr.roughnessMap,
@@ -1573,39 +1839,78 @@ export function buildBeveledStoneBoard(
 
   const mortarBed = new THREE.Mesh(
     new THREE.BoxGeometry(boardSpan + 0.08, 0.16, boardSpan + 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x0b111e, roughness: 0.94, metalness: 0.04 }),
+    new THREE.MeshStandardMaterial({ color: primaryBoardColor, roughness: 0.94, metalness: 0.04 }),
   );
   mortarBed.position.y = -0.15;
   mortarBed.receiveShadow = shadows;
   boardGroup.add(mortarBed);
 
   const tileHalf = TILE_SPACING * 0.455;
+  const tileShapeKind = tConfig?.shape ?? 'beveled_square';
   const stoneShape = new THREE.Shape();
-  stoneShape.moveTo(-tileHalf, -tileHalf);
-  stoneShape.lineTo(tileHalf, -tileHalf);
-  stoneShape.lineTo(tileHalf, tileHalf);
-  stoneShape.lineTo(-tileHalf, tileHalf);
-  stoneShape.closePath();
 
+  if (tileShapeKind === 'octagon_cut') {
+    const cut = tileHalf * 0.24;
+    stoneShape.moveTo(-tileHalf + cut, -tileHalf);
+    stoneShape.lineTo(tileHalf - cut, -tileHalf);
+    stoneShape.lineTo(tileHalf, -tileHalf + cut);
+    stoneShape.lineTo(tileHalf, tileHalf - cut);
+    stoneShape.lineTo(tileHalf - cut, tileHalf);
+    stoneShape.lineTo(-tileHalf + cut, tileHalf);
+    stoneShape.lineTo(-tileHalf, tileHalf - cut);
+    stoneShape.lineTo(-tileHalf, -tileHalf + cut);
+    stoneShape.closePath();
+  } else if (tileShapeKind === 'rounded_tablet') {
+    const r = tileHalf * 0.2;
+    stoneShape.moveTo(-tileHalf + r, -tileHalf);
+    stoneShape.lineTo(tileHalf - r, -tileHalf);
+    stoneShape.quadraticCurveTo(tileHalf, -tileHalf, tileHalf, -tileHalf + r);
+    stoneShape.lineTo(tileHalf, tileHalf - r);
+    stoneShape.quadraticCurveTo(tileHalf, tileHalf, tileHalf - r, tileHalf);
+    stoneShape.lineTo(-tileHalf + r, tileHalf);
+    stoneShape.quadraticCurveTo(-tileHalf, tileHalf, -tileHalf, tileHalf - r);
+    stoneShape.lineTo(-tileHalf, -tileHalf + r);
+    stoneShape.quadraticCurveTo(-tileHalf, -tileHalf, -tileHalf + r, -tileHalf);
+  } else {
+    stoneShape.moveTo(-tileHalf, -tileHalf);
+    stoneShape.lineTo(tileHalf, -tileHalf);
+    stoneShape.lineTo(tileHalf, tileHalf);
+    stoneShape.lineTo(-tileHalf, tileHalf);
+    stoneShape.closePath();
+  }
+
+  const isCrystalFacet = tileShapeKind === 'crystal_facet';
   const stoneGeo = new THREE.ExtrudeGeometry(stoneShape, {
     depth: 0.12,
     bevelEnabled: quality.tier !== 'potato',
-    bevelThickness: 0.04,
-    bevelSize: 0.04,
-    bevelSegments: quality.tier === 'low' ? 1 : 2,
+    bevelThickness: isCrystalFacet ? 0.065 : 0.04,
+    bevelSize: isCrystalFacet ? 0.065 : 0.04,
+    bevelSegments: isCrystalFacet ? 1 : quality.tier === 'low' ? 1 : 2,
   });
   stoneGeo.rotateX(-Math.PI / 2);
   ensureUv2(stoneGeo);
 
+  const tileMatFinish = tConfig?.material ?? 'satin';
+  const tileRoughness =
+    tileMatFinish === 'glossy'
+      ? 0.26
+      : tileMatFinish === 'metallic'
+        ? 0.38
+        : tileMatFinish === 'matte'
+          ? 0.88
+          : 0.72;
+  const tileMetalness = tileMatFinish === 'metallic' ? 0.75 : tileMatFinish === 'glossy' ? 0.36 : 0.28;
+
   const stoneBaseMat = new THREE.MeshStandardMaterial({
-    normalMap: quality.tier === 'potato' ? null : stonePlinthPbr.normalMap,
-    normalScale: new THREE.Vector2(0.85, 0.85),
-    roughnessMap: quality.tier === 'potato' ? null : stonePlinthPbr.roughnessMap,
-    aoMap: quality.tier === 'potato' ? null : stonePlinthPbr.aoMap,
-    aoMapIntensity: 0.7,
+    normalMap: stonePlinthPbr.normalMap,
+    normalScale: new THREE.Vector2(1.15, 1.15),
+    roughnessMap: stonePlinthPbr.roughnessMap,
+    aoMap: stonePlinthPbr.aoMap,
+    metalnessMap: stonePlinthPbr.metalnessMap ?? null,
+    aoMapIntensity: 0.82,
     color: 0xffffff,
-    roughness: 0.72,
-    metalness: 0.1,
+    roughness: tileRoughness,
+    metalness: tileMetalness,
   });
   const tileBasesInst = new THREE.InstancedMesh(stoneGeo, stoneBaseMat, 100);
   tileBasesInst.receiveShadow = shadows;
@@ -1613,8 +1918,10 @@ export function buildBeveledStoneBoard(
 
   const dummy = new THREE.Object3D();
   const baseColor = new THREE.Color();
+  const primaryTileCol = new THREE.Color(tConfig?.primaryColor ?? '#283548');
+  const altTileCol = new THREE.Color(tConfig?.alternateColor ?? '#38485e');
   const capPlanes: THREE.BufferGeometry[] = [];
-  const capSize = TILE_SPACING * 0.89;
+  const capSize = TILE_SPACING * (tileShapeKind === 'octagon_cut' ? 0.84 : 0.89);
 
   for (let tile = 1; tile <= 100; tile++) {
     const pos = tileToWorld(tile);
@@ -1626,7 +1933,11 @@ export function buildBeveledStoneBoard(
     tileBasesInst.setMatrixAt(tile - 1, dummy.matrix);
 
     const isAlt = (pos.row + pos.col) % 2 === 0;
-    baseColor.setHex(tile === 100 ? 0x92400e : isAlt ? 0x283548 : 0x38485e);
+    if (tile === 100) {
+      baseColor.setHex(0x92400e);
+    } else {
+      baseColor.copy(isAlt ? primaryTileCol : altTileCol);
+    }
     tileBasesInst.setColorAt(tile - 1, baseColor);
 
     const capGeo = new THREE.PlaneGeometry(capSize, capSize);
@@ -1662,19 +1973,25 @@ export function buildBeveledStoneBoard(
   capPlanes.forEach((g) => g.dispose());
   ensureUv2(mergedCaps);
 
+  const glowIntensity = boardConfig?.visualEffects.glowIntensity ?? 0.55;
+  const tileEffect = tConfig?.visualEffect ?? 'subtle_rune_glow';
   const atlasMat = new THREE.MeshStandardMaterial({
     map: boardTilePbr.map,
-    normalMap: quality.tier === 'potato' ? null : boardTilePbr.normalMap,
-    normalScale: new THREE.Vector2(1.25, 1.25),
-    roughnessMap: quality.tier === 'potato' ? null : boardTilePbr.roughnessMap,
-    aoMap: quality.tier === 'potato' ? null : boardTilePbr.aoMap,
-    aoMapIntensity: 0.78,
-    roughness: 0.68,
-    metalness: 0.08,
+    normalMap: boardTilePbr.normalMap,
+    normalScale: new THREE.Vector2(1.45, 1.45),
+    roughnessMap: boardTilePbr.roughnessMap,
+    aoMap: boardTilePbr.aoMap,
+    metalnessMap: boardTilePbr.metalnessMap ?? null,
+    aoMapIntensity: 0.88,
+    roughness: tileRoughness,
+    metalness: tileMetalness,
+    emissive: tileEffect === 'none' ? new THREE.Color(0x000000) : secondaryBoardColor,
+    emissiveIntensity: tileEffect === 'none' ? 0 : glowIntensity * 0.08,
     polygonOffset: true,
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
+  atlasMat.userData.ownedPbrSet = boardTilePbr;
   const capsMesh = new THREE.Mesh(mergedCaps, atlasMat);
   capsMesh.receiveShadow = shadows;
   boardGroup.add(capsMesh);
@@ -1714,7 +2031,7 @@ export function buildBeveledStoneBoard(
   const finialGemGeo = new THREE.OctahedronGeometry(0.055, 0);
   const finialGemMat = new THREE.MeshPhysicalMaterial({
     color: 0xfef08a,
-    emissive: 0xd97706,
+    emissive: secondaryBoardColor,
     emissiveIntensity: 0.55,
     roughness: 0.14,
     metalness: 0.2,
@@ -1745,13 +2062,14 @@ export function buildBeveledStoneBoard(
 
 /**
  * Builds the full Realistic Fantasy Arena Environment (terrain, sacred moat, waterfall cascade,
- * LOD Oaks & Pines, wind-swaying ferns & grass, fractured moss boulders, stone obelisks, & GLB vista).
+ * LOD Oaks & Pines, wind-swaying ferns & grass, fractured moss boulders, stone obelisks, & theme landmarks).
  */
 export function createSanctuaryEnvironment(
   scene: THREE.Scene,
   maxAnisotropy: number,
   isSoftwareGl = false,
   quality: QualityConfig = QUALITY_PRESETS.high,
+  boardConfig?: BoardConfig,
 ): ArenaEnvironmentHandle {
-  return buildArenaEnvironment(scene, maxAnisotropy, isSoftwareGl, quality);
+  return buildArenaEnvironment(scene, maxAnisotropy, isSoftwareGl, quality, boardConfig);
 }

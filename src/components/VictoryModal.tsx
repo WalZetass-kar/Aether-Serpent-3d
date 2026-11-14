@@ -1,5 +1,18 @@
 import React, { useState } from 'react';
-import { Check, Copy, Home, RotateCcw, Share2, ShieldAlert, Swords, Users, X } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Check,
+  Copy,
+  Flame,
+  Home,
+  RotateCcw,
+  Share2,
+  Shield,
+  ShieldAlert,
+  Swords,
+  Users,
+  X,
+} from 'lucide-react';
 import {
   BOARD_GAME_MODES,
   type BoardGameMode,
@@ -18,6 +31,7 @@ interface VictoryModalProps {
   isLocalWinner: boolean;
   canRematch?: boolean;
   globalRank: number | null;
+  boardName?: string;
   onRematch: () => void;
   onMainMenu: () => void;
   onClose: () => void;
@@ -33,6 +47,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   isLocalWinner,
   canRematch = true,
   globalRank,
+  boardName,
   onRematch,
   onMainMenu,
   onClose,
@@ -61,7 +76,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
     ? `Waktu habis di ${modeLabel}! Ditentukan dari petak & skor tertinggi${
         globalRank ? ` · Global #${globalRank}` : ''
       }`
-    : `${modeLabel} · Selesai dalam ${winner.turnsTaken} giliran${
+    : `${modeLabel}${boardName ? ` · ${boardName}` : ''} · Selesai dalam ${winner.turnsTaken} giliran${
         globalRank ? ` · Global #${globalRank}` : ''
       }`;
 
@@ -107,9 +122,13 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
     .filter((p) => p.team === 'B')
     .reduce((acc, p) => acc + p.score, 0);
 
+  const totalLaddersClimbed = players.reduce((acc, p) => acc + (p.laddersClimbed ?? 0), 0);
+  const totalSnakesBitten = players.reduce((acc, p) => acc + (p.snakesBitten ?? 0), 0);
+  const totalShieldsBlocked = players.reduce((acc, p) => acc + (p.shieldsUsed ?? 0), 0);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-amber-500/40 bg-slate-900 p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 overflow-y-auto">
+      <div className="w-full max-w-xl rounded-2xl border border-amber-500/40 bg-slate-900 p-6 shadow-2xl my-auto">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div
@@ -220,6 +239,73 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Match Summary Section */}
+        <div className="mt-4 rounded-xl border border-amber-500/25 bg-slate-950/70 p-3.5">
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
+              Match Summary · Statistik Pertandingan
+            </span>
+            <span className="text-[11px] font-mono-num text-slate-400">
+              {winner.turnsTaken} Giliran
+            </span>
+          </div>
+
+          {/* Match-wide Totals */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="rounded-lg border border-emerald-500/25 bg-emerald-950/25 px-2.5 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-emerald-300 text-xs font-semibold">
+                <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Tangga</span>
+              </div>
+              <span className="font-mono-num text-sm font-bold text-white">{totalLaddersClimbed}</span>
+            </div>
+            <div className="rounded-lg border border-rose-500/25 bg-rose-950/25 px-2.5 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-rose-300 text-xs font-semibold">
+                <Flame className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Gigitan Ular</span>
+              </div>
+              <span className="font-mono-num text-sm font-bold text-white">{totalSnakesBitten}</span>
+            </div>
+            <div className="rounded-lg border border-cyan-500/25 bg-cyan-950/25 px-2.5 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-cyan-300 text-xs font-semibold">
+                <Shield className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Perisai Aktif</span>
+              </div>
+              <span className="font-mono-num text-sm font-bold text-white">{totalShieldsBlocked}</span>
+            </div>
+          </div>
+
+          {/* Per-Player Breakdown Table */}
+          <div className="divide-y divide-slate-800/80 rounded-lg border border-slate-800/90 bg-slate-900/60">
+            <div className="grid grid-cols-12 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <div className="col-span-6">Pemain</div>
+              <div className="col-span-2 text-center text-emerald-300">Tangga</div>
+              <div className="col-span-2 text-center text-rose-300">Ular</div>
+              <div className="col-span-2 text-center text-cyan-300">Perisai</div>
+            </div>
+            {sorted.map((p) => (
+              <div
+                key={`summary_${p.id}`}
+                className="grid grid-cols-12 items-center px-3 py-1.5 text-xs font-mono-num"
+              >
+                <div className="col-span-6 flex items-center gap-2 min-w-0 font-sans">
+                  <ArchetypeEmblem archetypeIndex={p.archetypeIndex} className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate text-slate-200 font-medium">{p.name}</span>
+                </div>
+                <div className="col-span-2 text-center font-bold text-emerald-300">
+                  {p.laddersClimbed ?? 0}
+                </div>
+                <div className="col-span-2 text-center font-bold text-rose-300">
+                  {p.snakesBitten ?? 0}
+                </div>
+                <div className="col-span-2 text-center font-bold text-cyan-300">
+                  {p.shieldsUsed ?? 0}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Social Media Share */}

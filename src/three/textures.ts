@@ -3,6 +3,8 @@ import {
   BOARD_SIZE,
   JUMP_MAP,
   SPECIAL_TILE_MAP,
+  getDiceSkinDef,
+  type DiceSkinId,
   type SpecialTileType,
 } from '../../shared/gameConfig';
 
@@ -372,21 +374,102 @@ export function createStoneCliffTexture(maxAnisotropy: number): THREE.CanvasText
   return tex;
 }
 
-export function createDiceFaceTexture(pips: number, maxAnisotropy: number): THREE.CanvasTexture {
+export function createDiceFaceTexture(
+  pips: number,
+  maxAnisotropy: number,
+  skinId: DiceSkinId = 'royal_obsidian',
+): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
+  const skin = getDiceSkinDef(skinId);
+  const c = size / 2;
 
-  ctx.fillStyle = '#f8fafc';
+  // Base background gradient per skin
+  const bgGrad = ctx.createRadialGradient(c, c, 18, c, c, size * 0.72);
+  if (skinId === 'celestial_core') {
+    bgGrad.addColorStop(0, '#1e3a8a');
+    bgGrad.addColorStop(0.55, '#0f172a');
+    bgGrad.addColorStop(1, '#060b19');
+  } else if (skinId === 'molten_rock') {
+    bgGrad.addColorStop(0, '#431407');
+    bgGrad.addColorStop(0.6, '#1c1917');
+    bgGrad.addColorStop(1, '#0c0a09');
+  } else if (skinId === 'emerald_serpent') {
+    bgGrad.addColorStop(0, '#065f46');
+    bgGrad.addColorStop(0.65, '#022c22');
+    bgGrad.addColorStop(1, '#011c16');
+  } else if (skinId === 'sovereign_gold') {
+    bgGrad.addColorStop(0, '#27272a');
+    bgGrad.addColorStop(0.65, '#18181b');
+    bgGrad.addColorStop(1, '#09090b');
+  } else {
+    bgGrad.addColorStop(0, '#ffffff');
+    bgGrad.addColorStop(0.7, '#fef3c7');
+    bgGrad.addColorStop(1, '#fde68a');
+  }
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, size, size);
 
-  ctx.strokeStyle = '#d97706';
-  ctx.lineWidth = 14;
+  // Skin-specific surface details
+  if (skinId === 'celestial_core') {
+    // Astral constellation ring & starlight specks
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(c, c, 86, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(186, 230, 253, 0.65)';
+    for (let i = 0; i < 18; i++) {
+      const angle = (i * 2.39996) + pips;
+      const rad = 28 + ((i * 19) % 78);
+      const sx = c + Math.cos(angle) * rad;
+      const sy = c + Math.sin(angle) * rad;
+      ctx.fillRect(sx, sy, 2.2, 2.2);
+    }
+  } else if (skinId === 'molten_rock') {
+    // Glowing volcanic magma veins
+    ctx.strokeStyle = 'rgba(249, 115, 22, 0.42)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(22, 42);
+    ctx.lineTo(88, 96);
+    ctx.lineTo(156, 78);
+    ctx.lineTo(228, 134);
+    ctx.moveTo(46, 214);
+    ctx.lineTo(118, 162);
+    ctx.lineTo(205, 218);
+    ctx.stroke();
+  } else if (skinId === 'emerald_serpent') {
+    // Subtle diamond scale lattice
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.22)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(c, 24);
+    ctx.lineTo(size - 24, c);
+    ctx.lineTo(c, size - 24);
+    ctx.lineTo(24, c);
+    ctx.closePath();
+    ctx.stroke();
+  } else if (skinId === 'sovereign_gold') {
+    // Royal inner octagon frame
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.35)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(26, 26, size - 52, size - 52);
+  }
+
+  // Outer & Inner Ornate Border
+  ctx.strokeStyle = skin.previewColors.borderHex;
+  ctx.lineWidth = 13;
   ctx.strokeRect(10, 10, size - 20, size - 20);
 
-  const c = size / 2;
+  ctx.strokeStyle = skin.previewColors.glowHex;
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(22, 22, size - 44, size - 44);
+
   const d = 56;
   const coords: Record<number, Array<[number, number]>> = {
     1: [[c, c]],
@@ -423,14 +506,32 @@ export function createDiceFaceTexture(pips: number, maxAnisotropy: number): THRE
   };
 
   for (const [px, py] of coords[pips] || coords[1]) {
-    ctx.fillStyle = pips === 1 ? '#b45309' : '#0f172a';
+    const r = pips === 1 ? 27 : 20;
+    // Outer pip glow halo
+    const halo = ctx.createRadialGradient(px, py, r * 0.2, px, py, r * 1.45);
+    halo.addColorStop(0, pips === 1 ? skin.previewColors.pipOneHex : skin.previewColors.pipHex);
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
     ctx.beginPath();
-    ctx.arc(px, py, pips === 1 ? 26 : 20, 0, Math.PI * 2);
+    ctx.arc(px, py, r * 1.45, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 3;
+    // Solid pip core
+    ctx.fillStyle = pips === 1 ? skin.previewColors.pipOneHex : skin.previewColors.pipHex;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pip rim
+    ctx.strokeStyle = skin.previewColors.borderHex;
+    ctx.lineWidth = 3.2;
     ctx.stroke();
+
+    // Specular inner center dot
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.arc(px - r * 0.24, py - r * 0.24, r * 0.22, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   const tex = new THREE.CanvasTexture(canvas);

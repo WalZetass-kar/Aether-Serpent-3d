@@ -4,23 +4,43 @@ import {
   Camera,
   Clock,
   Cpu,
+  Layers,
+  Lock,
   Play,
   Shield,
+  Shuffle,
+  Sparkles,
   Swords,
   Users,
   Volume2,
   VolumeX,
+  Wand2,
 } from 'lucide-react';
 import {
   BOARD_GAME_MODES,
+  DICE_SKINS,
   PLAYER_ARCHETYPES,
   TIME_ATTACK_DEFAULT_SEC,
+  disambiguatePlayerName,
+  isDiceSkinUnlocked,
   type BoardGameMode,
+  type DiceSkinId,
   type DifficultyMode,
   type TeamId,
 } from '../../shared/gameConfig';
+import {
+  BOARD_THEME_LABELS,
+  type BoardConfig,
+  type BoardSelectionMode,
+} from '../../shared/boardThemes';
+import {
+  getAllAvailableBoards,
+  loadBoardCollection,
+  selectBoard,
+  setBoardSelectionMode,
+} from '../services/boardStorageService';
 import type { CameraMode, CameraSettings } from '../three/DynamicCameraController';
-import { ArchetypeEmblem, SerpentCrestEmblem } from './FantasyIcons';
+import { ArchetypeEmblem, DiceSkinCubePreview, SerpentCrestEmblem } from './FantasyIcons';
 
 interface GameConfigViewProps {
   boardMode: BoardGameMode;
@@ -28,6 +48,9 @@ interface GameConfigViewProps {
   defaultArchetypeIndex: number;
   adaptiveTier: string;
   muted: boolean;
+  selectedDiceSkinId: DiceSkinId;
+  unlockedAchievements: string[];
+  onSelectDiceSkin: (skinId: DiceSkinId) => void;
   cameraSettings: CameraSettings;
   onChangeCameraMode: (mode: CameraMode) => void;
   onOpenCameraSettings: () => void;
@@ -46,6 +69,7 @@ interface GameConfigViewProps {
     boardMode: BoardGameMode,
     timeLimitSec: number,
   ) => void;
+  onOpenBoardManager?: (tab?: 'collection' | 'creator') => void;
 }
 
 const CAMERA_MODES: Array<{ id: CameraMode; label: string }> = [
@@ -68,6 +92,9 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   defaultArchetypeIndex,
   adaptiveTier,
   muted,
+  selectedDiceSkinId,
+  unlockedAchievements,
+  onSelectDiceSkin,
   cameraSettings,
   onChangeCameraMode,
   onOpenCameraSettings,
@@ -75,8 +102,11 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   onBackToModeSelection,
   onStartSolo,
   onStartLocal,
+  onOpenBoardManager,
 }) => {
   const [playStyle, setPlayStyle] = useState<'solo' | 'local'>('solo');
+  const [boardCollection, setBoardCollection] = useState(() => loadBoardCollection());
+  const availableBoards = getAllAvailableBoards(boardCollection);
 
   // Solo config
   const [soloName, setSoloName] = useState(defaultPlayerName);
@@ -86,11 +116,26 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
 
   // Local pass & play config
   const [localCount, setLocalCount] = useState(boardMode === 'team' ? 4 : 2);
-  const [localNames, setLocalNames] = useState(['Pemain 1', 'Pemain 2', 'Pemain 3', 'Pemain 4']);
+  const [localNames, setLocalNames] = useState(() => [
+    defaultPlayerName || 'Ksatria Aldebaran #108',
+    'Penyihir Lyra #204',
+    'Penjelajah Kael #518',
+    'Alkemis Zephyr #839',
+  ]);
   const [localTeams, setLocalTeams] = useState<TeamId[]>(['A', 'B', 'A', 'B']);
 
   // Relevant ONLY when boardMode === 'time_attack'
   const [timeLimitSec, setTimeLimitSec] = useState(TIME_ATTACK_DEFAULT_SEC);
+
+  const handleQuickSelectBoard = (board: BoardConfig) => {
+    const next = selectBoard(board.id, board.isCustom ? 'custom' : 'manual');
+    setBoardCollection({ ...next });
+  };
+
+  const handleQuickModeChange = (mode: BoardSelectionMode) => {
+    const next = setBoardSelectionMode(mode);
+    setBoardCollection({ ...next });
+  };
 
   const modeMeta = BOARD_GAME_MODES.find((m) => m.id === boardMode) ?? BOARD_GAME_MODES[0];
   const effectiveLocalCount = boardMode === 'team' && localCount < 4 ? 4 : localCount;
@@ -98,7 +143,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   const handleLaunch = () => {
     if (playStyle === 'solo') {
       onStartSolo(
-        soloName.trim() || 'Penjelajah Aether',
+        soloName.trim() || defaultPlayerName || 'Ksatria Aldebaran #108',
         soloArchetype,
         difficulty,
         boardMode === 'team' ? 3 : aiCount,
@@ -108,11 +153,20 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
       return;
     }
 
-    const list = Array.from({ length: effectiveLocalCount }).map((_, idx) => ({
-      name: localNames[idx].trim() || `Pemain ${idx + 1}`,
-      archetypeIndex: idx,
-      team: localTeams[idx],
-    }));
+    const usedNames: string[] = [];
+    const list = Array.from({ length: effectiveLocalCount }).map((_, idx) => {
+      const uniqueName = disambiguatePlayerName(
+        localNames[idx] || `Penjelajah #${idx + 1}`,
+        usedNames,
+        `local-${idx + 1}`,
+      );
+      usedNames.push(uniqueName);
+      return {
+        name: uniqueName,
+        archetypeIndex: idx,
+        team: localTeams[idx],
+      };
+    });
     onStartLocal(list, boardMode, timeLimitSec);
   };
 
@@ -396,6 +450,149 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Multi-Board 3D World Theme Selection Strip */}
+        <div className="rounded-2xl border border-emerald-500/25 bg-slate-950/60 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                Pilih Dunia Papan 3D ({availableBoards.length} Papan)
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Mode aktif:{' '}
+                <span className="font-bold text-amber-300 uppercase">
+                  {boardCollection.selectionMode} mode
+                </span>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  { id: 'manual', label: 'Manual' },
+                  { id: 'random', label: 'Random Acak' },
+                  { id: 'custom', label: 'Custom' },
+                ] as Array<{ id: BoardSelectionMode; label: string }>
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => handleQuickModeChange(m.id)}
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                    boardCollection.selectionMode === m.id
+                      ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+                      : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {m.id === 'random' && <Shuffle className="w-3 h-3" />}
+                  {m.label}
+                </button>
+              ))}
+
+              {onOpenBoardManager && (
+                <button
+                  type="button"
+                  onClick={() => onOpenBoardManager('creator')}
+                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25 cursor-pointer"
+                >
+                  <Wand2 className="w-3 h-3" />
+                  3D Board Creator
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto pr-1 custom-scroll">
+            {availableBoards.map((b) => {
+              const isSelected =
+                boardCollection.selectionMode !== 'random' &&
+                boardCollection.selectedBoardId === b.id;
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => handleQuickSelectBoard(b)}
+                  className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
+                    isSelected
+                      ? 'border-amber-400 bg-amber-500/15 text-white shadow'
+                      : 'border-slate-800 bg-slate-900/75 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-1 mb-1">
+                    {b.previewSwatches.slice(0, 3).map((hex, i) => (
+                      <span
+                        key={`${b.id}_c_${i}`}
+                        className="w-2.5 h-2.5 rounded-full border border-white/20"
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 ml-auto truncate">
+                      {b.isCustom ? 'Custom' : BOARD_THEME_LABELS[b.themeId].split(' ')[0]}
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold truncate">{b.name}</div>
+                  <div className="text-[10px] text-slate-400 truncate">{b.subtitle}</div>
+                  <div className="text-[9px] text-amber-300/90 truncate mt-0.5">
+                    ↑{b.ladders[0]?.from}→{b.ladders[0]?.to} · ↓{b.snakes[0]?.from}→{b.snakes[0]?.to}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Custom 3D Dice Skin Selection Strip */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              Pilih Skin Dadu 3D
+            </label>
+            <span className="text-[11px] text-slate-400">
+              Buka skin baru melalui menu Pencapaian
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {DICE_SKINS.map((skin) => {
+              const unlocked = isDiceSkinUnlocked(skin.id, unlockedAchievements);
+              const selected = selectedDiceSkinId === skin.id;
+              return (
+                <button
+                  key={skin.id}
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => {
+                    if (unlocked) onSelectDiceSkin(skin.id);
+                  }}
+                  title={
+                    unlocked
+                      ? `${skin.name} — ${skin.description}`
+                      : `Terkunci — Syarat Pencapaian: ${skin.requiredAchievementTitle}`
+                  }
+                  className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                    selected
+                      ? 'border-amber-400 bg-amber-500/15 text-amber-100 shadow-md'
+                      : unlocked
+                        ? 'border-slate-700 bg-slate-900/75 text-slate-200 hover:bg-slate-800 cursor-pointer'
+                        : 'border-slate-800/80 bg-slate-950/50 text-slate-500 opacity-75 cursor-not-allowed'
+                  }`}
+                >
+                  <DiceSkinCubePreview {...skin.previewColors} className="w-7 h-7 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-bold truncate">{skin.name}</span>
+                      {!unlocked && <Lock className="w-3 h-3 text-slate-500 shrink-0" />}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {unlocked ? skin.subtitle : skin.requiredAchievementTitle}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Camera & Audio Settings Strip */}
         <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3.5 flex flex-wrap items-center justify-between gap-3">
