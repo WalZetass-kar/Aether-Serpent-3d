@@ -314,17 +314,14 @@ export const LoadingArenaScreen: React.FC<LoadingArenaScreenProps> = ({
           {/* Primary Animated Progress Ring */}
           <AnimatedProgressRing
             progress={safeProgress}
-            size={140}
+            size={156}
             strokeWidth={6}
             tone={isComplete ? 'emerald' : themeVisual.ringTone}
             pulse={!isComplete}
           >
             <div className="flex flex-col items-center justify-center animate-portal-float">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <SerpentCrestEmblem className="w-5 h-5" />
-                <FacetedDiceIcon className="w-4 h-4 text-amber-300" />
-              </div>
-              <span className="font-mono-num text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              <SerpentCrestEmblem className="w-12 h-12 sm:w-14 sm:h-14 mb-0.5" />
+              <span className="font-mono-num text-xl sm:text-2xl font-bold text-white tracking-tight leading-none">
                 {pctInt}%
               </span>
               <span className="text-[10px] font-semibold text-amber-200/90 mt-0.5">

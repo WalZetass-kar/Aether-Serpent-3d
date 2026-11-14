@@ -1,48 +1,63 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+export const AETHER_SERPENT_LOGO_URL =
+  '/assets/aistudio/Aether_Serpent_3D__Fantasy_Game_Emblem_92116c8b.png';
 
 interface EmblemProps {
   className?: string;
 }
 
 /**
- * Custom Aether Serpent 3D Crest Emblem for header, modals, and branding.
+ * Official Aether Serpent 3D Crest Emblem for header, modals, and branding,
+ * with a resilient inline SVG fallback.
  */
-export const SerpentCrestEmblem: React.FC<EmblemProps> = ({ className = 'w-6 h-6' }) => (
-  <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
-    <defs>
-      <linearGradient id="aetherGoldGrad" x1="4" y1="3" x2="32" y2="33" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stopColor="#FDE68A" />
-        <stop offset="50%" stopColor="#F59E0B" />
-        <stop offset="100%" stopColor="#B45309" />
-      </linearGradient>
-      <linearGradient id="aetherEmeraldGrad" x1="10" y1="8" x2="26" y2="28" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stopColor="#6EE7B7" />
-        <stop offset="100%" stopColor="#059669" />
-      </linearGradient>
-    </defs>
-    {/* Octagonal obsidian shield */}
-    <path
-      d="M18 2.5L29.5 7.5L33.5 18L29.5 28.5L18 33.5L6.5 28.5L2.5 18L6.5 7.5L18 2.5Z"
-      fill="#0F172A"
-      stroke="url(#aetherGoldGrad)"
-      strokeWidth="1.8"
-    />
-    {/* Arcane inner ring */}
-    <circle cx="18" cy="18" r="10.2" stroke="#F59E0B" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 2" />
-    {/* Stylized coiled Aether Serpent */}
-    <path
-      d="M23.5 11.5C21.8 9.2 17.5 8.8 14.4 10.6C11.2 12.4 10.8 16.4 13.7 18.2C16.8 20.1 21.8 19.3 22.8 22.4C23.7 25.1 20.8 27.6 16.5 27.2C13.6 26.9 11.3 25.3 10.5 23.2"
-      stroke="url(#aetherEmeraldGrad)"
-      strokeWidth="2.8"
-      strokeLinecap="round"
-    />
-    {/* Serpent crowned head & eye */}
-    <path d="M21.8 10.2L26.2 9.4L24.8 13.6L21.8 10.2Z" fill="url(#aetherGoldGrad)" />
-    <circle cx="24.2" cy="11.1" r="0.9" fill="#0F172A" />
-    {/* Crown jewel */}
-    <path d="M18 5.2L19.6 7.4L18 9.1L16.4 7.4L18 5.2Z" fill="#FDE047" />
-  </svg>
-);
+export const SerpentCrestEmblem: React.FC<EmblemProps> = ({ className = 'w-6 h-6' }) => {
+  const [imgError, setImgError] = useState(false);
+
+  if (!imgError) {
+    return (
+      <img
+        src={AETHER_SERPENT_LOGO_URL}
+        alt="Logo Aether Serpent 3D"
+        referrerPolicy="no-referrer"
+        onError={() => setImgError(true)}
+        className={`object-contain select-none drop-shadow-[0_2px_6px_rgba(245,158,11,0.35)] ${className}`}
+      />
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id="aetherGoldGrad" x1="4" y1="3" x2="32" y2="33" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FDE68A" />
+          <stop offset="50%" stopColor="#F59E0B" />
+          <stop offset="100%" stopColor="#B45309" />
+        </linearGradient>
+        <linearGradient id="aetherEmeraldGrad" x1="10" y1="8" x2="26" y2="28" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#6EE7B7" />
+          <stop offset="100%" stopColor="#059669" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M18 2.5L29.5 7.5L33.5 18L29.5 28.5L18 33.5L6.5 28.5L2.5 18L6.5 7.5L18 2.5Z"
+        fill="#0F172A"
+        stroke="url(#aetherGoldGrad)"
+        strokeWidth="1.8"
+      />
+      <circle cx="18" cy="18" r="10.2" stroke="#F59E0B" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 2" />
+      <path
+        d="M23.5 11.5C21.8 9.2 17.5 8.8 14.4 10.6C11.2 12.4 10.8 16.4 13.7 18.2C16.8 20.1 21.8 19.3 22.8 22.4C23.7 25.1 20.8 27.6 16.5 27.2C13.6 26.9 11.3 25.3 10.5 23.2"
+        stroke="url(#aetherEmeraldGrad)"
+        strokeWidth="2.8"
+        strokeLinecap="round"
+      />
+      <path d="M21.8 10.2L26.2 9.4L24.8 13.6L21.8 10.2Z" fill="url(#aetherGoldGrad)" />
+      <circle cx="24.2" cy="11.1" r="0.9" fill="#0F172A" />
+      <path d="M18 5.2L19.6 7.4L18 9.1L16.4 7.4L18 5.2Z" fill="#FDE047" />
+    </svg>
+  );
+};
 
 /**
  * Faceted 3D Fantasy Die SVG icon for Roll CTA and dice status.

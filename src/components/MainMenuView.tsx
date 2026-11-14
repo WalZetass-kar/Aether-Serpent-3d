@@ -122,8 +122,8 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
       {/* Top Bar: Mobile shows ONLY precise Brand Title + Sidebar Menu button */}
       <header className="pointer-events-auto flex items-center justify-between gap-3">
         {/* Brand Title */}
-        <div className="glass-panel-soft rounded-2xl px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2.5 min-w-0">
-          <SerpentCrestEmblem className="w-7 h-7 sm:w-9 sm:h-9 shrink-0" />
+        <div className="glass-panel-soft rounded-2xl px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center gap-3 min-w-0">
+          <SerpentCrestEmblem className="w-10 h-10 sm:w-12 sm:h-12 shrink-0" />
           <div className="min-w-0">
             <h1 className="font-display text-sm sm:text-xl font-bold text-gold-gradient leading-tight truncate">
               Aether Serpent 3D
@@ -194,13 +194,16 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
         {/* Right Command Hub Card: Focused strictly on Game Menus */}
         <section className="pointer-events-auto w-full max-w-[440px] glass-panel rounded-3xl p-4 sm:p-6 space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold text-amber-300/90">
-                Gerbang Petualangan
+            <div className="flex items-center gap-3 min-w-0">
+              <SerpentCrestEmblem className="w-12 h-12 sm:w-14 sm:h-14 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-amber-300/90">
+                  Gerbang Petualangan
+                </div>
+                <h2 className="font-display text-lg sm:text-2xl font-bold text-white truncate">
+                  Menu Permainan
+                </h2>
               </div>
-              <h2 className="font-display text-lg sm:text-2xl font-bold text-white truncate">
-                Menu Permainan
-              </h2>
             </div>
             <button
               type="button"
