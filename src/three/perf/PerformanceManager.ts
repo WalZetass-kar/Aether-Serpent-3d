@@ -22,6 +22,9 @@ export interface DeviceCapabilitiesReport {
 
 export interface LivePerfTelemetry {
   fps: number;
+  avgFps: number;
+  minFps: number;
+  frameMs: number;
   avgFrameMs: number;
   p95FrameMs: number;
   drawCalls: number;
@@ -40,6 +43,7 @@ export interface LivePerfTelemetry {
   autoAdjustedStep: number;
   gpuSummary: string;
   isSoftwareGl: boolean;
+  deviceStatus: 'Optimal' | 'Adaptif (Stabil)' | 'Beban Tinggi';
 }
 
 export interface BenchmarkSummary {
@@ -47,6 +51,7 @@ export interface BenchmarkSummary {
   durationMs: number;
   frames: number;
   avgFps: number;
+  minFps: number;
   avgFrameMs: number;
   p95FrameMs: number;
   drawCalls: number;
@@ -181,17 +186,30 @@ export function probeDeviceCapabilities(): DeviceCapabilitiesReport {
       (navigator.maxTouchPoints > 1 && Math.min(window.innerWidth, window.innerHeight) < 900) ||
       /Adreno|Mali|PowerVR|Samsung\s*Xclipse/i.test(gpuRenderer));
 
+  const isLegacyIntegratedGpu =
+    /Intel.*HD\s*Graphics\s*(2000|2500|3000|4000|4200|4400|4600|500|505|510|515|520|530|610|615|620)|Mali-(400|450|T[678]|G31|G51|G52)|Adreno\s*(3\d\d|4\d\d|50\d|51\d|610)|PowerVR\s*GE8/i.test(
+      gpuRenderer,
+    );
+  const isStandardIntegratedGpu = /Intel.*(HD|UHD)\s*Graphics/i.test(gpuRenderer);
+
   let recommendedTier: ResolvedQualityTier = 'medium';
-  if (isSoftwareGl || maxTextureSize <= 2048 || benchMs > 28) {
+  if (
+    isSoftwareGl ||
+    maxTextureSize <= 2048 ||
+    benchMs > 24 ||
+    (devMem !== null && devMem <= 2) ||
+    (isLegacyIntegratedGpu && (benchMs > 9 || (devMem !== null && devMem <= 4)))
+  ) {
     recommendedTier = 'potato';
-  } else if (isMobileDevice) {
-    // Keep Android & mobile devices cool, responsive, and lightweight by default
-    if (benchMs > 10 || (devMem !== null && devMem <= 4) || cores <= 4) {
-      recommendedTier = 'low';
-    } else {
-      recommendedTier = 'low';
-    }
-  } else if (benchMs > 12 || (devMem !== null && devMem <= 2) || cores <= 2) {
+  } else if (isMobileDevice || isLegacyIntegratedGpu) {
+    // Keep Android & legacy Intel HD Graphics devices cool, responsive, and lightweight by default
+    recommendedTier = 'low';
+  } else if (
+    isStandardIntegratedGpu ||
+    benchMs > 10 ||
+    (devMem !== null && devMem <= 4) ||
+    cores <= 4
+  ) {
     recommendedTier = 'low';
   } else if (
     benchMs < 3.2 &&
@@ -243,6 +261,7 @@ export class AdaptivePerformanceManager {
   private sortedScratch = new Float32Array(FRAME_WINDOW);
   private frameCount = 0;
   private frameIndex = 0;
+  private lastFrameMs = 16.67;
 
   private lowFpsAccumSec = 0;
   private highHeadroomAccumSec = 0;
@@ -273,13 +292,29 @@ export class AdaptivePerformanceManager {
   }
 
   public getEffectivePixelRatio(): number {
-    if (this.capabilities.isSoftwareGl) return 1;
-    const isMobileViewport =
+    if (this.capabilities.isSoftwareGl) return 0.9;
+    const isMobileOrTabletViewport =
       typeof window !== 'undefined' &&
-      (window.innerWidth < 960 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''));
-    const maxDprCap = isMobileViewport ? 1.35 : 1.85;
-    const baseDpr = Math.min(this.capabilities.devicePixelRatio || 1, maxDprCap);
-    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.75, maxDprCap);
+      (window.innerWidth < 1024 ||
+        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''));
+    const tierCap =
+      this.effectiveTier === 'potato'
+        ? isMobileOrTabletViewport
+          ? 1.0
+          : 1.1
+        : this.effectiveTier === 'low'
+          ? isMobileOrTabletViewport
+            ? 1.12
+            : 1.25
+          : this.effectiveTier === 'medium'
+            ? isMobileOrTabletViewport
+              ? 1.22
+              : 1.4
+            : isMobileOrTabletViewport
+              ? 1.35
+              : 1.75;
+    const baseDpr = Math.min(this.capabilities.devicePixelRatio || 1, tierCap);
+    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.72, tierCap);
   }
 
   public setPreset(preset: QualityPresetId, autoAdjust: boolean): { changed: boolean } {
@@ -312,6 +347,7 @@ export class AdaptivePerformanceManager {
       return { qualityChanged: false, resChanged: false };
     }
     const frameMs = THREE.MathUtils.clamp(dtSec * 1000, 1, 250);
+    this.lastFrameMs = frameMs;
     this.frameTimes[this.frameIndex] = frameMs;
     this.frameIndex = (this.frameIndex + 1) % FRAME_WINDOW;
     if (this.frameCount < FRAME_WINDOW) this.frameCount++;
@@ -324,11 +360,13 @@ export class AdaptivePerformanceManager {
         const sorted = [...this.benchTimes].sort((a, b) => a - b);
         const avgMs = sorted.reduce((s, v) => s + v, 0) / Math.max(1, sorted.length);
         const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] || avgMs;
+        const maxMs = sorted[sorted.length - 1] || p95;
         const summary: BenchmarkSummary = {
           tier: this.effectiveTier,
           durationMs: Math.round(elapsed),
           frames: this.benchFrames,
           avgFps: Number((1000 / Math.max(1, avgMs)).toFixed(1)),
+          minFps: Math.max(1, Math.round(1000 / Math.max(1, maxMs))),
           avgFrameMs: Number(avgMs.toFixed(2)),
           p95FrameMs: Number(p95.toFixed(2)),
           drawCalls: renderer?.info.render.calls ?? 0,
@@ -366,7 +404,10 @@ export class AdaptivePerformanceManager {
         this.cooldownSec = 3.5;
         return this.stepDown();
       }
-    } else if (avgMs < targetMs * 0.65 && (this.autoStep < 0 || this.resScale < cfg.defaultResScale)) {
+    } else if (
+      avgMs < targetMs * 0.65 &&
+      (this.autoStep < 0 || this.resScale < cfg.defaultResScale)
+    ) {
       // Hysteresis: sustained headroom for >= 9.0s before stepping back up
       this.lowFpsAccumSec = 0;
       this.highHeadroomAccumSec += dtSec;
@@ -452,11 +493,13 @@ export class AdaptivePerformanceManager {
     const count = this.frameCount;
     const avgMs = this.computeAvgFrameMs();
     let p95 = avgMs;
+    let maxMs = avgMs;
     if (count > 0) {
       for (let i = 0; i < count; i++) this.sortedScratch[i] = this.frameTimes[i];
       const view = this.sortedScratch.subarray(0, count);
       view.sort();
       p95 = view[Math.min(count - 1, Math.floor(count * 0.95))];
+      maxMs = view[count - 1];
     }
 
     const perfMem =
@@ -479,9 +522,23 @@ export class AdaptivePerformanceManager {
       ((texCount * avgTexDim * avgTexDim * 4 * 1.33) / (1024 * 1024)).toFixed(1),
     );
 
+    const avgFps = Math.round(1000 / Math.max(1, avgMs));
+    const instantFps = Math.round(1000 / Math.max(1, this.lastFrameMs * 0.4 + avgMs * 0.6));
+    const minFps = Math.max(1, Math.round(1000 / Math.max(1, maxMs)));
+
+    const deviceStatus: LivePerfTelemetry['deviceStatus'] =
+      avgFps < 26
+        ? 'Beban Tinggi'
+        : this.autoStep < 0
+          ? 'Adaptif (Stabil)'
+          : 'Optimal';
+
     const canvas = renderer.domElement;
     return {
-      fps: Math.round(1000 / Math.max(1, avgMs)),
+      fps: instantFps,
+      avgFps,
+      minFps,
+      frameMs: Number(this.lastFrameMs.toFixed(1)),
       avgFrameMs: Number(avgMs.toFixed(1)),
       p95FrameMs: Number(p95.toFixed(1)),
       drawCalls: renderer.info.render.calls,
@@ -500,6 +557,7 @@ export class AdaptivePerformanceManager {
       autoAdjustedStep: this.autoStep,
       gpuSummary: this.capabilities.gpuRenderer,
       isSoftwareGl: this.capabilities.isSoftwareGl,
+      deviceStatus,
     };
   }
 }

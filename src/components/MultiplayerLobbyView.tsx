@@ -344,14 +344,14 @@ const SanctuaryPreviewCard: React.FC<{
             {players.length}/4 Pemain
           </span>
         </div>
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
           {Array.from({ length: 4 }).map((_, idx) => {
             const pl = players[idx];
             return pl ? (
               <div
                 key={`slot-${idx}`}
                 title={pl.name}
-                className="min-w-0 overflow-hidden flex flex-col items-center justify-center gap-0.5 rounded-xl border border-amber-500/35 bg-slate-950/85 px-1.5 py-1.5 text-center"
+                className="min-w-0 overflow-hidden flex flex-col items-center justify-center gap-0.5 rounded-xl border border-amber-500/35 bg-slate-950/85 px-2 py-1.5 text-center"
               >
                 <ArchetypeEmblem archetypeIndex={pl.archetypeIndex} className="w-4 h-4 shrink-0" />
                 <span className="text-[10px] font-semibold text-slate-200 truncate w-full">
@@ -361,7 +361,7 @@ const SanctuaryPreviewCard: React.FC<{
             ) : (
               <div
                 key={`slot-empty-${idx}`}
-                className="min-w-0 overflow-hidden flex flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-slate-700/80 bg-slate-950/40 px-1.5 py-1.5 text-center"
+                className="min-w-0 overflow-hidden flex flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-slate-700/80 bg-slate-950/40 px-2 py-1.5 text-center"
               >
                 <span className="text-xs font-bold text-slate-500 leading-none">+</span>
                 <span className="text-[10px] text-slate-500 truncate w-full">Kosong</span>
@@ -579,7 +579,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
   };
 
   return (
-    <div className="relative z-10 flex flex-col w-full h-full safe-page-scroll overflow-y-auto custom-scroll">
+    <div className="relative z-10 flex flex-col w-full h-full safe-page-scroll overflow-x-hidden overflow-y-auto custom-scroll">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 sm:gap-3 mb-2.5 sm:mb-4 shrink-0">
         <button
@@ -621,8 +621,8 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
         </div>
       </header>
 
-      {/* Main Lobby Container (shrink-0 & overflow-hidden prevents flexbox card clipping/leaking) */}
-      <main className="my-auto mx-auto w-full max-w-5xl shrink-0 overflow-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 space-y-4">
+      {/* Main Lobby Container (shrink-0 & overflow-x-hidden prevents horizontal scrolling or card clipping) */}
+      <main className="my-auto mx-auto w-full max-w-6xl shrink-0 overflow-x-hidden overflow-y-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 space-y-4">
         {!isOnlineNetwork && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 p-3.5 text-xs text-amber-200">
             Koneksi internet sedang terputus. Hubungkan jaringan untuk membuat atau bergabung ke ruangan daring.
@@ -701,9 +701,9 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
         </div>
 
         {!onlineLobby.roomCode ? (
-          <div className="space-y-4">
+          <div className="space-y-3.5 sm:space-y-4">
             {/* Sub-header & Symmetric Buat Room / Gabung Room Segmented Buttons */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
               <div className="min-w-0">
                 <div className="text-[10px] sm:text-[11px] uppercase tracking-widest font-bold text-sky-300">
                   Arena Multiplayer Daring
@@ -741,9 +741,9 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
               </div>
             </div>
 
-            {/* Player Identity Row */}
-            <div className="grid sm:grid-cols-2 gap-3 glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4">
-              <div className="min-w-0">
+            {/* Player Identity Row — Flexible 12-Column CSS Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 glass-panel-soft rounded-2xl border border-amber-500/20 p-3 sm:p-4 items-end">
+              <div className="md:col-span-5 min-w-0">
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Nama Tampilan Daring
                 </label>
@@ -752,37 +752,52 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                   maxLength={24}
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Masukkan nama pahlawan Anda"
                   className="w-full min-h-[42px] rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
-              <div className="min-w-0">
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Bidak Pahlawan
-                </label>
+              <div className="md:col-span-7 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Bidak Pahlawan
+                  </label>
+                  <span className="text-[11px] font-semibold text-amber-300 truncate">
+                    {PLAYER_ARCHETYPES[archetypeIndex % PLAYER_ARCHETYPES.length]?.title}
+                  </span>
+                </div>
                 <div className="grid grid-cols-4 gap-2">
-                  {PLAYER_ARCHETYPES.map((a) => (
-                    <button
-                      key={a.archetypeIndex}
-                      type="button"
-                      onClick={() => setArchetypeIndex(a.archetypeIndex)}
-                      title={a.title}
-                      className={`min-h-[42px] rounded-xl border flex items-center justify-center transition-colors cursor-pointer ${
-                        archetypeIndex === a.archetypeIndex
-                          ? 'border-amber-400 bg-amber-500/20'
-                          : 'border-slate-700 bg-slate-900 hover:bg-slate-800'
-                      }`}
-                    >
-                      <ArchetypeEmblem archetypeIndex={a.archetypeIndex} className="w-5 h-5" />
-                    </button>
-                  ))}
+                  {PLAYER_ARCHETYPES.map((a) => {
+                    const selected = archetypeIndex === a.archetypeIndex;
+                    return (
+                      <button
+                        key={a.archetypeIndex}
+                        type="button"
+                        onClick={() => setArchetypeIndex(a.archetypeIndex)}
+                        title={a.title}
+                        className={`min-h-[42px] px-2 py-1.5 rounded-xl border flex items-center justify-center gap-1.5 transition-colors cursor-pointer min-w-0 ${
+                          selected
+                            ? 'border-amber-400 bg-amber-500/20 text-amber-200 shadow-sm'
+                            : 'border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <ArchetypeEmblem
+                          archetypeIndex={a.archetypeIndex}
+                          className="w-5 h-5 shrink-0"
+                        />
+                        <span className="hidden sm:inline text-[11px] font-semibold truncate">
+                          {a.title.split(' ')[0]}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
             {entryTab === 'create' ? (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-                {/* Left Card: Room Configuration (Bounded min-w-0 & overflow-hidden, flush with Right Preview Card) */}
-                <div className="lg:col-span-7 min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5 sm:p-5 flex flex-col justify-between gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 sm:gap-4 items-stretch">
+                {/* Left Card: Room Configuration */}
+                <div className="md:col-span-7 min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5 sm:p-5 flex flex-col justify-between gap-4">
                   <div className="space-y-3.5 min-w-0">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
@@ -865,8 +880,8 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                   </button>
                 </div>
 
-                {/* Right Card: Sanctuary 3D Preview (Bounded min-w-0 & equal height with Left Card) */}
-                <div className="lg:col-span-5 min-w-0 flex">
+                {/* Right Card: Sanctuary 3D Preview */}
+                <div className="md:col-span-5 min-w-0 flex">
                   <SanctuaryPreviewCard
                     boardMode={boardMode}
                     roomTitle={roomTitle.trim() || `Arena ${playerName.trim() || 'Aether'}`}
@@ -884,10 +899,10 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-                {/* Left Card: Join by Room Code (Equal height with Public Room Browser) */}
-                <div className="lg:col-span-5 min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5 sm:p-5 flex flex-col justify-between gap-4">
-                  <div className="space-y-3 min-w-0">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 sm:gap-4 items-stretch">
+                {/* Left Card: Join by Room Code (Compact & Mobile-Friendly) */}
+                <div className="md:col-span-5 min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5 sm:p-5 flex flex-col justify-between gap-3.5">
+                  <div className="space-y-2.5 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-bold text-gold-gradient truncate">
                         Gabung via Kode Room
@@ -897,51 +912,52 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      Masukkan kode undangan dari teman atau host untuk langsung bergabung ke lobi privat maupun publik.
+                      Masukkan kode undangan dari teman atau host untuk langsung masuk ke lobi privat maupun publik.
                     </p>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
-                        Kode Ruangan
-                      </label>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 mt-auto">
+                    <div className="flex-1 min-w-0">
+                      <label className="sr-only">Kode Ruangan</label>
                       <input
                         type="text"
                         maxLength={8}
                         value={joinCode}
                         onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                        placeholder="CONTOH: A7K9P2"
-                        className="w-full min-h-[46px] rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2 text-center text-base font-mono-num font-bold uppercase tracking-widest text-amber-200 focus:outline-none focus:border-amber-400"
+                        placeholder="KODE ROOM (CONTOH: A7K9P2)"
+                        className="w-full min-h-[46px] rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2 text-center text-sm sm:text-base font-mono-num font-bold uppercase tracking-widest text-amber-200 focus:outline-none focus:border-amber-400"
                       />
                     </div>
-                  </div>
 
-                  <button
-                    type="button"
-                    disabled={
-                      !isOnlineNetwork || joinCode.trim().length < 4 || onlineLobby.connecting
-                    }
-                    onClick={() =>
-                      onOnlineJoinRoom(
-                        joinCode.trim(),
-                        playerName.trim() || 'Penjelajah',
-                        archetypeIndex,
-                      )
-                    }
-                    className="w-full min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 font-bold text-sm hover:brightness-105 disabled:opacity-50 transition-all cursor-pointer shadow-lg shrink-0"
-                  >
-                    <DoorOpen className="w-4 h-4 shrink-0" />
-                    <span>{onlineLobby.connecting ? 'Menghubungkan...' : 'Gabung ke Room'}</span>
-                  </button>
+                    <button
+                      type="button"
+                      disabled={
+                        !isOnlineNetwork || joinCode.trim().length < 4 || onlineLobby.connecting
+                      }
+                      onClick={() =>
+                        onOnlineJoinRoom(
+                          joinCode.trim(),
+                          playerName.trim() || 'Penjelajah',
+                          archetypeIndex,
+                        )
+                      }
+                      className="w-full sm:w-auto md:w-full min-h-[46px] px-5 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 font-bold text-sm hover:brightness-105 disabled:opacity-50 transition-all cursor-pointer shadow-lg shrink-0"
+                    >
+                      <DoorOpen className="w-4 h-4 shrink-0" />
+                      <span>{onlineLobby.connecting ? 'Menghubungkan...' : 'Gabung ke Room'}</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Right Card: Public Room Browser (Equal height with Join by Code) */}
-                <div className="lg:col-span-7 min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5 sm:p-5 flex flex-col justify-between gap-3">
+                {/* Right Card: Public Room Browser */}
+                <div className="md:col-span-7 min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5 sm:p-5 flex flex-col justify-between gap-3">
                   <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
                     <div className="min-w-0">
                       <span className="text-sm font-bold text-slate-200 block truncate">
-                        Daftar Ruang Publik Aktif
+                        Daftar Ruang Publik Aktif ({publicRooms.length})
                       </span>
                       <p className="text-[11px] text-slate-400 truncate">
-                        Pilih ruang terbuka di bawah untuk langsung masuk ke lobi
+                        Ketuk ruang terbuka di bawah untuk langsung masuk ke lobi
                       </p>
                     </div>
                     <button
@@ -954,7 +970,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                     </button>
                   </div>
 
-                  <div className="flex-1 min-h-[168px] max-h-60 overflow-y-auto custom-scroll space-y-2">
+                  <div className="flex-1 min-h-[168px] max-h-64 overflow-y-auto custom-scroll pr-0.5">
                     {publicRooms.length === 0 ? (
                       <div className="h-full min-h-[156px] flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
                         <Globe className="w-5 h-5 text-slate-500 mb-1.5" />
@@ -962,54 +978,67 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                           Belum Ada Ruang Publik Aktif
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5 max-w-xs">
-                          Klik tab Buat Room untuk membuka arena baru atau masukkan kode dari teman Anda.
+                          Klik tab Buat Room untuk membuka arena baru atau masukkan kode 6 digit dari teman Anda.
                         </p>
                       </div>
                     ) : (
-                      publicRooms.map((r) => {
-                        const modeMeta = BOARD_GAME_MODES.find((m) => m.id === r.boardMode);
-                        const fullOrBusy = r.playerCount >= r.maxPlayers || r.status !== 'lobby';
-                        return (
-                          <div
-                            key={r.code}
-                            className="flex items-center justify-between gap-2.5 rounded-xl border border-amber-500/20 bg-slate-900/85 px-3.5 py-2.5 min-w-0"
-                          >
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white truncate">
-                                <span className="truncate">{r.name}</span>
-                                <span className="font-mono-num text-xs text-amber-300 shrink-0">
-                                  #{r.code}
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                                Host: {r.hostName} · {modeMeta?.label.replace(' Mode', '')} ·{' '}
-                                {r.playerCount}/{r.maxPlayers} Pemain
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              disabled={!isOnlineNetwork || fullOrBusy || onlineLobby.connecting}
-                              onClick={() =>
-                                onOnlineJoinRoom(
-                                  r.code,
-                                  playerName.trim() || 'Penjelajah',
-                                  archetypeIndex,
-                                )
-                              }
-                              className="inline-flex items-center gap-1.5 min-h-[38px] px-3.5 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2 gap-2.5">
+                        {publicRooms.map((r) => {
+                          const modeMeta = BOARD_GAME_MODES.find((m) => m.id === r.boardMode);
+                          const fullOrBusy = r.playerCount >= r.maxPlayers || r.status !== 'lobby';
+                          return (
+                            <div
+                              key={r.code}
+                              className="flex flex-col justify-between gap-2.5 rounded-xl border border-amber-500/20 bg-slate-900/85 p-3 min-w-0 hover:border-amber-400/40 transition-colors"
                             >
-                              <DoorOpen className="w-3.5 h-3.5" />
-                              <span>
-                                {r.status === 'playing'
-                                  ? 'Berlangsung'
-                                  : r.playerCount >= r.maxPlayers
-                                    ? 'Penuh'
-                                    : 'Gabung'}
-                              </span>
-                            </button>
-                          </div>
-                        );
-                      })
+                              <div className="min-w-0 space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs sm:text-sm font-bold text-white truncate">
+                                    {r.name}
+                                  </span>
+                                  <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono-num text-[11px] font-bold text-amber-300 shrink-0">
+                                    #{r.code}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-300">
+                                  <span className="truncate max-w-[130px] text-slate-400">
+                                    Host: <strong className="text-slate-200">{r.hostName}</strong>
+                                  </span>
+                                  <span>·</span>
+                                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">
+                                    {modeMeta?.label.replace(' Mode', '')}
+                                  </span>
+                                  <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-num text-[10px] font-semibold text-emerald-300 ml-auto">
+                                    {r.playerCount}/{r.maxPlayers} Pemain
+                                  </span>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                disabled={!isOnlineNetwork || fullOrBusy || onlineLobby.connecting}
+                                onClick={() =>
+                                  onOnlineJoinRoom(
+                                    r.code,
+                                    playerName.trim() || 'Penjelajah',
+                                    archetypeIndex,
+                                  )
+                                }
+                                className="w-full inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3.5 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
+                              >
+                                <DoorOpen className="w-3.5 h-3.5 shrink-0" />
+                                <span>
+                                  {r.status === 'playing'
+                                    ? 'Sedang Berlangsung'
+                                    : r.playerCount >= r.maxPlayers
+                                      ? 'Ruangan Penuh'
+                                      : 'Gabung ke Lobi'}
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1017,180 +1046,493 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
             )}
           </div>
         ) : (
-          <div className="space-y-4 sm:space-y-5">
-            {/* Active Room Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 glass-panel-soft rounded-2xl border border-amber-500/28 p-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                  <span className="font-semibold text-slate-200">{onlineLobby.roomName}</span>
+          <div className="space-y-3.5 sm:space-y-4">
+            {/* Active Room Header Bar — Responsive Flexbox & Mobile Action Grid */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 glass-panel-soft rounded-2xl border border-amber-500/28 p-3.5 sm:p-4">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs text-slate-400">
+                  <span className="font-bold text-slate-100 truncate max-w-[200px] sm:max-w-xs">
+                    {onlineLobby.roomName}
+                  </span>
                   <span>·</span>
                   <span className="inline-flex items-center gap-1 text-slate-200 font-medium">
                     {onlineLobby.isPublic ? (
                       <>
-                        <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-                        Publik
+                        <Unlock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Publik</span>
                       </>
                     ) : (
                       <>
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                        Privat
+                        <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Privat</span>
                       </>
                     )}
                   </span>
                   <span>·</span>
-                  <span className="text-amber-300 font-semibold">
-                    {onlineLobby.status === 'lobby'
-                      ? 'Menunggu di Lobi'
-                      : onlineLobby.status === 'playing'
-                        ? 'Sedang Bermain'
-                        : 'Selesai'}
+                  <span className="inline-flex items-center gap-1 text-amber-300 font-semibold">
+                    <Hourglass className="w-3 h-3 text-amber-400 shrink-0" />
+                    <span>{ONLINE_TURN_TIMEOUT_SEC}d/Giliran</span>
                   </span>
                 </div>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="font-mono-num text-xl sm:text-2xl font-bold text-gold-gradient tracking-widest">
-                    {onlineLobby.roomCode}
-                  </span>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-slate-950/80 px-2.5 py-1">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                      Kode
+                    </span>
+                    <span className="font-mono-num text-base sm:text-xl font-bold text-gold-gradient tracking-widest">
+                      {onlineLobby.roomCode}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => void handleCopyInvite('code')}
-                    className="text-xs font-semibold text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer"
                   >
-                    {copiedType === 'code' ? 'Kode Disalin' : 'Salin Kode'}
+                    {copiedType === 'code' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Kode Disalin</span>
+                      </>
+                    ) : (
+                      <span>Salin Kode</span>
+                    )}
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto shrink-0">
                 <button
                   type="button"
                   onClick={() => void handleInviteShare()}
-                  className="inline-flex items-center gap-1.5 min-h-[42px] px-3.5 py-2 rounded-xl border border-amber-500/30 bg-slate-900/80 text-xs font-semibold text-slate-100 hover:bg-slate-800 hover:border-amber-400/60 transition-colors cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[42px] px-3 sm:px-3.5 py-2 rounded-xl border border-amber-500/30 bg-slate-900/80 text-xs font-semibold text-slate-100 hover:bg-slate-800 hover:border-amber-400/60 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   {copiedType === 'link' ? (
-                    <Check className="w-4 h-4 text-emerald-400" />
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <Share2 className="w-4 h-4 text-amber-300" />
+                    <Share2 className="w-4 h-4 text-amber-300 shrink-0" />
                   )}
-                  {copiedType === 'link' ? 'Tautan Disalin' : 'Undang Teman'}
+                  <span>{copiedType === 'link' ? 'Tautan Disalin' : 'Undang Teman'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={onOnlineLeave}
-                  className="min-h-[42px] px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-950/40 text-xs font-semibold text-rose-300 hover:bg-rose-950/75 transition-colors cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center justify-center min-h-[40px] sm:min-h-[42px] px-3 sm:px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-950/40 text-xs font-semibold text-rose-300 hover:bg-rose-950/75 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   Keluar Ruang
                 </button>
               </div>
             </div>
 
-            {/* Animated Progress Rings: Room Readiness + 20s Turn Policy */}
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="flex items-center justify-between gap-3 glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5">
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <AnimatedProgressRing
-                    progress={readinessProgress}
-                    size={52}
-                    strokeWidth={4}
-                    tone={allReady ? 'emerald' : hasMinPlayers ? 'amber' : 'sky'}
-                    pulse
-                  >
-                    <span className="font-mono-num text-xs font-bold text-white">
-                      {readyCount}/{onlineLobby.players.length}
-                    </span>
-                  </AnimatedProgressRing>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-white">
-                      {allReady
-                        ? 'Semua Pahlawan Siap Bertanding!'
-                        : hasMinPlayers
-                          ? 'Ruangan Siap Dimulai oleh Host'
-                          : 'Menunggu Pemain Lain Bergabung'}
+            {/* Section 1: Readiness Progress & Match Launch Action Card (Immediate Access on All Screens) */}
+            <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/30 p-3.5 sm:p-4 space-y-3">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+                <div className="lg:col-span-7 flex flex-wrap items-center justify-between gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <AnimatedProgressRing
+                      progress={readinessProgress}
+                      size={48}
+                      strokeWidth={4}
+                      tone={allReady ? 'emerald' : hasMinPlayers ? 'amber' : 'sky'}
+                      pulse
+                    >
+                      <span className="font-mono-num text-xs font-bold text-white">
+                        {readyCount}/{onlineLobby.players.length}
+                      </span>
+                    </AnimatedProgressRing>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs sm:text-sm font-bold text-white">
+                          {allReady
+                            ? 'Semua Pahlawan Siap Bertanding!'
+                            : hasMinPlayers
+                              ? 'Ruangan Siap Dimulai oleh Host'
+                              : 'Menunggu Pemain Lain Bergabung'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                        {allReady
+                          ? 'Seluruh pahlawan sudah menekan Siap. Host dapat langsung meluncurkan arena!'
+                          : hasMinPlayers
+                            ? 'Minimal 2 pemain terpenuhi. Host dapat menekan Mulai atau menunggu tamu Siap.'
+                            : 'Undang minimal 1 teman lagi (total 2–4 pemain) untuk memulai pertandingan.'}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                      {allReady
-                        ? 'Seluruh pahlawan sudah menekan Siap. Host dapat langsung memulai laga!'
-                        : hasMinPlayers
-                          ? 'Minimal 2 pemain terpenuhi. Host dapat langsung menekan Mulai Laga Daring.'
-                          : 'Undang minimal 1 teman lagi (total 2–4 pemain) untuk memulai laga.'}
-                    </p>
                   </div>
+
+                  {isHost && hasMinPlayers && !allReady && onOnlineReadyAll && (
+                    <button
+                      type="button"
+                      onClick={onOnlineReadyAll}
+                      className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/25 transition-colors cursor-pointer shrink-0"
+                    >
+                      <Check className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                      <span>Siapkan Semua</span>
+                    </button>
+                  )}
                 </div>
 
-                {isHost && hasMinPlayers && !allReady && onOnlineReadyAll && (
-                  <button
-                    type="button"
-                    onClick={onOnlineReadyAll}
-                    className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/25 transition-colors cursor-pointer shrink-0"
-                  >
-                    <Check className="w-3.5 h-3.5 text-emerald-300" />
-                    <span>Siapkan Semua</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3.5 glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5">
-                <AnimatedProgressRing
-                  progress={1}
-                  size={52}
-                  strokeWidth={4}
-                  tone="amber"
-                  pulse
-                >
-                  <span className="font-mono-num text-xs font-bold text-amber-200">
-                    {ONLINE_TURN_TIMEOUT_SEC}d
-                  </span>
-                </AnimatedProgressRing>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-200">
-                    <Hourglass className="w-3.5 h-3.5 text-amber-400" />
-                    Batas Waktu Giliran Daring
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    Setiap pemain memiliki {ONLINE_TURN_TIMEOUT_SEC} detik untuk melempar dadu sebelum sistem melempar otomatis.
-                  </p>
+                {/* Primary Action CTA Button (Start for Host / Ready Toggle for Guest) */}
+                <div className="lg:col-span-5 min-w-0">
+                  {isHost ? (
+                    <button
+                      type="button"
+                      disabled={!canStartMatch}
+                      onClick={onOnlineStart}
+                      className={`w-full min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg disabled:opacity-45 disabled:cursor-not-allowed ${
+                        allReady
+                          ? 'bg-gradient-to-r from-emerald-400 via-amber-400 to-amber-500 text-slate-950 hover:brightness-105'
+                          : 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 hover:brightness-105'
+                      }`}
+                    >
+                      <Play className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 fill-current" />
+                      <span className="truncate">
+                        {!hasMinPlayers
+                          ? 'Menunggu Min. 2 Pemain...'
+                          : allReady
+                            ? `Mulai Laga Daring (${onlineLobby.players.length} Pemain)`
+                            : `Mulai Laga Daring (${readyCount}/${onlineLobby.players.length} Siap)`}
+                      </span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onOnlineReady(!meOnline?.ready)}
+                      className={`w-full min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg ${
+                        meOnline?.ready
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-400/60'
+                          : 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 hover:brightness-105'
+                      }`}
+                    >
+                      <Check className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                      <span className="truncate">
+                        {meOnline?.ready
+                          ? 'SIAP BERTANDING! (Ketuk Batal)'
+                          : 'Saya Siap Bertanding — Ketuk di Sini'}
+                      </span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Host Settings & Player Roster (Aligned left/right columns) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-              {/* Left (Desktop) / Second (Mobile): Sanctuary Preview + Mode & Host Settings */}
-              <div className="order-2 lg:order-1 lg:col-span-5 min-w-0 flex flex-col justify-between gap-4">
-                <SanctuaryPreviewCard
-                  boardMode={onlineLobby.boardMode}
-                  roomTitle={onlineLobby.roomName}
-                  isPublic={onlineLobby.isPublic}
-                  timeLimitSec={onlineLobby.timeLimitSec}
-                  players={onlineLobby.players.map((p, idx) => ({
-                    name: p.name,
-                    archetypeIndex: p.archetypeIndex,
-                    ready: p.id === onlineLobby.hostId || idx === 0 || p.ready,
-                    isHost: p.id === onlineLobby.hostId || idx === 0,
-                  }))}
-                />
+            {/* Section 2: Player Cards CSS Grid (grid-cols-1 on Mobile, grid-cols-2 on Tablet/Medium, lg:grid-cols-3 on Desktop) */}
+            <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="text-xs sm:text-sm font-bold text-slate-200 truncate">
+                    Daftar Pahlawan di Lobi ({onlineLobby.players.length}/4)
+                  </span>
+                  <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-mono-num font-bold text-amber-300 shrink-0">
+                    {readyCount}/{onlineLobby.players.length} Siap
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Statistik pahlawan, jaringan &amp; urutan giliran #1–#4
+                </span>
+              </div>
 
-                <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-200 truncate">
-                      {isHost && onlineLobby.status === 'lobby'
-                        ? 'Pengaturan Tuan Rumah'
-                        : 'Aturan Pertandingan'}
-                    </span>
+              {/* Player Cards Grid: grid-cols-1 (mobile) -> md:grid-cols-2 -> lg:grid-cols-3 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {onlineLobby.players.map((p, idx) => {
+                  const isPlayerHost = p.id === onlineLobby.hostId || idx === 0;
+                  const isSelf = p.id === onlineLobby.myPlayerId;
+                  const isPlayerReady = isPlayerHost || Boolean(p.ready);
+                  const arch = PLAYER_ARCHETYPES[p.archetypeIndex % PLAYER_ARCHETYPES.length];
+                  return (
+                    <div
+                      key={p.id}
+                      className={`min-w-0 overflow-hidden rounded-2xl border p-3.5 flex flex-col justify-between gap-3 transition-colors ${
+                        isSelf
+                          ? 'border-amber-400/60 bg-slate-900/95 shadow-md'
+                          : isPlayerReady
+                            ? 'border-emerald-500/35 bg-slate-900/80'
+                            : 'border-slate-700/80 bg-slate-900/65'
+                      }`}
+                    >
+                      {/* Card Header: Avatar Ring + Name + Ready Badge */}
+                      <div className="flex items-start justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <AnimatedProgressRing
+                            progress={isPlayerReady ? 1 : 0.25}
+                            size={42}
+                            strokeWidth={3}
+                            tone={isPlayerHost ? 'amber' : isPlayerReady ? 'emerald' : 'sky'}
+                            pulse={isPlayerReady}
+                          >
+                            <ArchetypeEmblem
+                              archetypeIndex={p.archetypeIndex}
+                              className="w-4 h-4"
+                            />
+                          </AnimatedProgressRing>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white min-w-0">
+                              <span className="truncate">{p.name}</span>
+                              {isSelf && (
+                                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-200 shrink-0">
+                                  Anda
+                                </span>
+                              )}
+                              {isPlayerHost && (
+                                <Crown
+                                  className="w-3.5 h-3.5 text-amber-400 shrink-0"
+                                  aria-label="Host"
+                                />
+                              )}
+                            </div>
+                            <div className="text-[11px] text-amber-200/90 font-medium truncate mt-0.5">
+                              {arch.title}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap shrink-0 ${
+                            isPlayerHost
+                              ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+                              : isPlayerReady
+                                ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
+                                : 'border-slate-700 bg-slate-950/70 text-slate-400'
+                          }`}
+                        >
+                          {isPlayerHost ? (
+                            <>
+                              <Crown className="w-3 h-3 text-amber-300" />
+                              <span>Host · Siap</span>
+                            </>
+                          ) : isPlayerReady ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-300" />
+                              <span>Siap</span>
+                            </>
+                          ) : (
+                            <span>Menunggu</span>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Structured Player Stats CSS Grid (2x2 compact stat cells, zero horizontal scroll) */}
+                      <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-slate-800/90 bg-slate-950/60 p-2 text-[10px] sm:text-[11px] min-w-0">
+                        <div className="min-w-0">
+                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-semibold">
+                            Urutan Giliran
+                          </span>
+                          <span className="font-mono-num font-bold text-amber-300 truncate block">
+                            Slot #{idx + 1}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-semibold">
+                            Koneksi / Ping
+                          </span>
+                          <span className="inline-flex items-center gap-1 font-mono-num font-semibold text-slate-200 truncate">
+                            {p.connected !== false ? (
+                              <Wifi className="w-3 h-3 text-emerald-400 shrink-0" />
+                            ) : (
+                              <WifiOff className="w-3 h-3 text-rose-400 shrink-0" />
+                            )}
+                            <span>{p.pingMs ? `${p.pingMs}ms` : 'Stabil'}</span>
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-semibold">
+                            Bidak Pahlawan
+                          </span>
+                          <span className="text-slate-300 truncate block">
+                            {arch.title}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-slate-500 block text-[9px] uppercase tracking-wider font-semibold">
+                            {onlineLobby.boardMode === 'team' ? 'Alokasi Tim' : 'Peran Lobi'}
+                          </span>
+                          <span className="font-semibold text-slate-200 truncate block">
+                            {onlineLobby.boardMode === 'team'
+                              ? p.team === 'A'
+                                ? 'Tim Surya (A)'
+                                : 'Tim Bulan (B)'
+                              : isPlayerHost
+                                ? 'Tuan Rumah'
+                                : 'Penantang'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Footer Controls: Team Switch & Host Moderation Actions */}
+                      {(onlineLobby.boardMode === 'team' || (isHost && !isSelf)) && (
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/90">
+                          {onlineLobby.boardMode === 'team' && (
+                            <button
+                              type="button"
+                              disabled={!isHost && !isSelf}
+                              onClick={() =>
+                                onOnlineSetTeam(p.id, p.team === 'A' ? 'B' : 'A')
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer disabled:opacity-60 disabled:cursor-default ${
+                                p.team === 'A'
+                                  ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+                                  : 'border-sky-400/50 bg-sky-500/15 text-sky-200'
+                              }`}
+                            >
+                              {p.team === 'A' ? 'Tim Surya' : 'Tim Bulan'}
+                            </button>
+                          )}
+
+                          {isHost && !isSelf && onlineLobby.status === 'lobby' && (
+                            <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                              {!isPlayerReady && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOnlineReady(true, p.id)}
+                                  title="Tandai pemain ini Siap"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-950/70 border border-emerald-500/45 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-900/80 cursor-pointer"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>Set Siap</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => onOnlineTransferHost(p.id)}
+                                title="Jadikan Host"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-[11px] text-amber-300 hover:bg-slate-700 cursor-pointer"
+                              >
+                                <UserCheck className="w-3 h-3" />
+                                <span>Host</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onOnlineKick(p.id)}
+                                title="Keluarkan dari ruangan"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/60 border border-rose-500/40 text-[11px] text-rose-300 hover:bg-rose-900/70 cursor-pointer"
+                              >
+                                <UserMinus className="w-3 h-3" />
+                                <span>Keluarkan</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Open Slot Card when fewer than 4 players are in the room */}
+                {onlineLobby.players.length < 4 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleInviteShare()}
+                    className="min-w-0 overflow-hidden rounded-2xl border border-dashed border-amber-500/30 bg-slate-950/45 hover:bg-slate-900/70 hover:border-amber-400/50 p-3.5 flex flex-col items-center justify-center gap-2 text-center transition-colors cursor-pointer min-h-[148px]"
+                  >
+                    <div className="w-9 h-9 rounded-full border border-amber-400/40 bg-amber-500/10 flex items-center justify-center text-amber-300">
+                      <Share2 className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="text-xs font-bold text-amber-200 truncate">
+                        Slot Pahlawan Terbuka ({4 - onlineLobby.players.length} Tersisa)
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Ketuk untuk menyalin tautan undangan atau bagikan kode{' '}
+                        <span className="font-mono-num font-bold text-amber-300">
+                          #{onlineLobby.roomCode}
+                        </span>
+                      </p>
+                    </div>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Section 3: Settings, Chat & 3D Sanctuary Preview Grid (grid-cols-1 on Mobile, grid-cols-2 on Tablet, lg:grid-cols-3 on Desktop) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 items-stretch">
+              {/* Panel 1: Lobby Chat Card */}
+              <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4 flex flex-col justify-between gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm font-bold text-slate-200 truncate">
+                    Obrolan Lobi ({onlineLobby.chatMessages.length})
+                  </span>
+                  <span className="text-[10px] text-slate-400 truncate">
+                    Pesan instan lobi
+                  </span>
+                </div>
+
+                <div className="flex-1 min-h-[148px] max-h-48 overflow-y-auto custom-scroll space-y-1.5 text-xs pr-1 rounded-xl border border-slate-800/80 bg-slate-950/55 p-2.5">
+                  {onlineLobby.chatMessages.length === 0 ? (
+                    <div className="h-full min-h-[120px] flex items-center justify-center text-slate-500 text-[11px] text-center px-2">
+                      Sapa pemain lain atau koordinasikan tim sebelum pertandingan dimulai...
+                    </div>
+                  ) : (
+                    onlineLobby.chatMessages.map((m, i) => (
+                      <div
+                        key={`${m.timestamp}-${i}`}
+                        className="text-slate-200 leading-relaxed break-words"
+                      >
+                        <span className="font-bold text-amber-300">{m.senderName}: </span>
+                        <span>{m.text}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!chatInput.trim()) return;
+                    onOnlineChat(chatInput.trim());
+                    setChatInput('');
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <input
+                    type="text"
+                    maxLength={140}
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Kirim pesan ke lobi..."
+                    className="flex-1 min-w-0 min-h-[40px] rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                  <button
+                    type="submit"
+                    aria-label="Kirim Pesan"
+                    className="min-w-[42px] min-h-[40px] px-3 inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 cursor-pointer shrink-0"
+                  >
+                    <Send className="w-3.5 h-3.5 shrink-0" />
+                    <span className="hidden sm:inline">Kirim</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* Panel 2: Room Settings Card */}
+              <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4 flex flex-col justify-between gap-3">
+                <div className="space-y-3 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-xs sm:text-sm font-bold text-slate-200 block truncate">
+                        {isHost && onlineLobby.status === 'lobby'
+                          ? 'Pengaturan Tuan Rumah'
+                          : 'Aturan Pertandingan'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block truncate">
+                        {isHost
+                          ? 'Ubah mode papan atau visibilitas ruangan'
+                          : 'Dikonfigurasi oleh Tuan Rumah (Host)'}
+                      </span>
+                    </div>
                     {isHost && onlineLobby.status === 'lobby' && (
                       <button
                         type="button"
                         onClick={() => onOnlineUpdateSettings({ isPublic: !onlineLobby.isPublic })}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-200 hover:border-amber-400 cursor-pointer shrink-0"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-200 hover:border-amber-400 cursor-pointer shrink-0"
                       >
                         {onlineLobby.isPublic ? (
                           <>
                             <Lock className="w-3 h-3 text-amber-300" />
-                            Set Privat
+                            <span>Set Privat</span>
                           </>
                         ) : (
                           <>
                             <Unlock className="w-3 h-3 text-emerald-300" />
-                            Set Publik
+                            <span>Set Publik</span>
                           </>
                         )}
                       </button>
@@ -1207,319 +1549,20 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                 </div>
               </div>
 
-              {/* Right (Desktop) / First (Mobile): Players in Room + Chat + Detailed Ready/Start CTA */}
-              <div className="order-1 lg:order-2 lg:col-span-7 min-w-0 flex flex-col justify-between gap-4">
-                <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs sm:text-sm font-bold text-slate-200">
-                        Daftar Pahlawan di Lobi ({onlineLobby.players.length}/4)
-                      </span>
-                      <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-mono-num font-bold text-amber-300">
-                        {readyCount}/{onlineLobby.players.length} Siap
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-slate-400">
-                      Urutan giliran sesuai slot #1–#4
-                    </span>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-2.5">
-                    {onlineLobby.players.map((p, idx) => {
-                      const isPlayerHost = p.id === onlineLobby.hostId || idx === 0;
-                      const isSelf = p.id === onlineLobby.myPlayerId;
-                      const isPlayerReady = isPlayerHost || Boolean(p.ready);
-                      const arch = PLAYER_ARCHETYPES[p.archetypeIndex % PLAYER_ARCHETYPES.length];
-                      return (
-                        <div
-                          key={p.id}
-                          className={`min-w-0 overflow-hidden rounded-2xl border p-3 sm:p-3.5 space-y-2.5 transition-colors ${
-                            isSelf
-                              ? 'border-amber-400/60 bg-slate-900/95 shadow-md'
-                              : isPlayerReady
-                                ? 'border-emerald-500/35 bg-slate-900/80'
-                                : 'border-slate-700/80 bg-slate-900/65'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <AnimatedProgressRing
-                                progress={isPlayerReady ? 1 : 0.25}
-                                size={42}
-                                strokeWidth={3}
-                                tone={isPlayerHost ? 'amber' : isPlayerReady ? 'emerald' : 'sky'}
-                                pulse={isPlayerReady}
-                              >
-                                <ArchetypeEmblem
-                                  archetypeIndex={p.archetypeIndex}
-                                  className="w-4 h-4"
-                                />
-                              </AnimatedProgressRing>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white">
-                                  <span className="font-mono-num text-[10px] text-amber-300/90 shrink-0">
-                                    #{idx + 1}
-                                  </span>
-                                  <span className="truncate">{p.name}</span>
-                                  {isSelf && (
-                                    <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-bold text-amber-200 shrink-0">
-                                      Anda
-                                    </span>
-                                  )}
-                                  {isPlayerHost && (
-                                    <Crown
-                                      className="w-3.5 h-3.5 text-amber-400 shrink-0"
-                                      aria-label="Host"
-                                    />
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400 mt-0.5">
-                                  <span className="truncate">{arch.title}</span>
-                                  <span>·</span>
-                                  <span className="inline-flex items-center gap-1 shrink-0">
-                                    {p.connected !== false ? (
-                                      <Wifi className="w-3 h-3 text-emerald-400" />
-                                    ) : (
-                                      <WifiOff className="w-3 h-3 text-rose-400" />
-                                    )}
-                                    <span className="font-mono-num">
-                                      {p.pingMs ? `${p.pingMs}ms` : 'Aktif'}
-                                    </span>
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap shrink-0 ${
-                                isPlayerHost
-                                  ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
-                                  : isPlayerReady
-                                    ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
-                                    : 'border-slate-700 bg-slate-950/70 text-slate-400'
-                              }`}
-                            >
-                              {isPlayerHost ? (
-                                <>
-                                  <Crown className="w-3 h-3 text-amber-300" />
-                                  <span>Host · Siap</span>
-                                </>
-                              ) : isPlayerReady ? (
-                                <>
-                                  <Check className="w-3 h-3 text-emerald-300" />
-                                  <span>Siap</span>
-                                </>
-                              ) : (
-                                <span>Menunggu</span>
-                              )}
-                            </span>
-                          </div>
-
-                          {(onlineLobby.boardMode === 'team' || (isHost && !isSelf)) && (
-                            <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-800">
-                              {onlineLobby.boardMode === 'team' && (
-                                <button
-                                  type="button"
-                                  disabled={!isHost && !isSelf}
-                                  onClick={() =>
-                                    onOnlineSetTeam(p.id, p.team === 'A' ? 'B' : 'A')
-                                  }
-                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer disabled:opacity-60 disabled:cursor-default ${
-                                    p.team === 'A'
-                                      ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
-                                      : 'border-sky-400/50 bg-sky-500/15 text-sky-200'
-                                  }`}
-                                >
-                                  {p.team === 'A' ? 'Tim Surya' : 'Tim Bulan'}
-                                </button>
-                              )}
-
-                              {isHost && !isSelf && onlineLobby.status === 'lobby' && (
-                                <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-                                  {!isPlayerReady && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onOnlineReady(true, p.id)}
-                                      title="Tandai pemain ini Siap"
-                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-950/70 border border-emerald-500/45 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-900/80 cursor-pointer"
-                                    >
-                                      <Check className="w-3 h-3" />
-                                      Set Siap
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => onOnlineTransferHost(p.id)}
-                                    title="Jadikan Host"
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-[11px] text-amber-300 hover:bg-slate-700 cursor-pointer"
-                                  >
-                                    <UserCheck className="w-3 h-3" />
-                                    Host
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => onOnlineKick(p.id)}
-                                    title="Keluarkan dari ruangan"
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/60 border border-rose-500/40 text-[11px] text-rose-300 hover:bg-rose-900/70 cursor-pointer"
-                                  >
-                                    <UserMinus className="w-3 h-3" />
-                                    Keluarkan
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Lobby Chat + Detailed Pre-Launch Readiness & Start CTA */}
-                <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-300">Obrolan Lobi</span>
-                    <span className="text-[10px] text-slate-400">
-                      Pesan tampil instan ke semua pemain
-                    </span>
-                  </div>
-                  <div className="h-24 sm:h-28 overflow-y-auto custom-scroll space-y-1 text-xs pr-1 rounded-xl border border-slate-800/80 bg-slate-950/50 p-2.5">
-                    {onlineLobby.chatMessages.length === 0 ? (
-                      <div className="text-slate-500 text-[11px] py-5 text-center">
-                        Sapa pemain lain sebelum pertandingan dimulai...
-                      </div>
-                    ) : (
-                      onlineLobby.chatMessages.map((m, i) => (
-                        <div key={`${m.timestamp}-${i}`} className="text-slate-300">
-                          <span className="font-bold text-amber-300">{m.senderName}: </span>
-                          <span>{m.text}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!chatInput.trim()) return;
-                      onOnlineChat(chatInput.trim());
-                      setChatInput('');
-                    }}
-                    className="flex gap-2"
-                  >
-                    <input
-                      type="text"
-                      maxLength={140}
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Kirim pesan ke lobi..."
-                      className="flex-1 min-w-0 min-h-[40px] rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-white focus:outline-none focus:border-amber-400"
-                    />
-                    <button
-                      type="submit"
-                      aria-label="Kirim Pesan"
-                      className="min-w-[42px] min-h-[40px] inline-flex items-center justify-center rounded-xl bg-amber-500 text-slate-950 hover:bg-amber-400 cursor-pointer shrink-0"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </form>
-
-                  {/* Detailed Match Launch Checklist & Action Box */}
-                  <div className="rounded-2xl border border-amber-500/30 bg-slate-950/85 p-3 sm:p-3.5 space-y-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      <span className="font-bold text-amber-200">
-                        Status Peluncuran Arena 3D
-                      </span>
-                      <span
-                        className={`font-mono-num font-bold ${
-                          allReady
-                            ? 'text-emerald-300'
-                            : hasMinPlayers
-                              ? 'text-amber-300'
-                              : 'text-slate-400'
-                        }`}
-                      >
-                        {allReady
-                          ? `✓ Semua Siap (${readyCount}/${onlineLobby.players.length})`
-                          : hasMinPlayers
-                            ? `${readyCount}/${onlineLobby.players.length} Siap · Siap Diluncurkan`
-                            : `Menunggu Pemain (${onlineLobby.players.length}/2 Min)`}
-                      </span>
-                    </div>
-
-                    {/* Per-player mini status pills */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {onlineLobby.players.map((p, idx) => {
-                        const readyFlag = p.id === onlineLobby.hostId || idx === 0 || Boolean(p.ready);
-                        return (
-                          <span
-                            key={`pill-${p.id}`}
-                            className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-semibold max-w-[140px] ${
-                              readyFlag
-                                ? 'border-emerald-500/40 bg-emerald-500/12 text-emerald-200'
-                                : 'border-amber-500/35 bg-amber-500/10 text-amber-200'
-                            }`}
-                          >
-                            <span className="shrink-0">{readyFlag ? '✓' : '…'}</span>
-                            <span className="truncate">{p.name}</span>
-                          </span>
-                        );
-                      })}
-                    </div>
-
-                    {isHost ? (
-                      <div className="space-y-2 pt-0.5">
-                        <button
-                          type="button"
-                          disabled={!canStartMatch}
-                          onClick={onOnlineStart}
-                          className={`w-full min-h-[50px] inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg disabled:opacity-45 disabled:cursor-not-allowed ${
-                            allReady
-                              ? 'bg-gradient-to-r from-emerald-400 via-amber-400 to-amber-500 text-slate-950 hover:brightness-105'
-                              : 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 hover:brightness-105'
-                          }`}
-                        >
-                          <Play className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 fill-current" />
-                          <span>
-                            {!hasMinPlayers
-                              ? 'Menunggu Minimal 2 Pemain di Ruangan...'
-                              : allReady
-                                ? `Mulai Laga Daring Sekarang (${onlineLobby.players.length} Pemain)`
-                                : `Mulai Laga Daring (${readyCount}/${onlineLobby.players.length} Siap · Otomatis Masuk)`}
-                          </span>
-                        </button>
-                        {hasMinPlayers && unreadyGuests.length > 0 && (
-                          <p className="text-[10px] text-slate-400 text-center">
-                            Tip Host: Menekan <strong className="text-amber-300">Mulai Laga Daring</strong> akan otomatis menyiapkan seluruh pemain yang ada di ruangan dan langsung masuk ke arena 3D.
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5 pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => onOnlineReady(!meOnline?.ready)}
-                          className={`w-full min-h-[50px] inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg ${
-                            meOnline?.ready
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-400/60'
-                              : 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 hover:brightness-105'
-                          }`}
-                        >
-                          <Check className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                          <span>
-                            {meOnline?.ready
-                              ? 'Status Anda: SIAP BERTANDING! (Klik untuk Batal)'
-                              : 'Saya Siap Bertanding — Klik di Sini'}
-                          </span>
-                        </button>
-                        <p className="text-[10px] text-slate-400 text-center">
-                          {meOnline?.ready
-                            ? 'Menunggu Tuan Rumah (Host) menekan tombol Mulai Laga Daring...'
-                            : 'Tekan tombol di atas untuk memberi tanda Siap kepada Host.'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {/* Panel 3: 3D Sanctuary Preview Card (Spans 2 cols on md tablet, 1 col on lg 3-column desktop) */}
+              <div className="md:col-span-2 lg:col-span-1 min-w-0 flex">
+                <SanctuaryPreviewCard
+                  boardMode={onlineLobby.boardMode}
+                  roomTitle={onlineLobby.roomName}
+                  isPublic={onlineLobby.isPublic}
+                  timeLimitSec={onlineLobby.timeLimitSec}
+                  players={onlineLobby.players.map((p, idx) => ({
+                    name: p.name,
+                    archetypeIndex: p.archetypeIndex,
+                    ready: p.id === onlineLobby.hostId || idx === 0 || p.ready,
+                    isHost: p.id === onlineLobby.hostId || idx === 0,
+                  }))}
+                />
               </div>
             </div>
           </div>

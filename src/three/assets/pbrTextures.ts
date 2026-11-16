@@ -8,10 +8,108 @@ export interface PbrTextureSet {
   metalnessMap?: THREE.Texture;
 }
 
-// Fast deterministic 2D hash & value noise (tileable via period wrapping)
+// Ultra-fast deterministic 2D integer bitwise hash (replaces Math.sin to eliminate CPU bottlenecks)
 function hash2(ix: number, iy: number, seed: number): number {
-  const n = Math.sin(ix * 127.1 + iy * 311.7 + seed * 74.7) * 43758.5453123;
-  return n - Math.floor(n);
+  let h = Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263) + Math.imul((seed * 100) | 0, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+interface CachedPbrBuffers {
+  albedo: Uint8Array;
+  normal: Uint8Array;
+  orm: Uint8Array;
+  size: number;
+  repeatX: number;
+  repeatY: number;
+}
+
+const pbrBufferCache = new Map<string, CachedPbrBuffers>();
+const foliageCanvasCache = new Map<number, { colorCanvas: HTMLCanvasElement; normCanvas: HTMLCanvasElement }>();
+let cachedMistCanvas: HTMLCanvasElement | null = null;
+let cachedDragonEyeCanvas: HTMLCanvasElement | null = null;
+
+function createPbrSetFromBuffers(
+  buf: CachedPbrBuffers,
+  maxAnisotropy: number,
+): PbrTextureSet {
+  const { albedo, normal, orm, size, repeatX, repeatY } = buf;
+
+  const map = new THREE.DataTexture(albedo, size, size, THREE.RGBAFormat);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(repeatX, repeatY);
+  map.magFilter = THREE.LinearFilter;
+  map.minFilter = THREE.LinearMipmapLinearFilter;
+  map.generateMipmaps = true;
+  map.anisotropy = maxAnisotropy;
+  map.needsUpdate = true;
+
+  const normalMap = new THREE.DataTexture(normal, size, size, THREE.RGBAFormat);
+  normalMap.colorSpace = THREE.NoColorSpace;
+  normalMap.wrapS = THREE.RepeatWrapping;
+  normalMap.wrapT = THREE.RepeatWrapping;
+  normalMap.repeat.set(repeatX, repeatY);
+  normalMap.magFilter = THREE.LinearFilter;
+  normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+  normalMap.generateMipmaps = true;
+  normalMap.anisotropy = maxAnisotropy;
+  normalMap.needsUpdate = true;
+
+  const ormTex = new THREE.DataTexture(orm, size, size, THREE.RGBAFormat);
+  ormTex.colorSpace = THREE.NoColorSpace;
+  ormTex.wrapS = THREE.RepeatWrapping;
+  ormTex.wrapT = THREE.RepeatWrapping;
+  ormTex.repeat.set(repeatX, repeatY);
+  ormTex.magFilter = THREE.LinearFilter;
+  ormTex.minFilter = THREE.LinearMipmapLinearFilter;
+  ormTex.generateMipmaps = true;
+  ormTex.anisotropy = maxAnisotropy;
+  ormTex.needsUpdate = true;
+
+  return {
+    map,
+    normalMap,
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
+  };
+}
+
+function cacheAndCreatePbrSet(
+  cacheKey: string,
+  albedo: Uint8Array,
+  height: Float32Array,
+  normalStrength: number,
+  ao: Float32Array,
+  rough: Float32Array,
+  metal: Float32Array | number,
+  size: number,
+  repeatX: number,
+  repeatY: number,
+  maxAnisotropy: number,
+): PbrTextureSet {
+  const normalTex = buildNormalDataTexture(height, size, normalStrength, repeatX, repeatY, maxAnisotropy);
+  const ormTex = buildPackedOrmDataTexture(ao, rough, metal, size, repeatX, repeatY, maxAnisotropy);
+  const mapTex = buildAlbedoDataTexture(albedo, size, repeatX, repeatY, maxAnisotropy);
+
+  pbrBufferCache.set(cacheKey, {
+    albedo,
+    normal: normalTex.image.data as Uint8Array,
+    orm: ormTex.image.data as Uint8Array,
+    size,
+    repeatX,
+    repeatY,
+  });
+
+  return {
+    map: mapTex,
+    normalMap: normalTex,
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
+  };
 }
 
 function tileNoise(x: number, y: number, period: number, seed: number): number {
@@ -66,10 +164,10 @@ export function buildNormalDataTexture(
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
     const ym = (y - 1 + size) % size;
-    const yp = (y + 1) % size;
+    const yp = (y + 1 + size) % size;
     for (let x = 0; x < size; x++) {
       const xm = (x - 1 + size) % size;
-      const xp = (x + 1) % size;
+      const xp = (x + 1 + size) % size;
 
       const tl = height[ym * size + xm];
       const t = height[ym * size + x];
@@ -116,8 +214,6 @@ export function buildNormalDataTexture(
  * - Red   (R) = Ambient Occlusion (sampled by material.aoMap)
  * - Green (G) = Roughness         (sampled by material.roughnessMap)
  * - Blue  (B) = Metalness         (sampled by material.metalnessMap)
- * Sharing one DataTexture across aoMap, roughnessMap, and metalnessMap cuts non-albedo VRAM
- * and GPU texture cache bandwidth in half while enabling per-texel metalness!
  */
 export function buildPackedOrmDataTexture(
   ao: Float32Array,
@@ -194,6 +290,10 @@ export function createOrientalDragonPbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
+  const cacheKey = `dragon:${size}`;
+  const cached = pbrBufferCache.get(cacheKey);
+  if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
+
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -272,14 +372,7 @@ export function createOrientalDragonPbrMaps(
     }
   }
 
-  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.22, size, 7, 1, maxAnisotropy);
-  return {
-    map: buildAlbedoDataTexture(albedo, size, 7, 1, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 4.2, 7, 1, maxAnisotropy),
-    roughnessMap: ormTex,
-    aoMap: ormTex,
-    metalnessMap: ormTex,
-  };
+  return cacheAndCreatePbrSet(cacheKey, albedo, height, 4.2, ao, rough, 0.22, size, 7, 1, maxAnisotropy);
 }
 
 /**
@@ -291,6 +384,9 @@ export function createRockPbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
+  const cacheKey = `rock:${size}:${repeat}`;
+  const cached = pbrBufferCache.get(cacheKey);
+  if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -331,14 +427,7 @@ export function createRockPbrMaps(
     }
   }
 
-  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.08, size, repeat, repeat, maxAnisotropy);
-  return {
-    map: buildAlbedoDataTexture(albedo, size, repeat, repeat, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 4.5, repeat, repeat, maxAnisotropy),
-    roughnessMap: ormTex,
-    aoMap: ormTex,
-    metalnessMap: ormTex,
-  };
+  return cacheAndCreatePbrSet(cacheKey, albedo, height, 4.5, ao, rough, 0.08, size, repeat, repeat, maxAnisotropy);
 }
 
 /**
@@ -349,6 +438,9 @@ export function createBarkPbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
+  const cacheKey = `bark:${size}`;
+  const cached = pbrBufferCache.get(cacheKey);
+  if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -384,14 +476,7 @@ export function createBarkPbrMaps(
     }
   }
 
-  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.03, size, 2, 4, maxAnisotropy);
-  return {
-    map: buildAlbedoDataTexture(albedo, size, 2, 4, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 4.8, 2, 4, maxAnisotropy),
-    roughnessMap: ormTex,
-    aoMap: ormTex,
-    metalnessMap: ormTex,
-  };
+  return cacheAndCreatePbrSet(cacheKey, albedo, height, 4.8, ao, rough, 0.03, size, 2, 4, maxAnisotropy);
 }
 
 /**
@@ -402,6 +487,9 @@ export function createCastleStonePbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
+  const cacheKey = `stone:${size}`;
+  const cached = pbrBufferCache.get(cacheKey);
+  if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -447,14 +535,7 @@ export function createCastleStonePbrMaps(
     }
   }
 
-  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.12, size, 2, 2, maxAnisotropy);
-  return {
-    map: buildAlbedoDataTexture(albedo, size, 2, 2, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 4.6, 2, 2, maxAnisotropy),
-    roughnessMap: ormTex,
-    aoMap: ormTex,
-    metalnessMap: ormTex,
-  };
+  return cacheAndCreatePbrSet(cacheKey, albedo, height, 4.6, ao, rough, 0.12, size, 2, 2, maxAnisotropy);
 }
 
 /**
@@ -465,6 +546,9 @@ export function createCastleSlateRoofPbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
+  const cacheKey = `slate:${size}`;
+  const cached = pbrBufferCache.get(cacheKey);
+  if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -507,14 +591,7 @@ export function createCastleSlateRoofPbrMaps(
     }
   }
 
-  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.18, size, 3, 3, maxAnisotropy);
-  return {
-    map: buildAlbedoDataTexture(albedo, size, 3, 3, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 3.8, 3, 3, maxAnisotropy),
-    roughnessMap: ormTex,
-    aoMap: ormTex,
-    metalnessMap: ormTex,
-  };
+  return cacheAndCreatePbrSet(cacheKey, albedo, height, 3.8, ao, rough, 0.18, size, 3, 3, maxAnisotropy);
 }
 
 /**
@@ -525,6 +602,9 @@ export function createTimberPbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize >= 512 ? 512 : 256;
+  const cacheKey = `timber:${size}`;
+  const cached = pbrBufferCache.get(cacheKey);
+  if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -557,14 +637,7 @@ export function createTimberPbrMaps(
     }
   }
 
-  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.05, size, 2, 2, maxAnisotropy);
-  return {
-    map: buildAlbedoDataTexture(albedo, size, 2, 2, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 4.2, 2, 2, maxAnisotropy),
-    roughnessMap: ormTex,
-    aoMap: ormTex,
-    metalnessMap: ormTex,
-  };
+  return cacheAndCreatePbrSet(cacheKey, albedo, height, 4.2, ao, rough, 0.05, size, 2, 2, maxAnisotropy);
 }
 
 /**
@@ -575,6 +648,9 @@ export function createTerrainPbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
+  const cacheKey = `terrain:${size}`;
+  const cached = pbrBufferCache.get(cacheKey);
+  if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -605,14 +681,7 @@ export function createTerrainPbrMaps(
     }
   }
 
-  const ormTex = buildPackedOrmDataTexture(ao, rough, 0.03, size, 14, 14, maxAnisotropy);
-  return {
-    map: buildAlbedoDataTexture(albedo, size, 14, 14, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 2.8, 14, 14, maxAnisotropy),
-    roughnessMap: ormTex,
-    aoMap: ormTex,
-    metalnessMap: ormTex,
-  };
+  return cacheAndCreatePbrSet(cacheKey, albedo, height, 2.8, ao, rough, 0.03, size, 14, 14, maxAnisotropy);
 }
 
 /**
@@ -630,7 +699,24 @@ export function createFoliageAtlasTextures(
   normalMap: THREE.CanvasTexture;
 } {
   const size = texSize >= 512 ? 512 : 256;
-  const half = size / 2;
+  const cachedCanvases = foliageCanvasCache.get(size);
+  if (cachedCanvases) {
+    const map = new THREE.CanvasTexture(cachedCanvases.colorCanvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.generateMipmaps = true;
+    map.minFilter = THREE.LinearMipmapLinearFilter;
+    map.anisotropy = maxAnisotropy;
+    map.needsUpdate = true;
+
+    const normalMap = new THREE.CanvasTexture(cachedCanvases.normCanvas);
+    normalMap.colorSpace = THREE.NoColorSpace;
+    normalMap.generateMipmaps = true;
+    normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+    normalMap.anisotropy = maxAnisotropy;
+    normalMap.needsUpdate = true;
+    return { map, normalMap };
+  }
+
   const scaleRatio = size / 512;
 
   const colorCanvas = document.createElement('canvas');
@@ -758,6 +844,8 @@ export function createFoliageAtlasTextures(
   ctx.restore();
   nCtx.restore();
 
+  foliageCanvasCache.set(size, { colorCanvas, normCanvas });
+
   const map = new THREE.CanvasTexture(colorCanvas);
   map.colorSpace = THREE.SRGBColorSpace;
   map.generateMipmaps = true;
@@ -779,26 +867,29 @@ export function createFoliageAtlasTextures(
  * Soft radial mist/spray billboard texture (256x256 RGBA).
  */
 export function createMistSpriteTexture(): THREE.CanvasTexture {
-  const size = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createRadialGradient(
-    size * 0.5,
-    size * 0.5,
-    size * 0.04,
-    size * 0.5,
-    size * 0.5,
-    size * 0.48,
-  );
-  grad.addColorStop(0, 'rgba(224, 242, 254, 0.72)');
-  grad.addColorStop(0.45, 'rgba(186, 230, 253, 0.35)');
-  grad.addColorStop(1, 'rgba(186, 230, 253, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, size, size);
+  if (!cachedMistCanvas) {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const grad = ctx.createRadialGradient(
+      size * 0.5,
+      size * 0.5,
+      size * 0.04,
+      size * 0.5,
+      size * 0.5,
+      size * 0.48,
+    );
+    grad.addColorStop(0, 'rgba(224, 242, 254, 0.72)');
+    grad.addColorStop(0.45, 'rgba(186, 230, 253, 0.35)');
+    grad.addColorStop(1, 'rgba(186, 230, 253, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    cachedMistCanvas = canvas;
+  }
 
-  const tex = new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(cachedMistCanvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   return tex;
@@ -808,39 +899,42 @@ export function createMistSpriteTexture(): THREE.CanvasTexture {
  * Dragon Slit-Pupil Iris Texture (256x256).
  */
 export function createDragonEyeTexture(maxAnisotropy: number): THREE.CanvasTexture {
-  const size = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const c = size / 2;
+  if (!cachedDragonEyeCanvas) {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const c = size / 2;
 
-  const grad = ctx.createRadialGradient(c, c, 12, c, c, c);
-  grad.addColorStop(0, '#fef08a');
-  grad.addColorStop(0.35, '#f59e0b');
-  grad.addColorStop(0.75, '#b45309');
-  grad.addColorStop(1, '#451a03');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, size, size);
+    const grad = ctx.createRadialGradient(c, c, 12, c, c, c);
+    grad.addColorStop(0, '#fef08a');
+    grad.addColorStop(0.35, '#f59e0b');
+    grad.addColorStop(0.75, '#b45309');
+    grad.addColorStop(1, '#451a03');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
 
-  // Fine radial iris fibers
-  for (let i = 0; i < 64; i++) {
-    const a = (i / 64) * Math.PI * 2;
-    ctx.strokeStyle = i % 2 === 0 ? 'rgba(254, 240, 138, 0.35)' : 'rgba(69, 26, 3, 0.35)';
-    ctx.lineWidth = 2;
+    // Fine radial iris fibers
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      ctx.strokeStyle = i % 2 === 0 ? 'rgba(254, 240, 138, 0.35)' : 'rgba(69, 26, 3, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(c + Math.cos(a) * 28, c + Math.sin(a) * 28);
+      ctx.lineTo(c + Math.cos(a) * 116, c + Math.sin(a) * 116);
+      ctx.stroke();
+    }
+
+    // Sharp vertical reptile slit pupil
+    ctx.fillStyle = '#020617';
     ctx.beginPath();
-    ctx.moveTo(c + Math.cos(a) * 28, c + Math.sin(a) * 28);
-    ctx.lineTo(c + Math.cos(a) * 116, c + Math.sin(a) * 116);
-    ctx.stroke();
+    ctx.ellipse(c, c, 16, 78, 0, 0, Math.PI * 2);
+    ctx.fill();
+    cachedDragonEyeCanvas = canvas;
   }
 
-  // Sharp vertical reptile slit pupil
-  ctx.fillStyle = '#020617';
-  ctx.beginPath();
-  ctx.ellipse(c, c, 16, 78, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const tex = new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(cachedDragonEyeCanvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = maxAnisotropy;
   tex.needsUpdate = true;

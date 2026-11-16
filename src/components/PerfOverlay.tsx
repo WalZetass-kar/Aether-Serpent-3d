@@ -36,21 +36,30 @@ export const PerfOverlay: React.FC<PerfOverlayProps> = ({
         ? 'text-amber-300'
         : 'text-rose-400';
 
+  const statusTone =
+    telemetry.deviceStatus === 'Optimal'
+      ? 'bg-emerald-500/15 border-emerald-400/35 text-emerald-300'
+      : telemetry.deviceStatus === 'Adaptif (Stabil)'
+        ? 'bg-sky-500/15 border-sky-400/35 text-sky-300'
+        : 'bg-rose-500/15 border-rose-400/35 text-rose-300';
+
   return (
     <aside
       aria-label="Developer Performance Telemetry"
-      className="fixed top-20 left-3 sm:left-4 z-30 w-72 rounded-2xl glass-panel p-3.5 text-[11px] text-slate-200 shadow-2xl select-none"
+      className="fixed top-20 left-3 sm:left-4 z-30 w-76 rounded-2xl glass-panel p-3.5 text-[11px] text-slate-200 shadow-2xl select-none"
     >
       <div className="flex items-center justify-between gap-2 pb-2 border-b border-amber-500/20">
         <div className="flex items-center gap-1.5">
           <Activity className="w-3.5 h-3.5 text-amber-400" />
           <span className="font-display text-xs font-bold text-gold-gradient">
-            Perf Telemetry
+            Perf Monitor
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-400/35 font-mono-num text-[10px] font-bold uppercase text-amber-200">
-            {telemetry.resolvedTier}
+            {telemetry.presetSelected === 'auto'
+              ? `AUTO→${telemetry.resolvedTier}`
+              : telemetry.resolvedTier}
             {telemetry.autoAdjustedStep < 0 ? ` (${telemetry.autoAdjustedStep})` : ''}
           </span>
           <button
@@ -70,7 +79,17 @@ export const PerfOverlay: React.FC<PerfOverlayProps> = ({
           <span className={`font-bold ${fpsTone}`}>{telemetry.fps}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">Avg/P95</span>
+          <span className="text-slate-400">Avg / Min FPS</span>
+          <span className="text-slate-100">
+            {telemetry.avgFps} / {telemetry.minFps}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">Frame Time</span>
+          <span className="text-slate-100">{telemetry.frameMs} ms</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">Avg / P95</span>
           <span className="text-slate-100">
             {telemetry.avgFrameMs}/{telemetry.p95FrameMs}ms
           </span>
@@ -92,7 +111,7 @@ export const PerfOverlay: React.FC<PerfOverlayProps> = ({
           <span className="text-slate-200">{telemetry.activeObjects}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">Geo/Tex</span>
+          <span className="text-slate-400">Geo / Tex</span>
           <span className="text-slate-200">
             {telemetry.geometries}/{telemetry.textures}
           </span>
@@ -108,6 +127,12 @@ export const PerfOverlay: React.FC<PerfOverlayProps> = ({
       </div>
 
       <div className="pt-2 border-t border-slate-800/80 space-y-1 text-[10px] text-slate-400">
+        <div className="flex items-center justify-between font-mono-num">
+          <span>Status Perangkat</span>
+          <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${statusTone}`}>
+            {telemetry.deviceStatus}
+          </span>
+        </div>
         <div className="flex items-center justify-between font-mono-num">
           <span>Render Res</span>
           <span className="text-slate-200">
@@ -149,7 +174,9 @@ export const PerfOverlay: React.FC<PerfOverlayProps> = ({
           <div className="rounded-lg border border-emerald-500/30 bg-slate-950/75 p-2 font-mono-num text-[10px] text-slate-200 space-y-0.5">
             <div className="flex justify-between font-bold text-emerald-300">
               <span>Hasil ({benchResult.tier.toUpperCase()})</span>
-              <span>{benchResult.avgFps} FPS</span>
+              <span>
+                {benchResult.avgFps} FPS (Min {benchResult.minFps})
+              </span>
             </div>
             <div className="flex justify-between text-slate-400">
               <span>Avg {benchResult.avgFrameMs}ms · P95 {benchResult.p95FrameMs}ms</span>

@@ -24,6 +24,60 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+const boardReliefBufferCache = new Map<number, { normal: Uint8Array; orm: Uint8Array }>();
+const bronzeBufferCache = new Map<number, { normal: Uint8Array; orm: Uint8Array }>();
+const arenaFullPbrBufferCache = new Map<
+  string,
+  { albedo: Uint8Array; normal: Uint8Array; orm: Uint8Array; size: number; repeatX: number; repeatY: number }
+>();
+
+function buildSetFromArenaCache(
+  buf: { albedo: Uint8Array; normal: Uint8Array; orm: Uint8Array; size: number; repeatX: number; repeatY: number },
+  maxAnisotropy: number,
+): PbrTextureSet {
+  const { albedo, normal, orm, size, repeatX, repeatY } = buf;
+  const map = new THREE.DataTexture(albedo, size, size, THREE.RGBAFormat);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(repeatX, repeatY);
+  map.magFilter = THREE.LinearFilter;
+  map.minFilter = THREE.LinearMipmapLinearFilter;
+  map.generateMipmaps = true;
+  map.anisotropy = maxAnisotropy;
+  map.needsUpdate = true;
+
+  const normalMap = new THREE.DataTexture(normal, size, size, THREE.RGBAFormat);
+  normalMap.colorSpace = THREE.NoColorSpace;
+  normalMap.wrapS = THREE.RepeatWrapping;
+  normalMap.wrapT = THREE.RepeatWrapping;
+  normalMap.repeat.set(repeatX, repeatY);
+  normalMap.magFilter = THREE.LinearFilter;
+  normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+  normalMap.generateMipmaps = true;
+  normalMap.anisotropy = maxAnisotropy;
+  normalMap.needsUpdate = true;
+
+  const ormTex = new THREE.DataTexture(orm, size, size, THREE.RGBAFormat);
+  ormTex.colorSpace = THREE.NoColorSpace;
+  ormTex.wrapS = THREE.RepeatWrapping;
+  ormTex.wrapT = THREE.RepeatWrapping;
+  ormTex.repeat.set(repeatX, repeatY);
+  ormTex.magFilter = THREE.LinearFilter;
+  ormTex.minFilter = THREE.LinearMipmapLinearFilter;
+  ormTex.generateMipmaps = true;
+  ormTex.anisotropy = maxAnisotropy;
+  ormTex.needsUpdate = true;
+
+  return {
+    map,
+    normalMap,
+    roughnessMap: ormTex,
+    aoMap: ormTex,
+    metalnessMap: ormTex,
+  };
+}
+
 /**
  * Generates full PBR Scale Maps (albedo, tangent-space normal, and packed ORM: R=AO, G=Roughness, B=Metalness)
  * tailored to each in-game Serpent's exact identity palette (primary, stripe, belly) and scale pattern.
@@ -37,6 +91,9 @@ export function createSerpentIdentityPbrMaps(
   scalePattern: 'diamond_keel' | 'royal_hex' | 'draconic_plate' | 'frost_shard' = 'diamond_keel',
 ): PbrTextureSet {
   const size = texSize;
+  const cacheKey = `serpent:${primaryHex}:${stripeHex}:${bellyHex}:${scalePattern}:${size}`;
+  const cached = arenaFullPbrBufferCache.get(cacheKey);
+  if (cached) return buildSetFromArenaCache(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -129,9 +186,21 @@ export function createSerpentIdentityPbrMaps(
   }
 
   const ormTex = buildPackedOrmDataTexture(ao, rough, metal, size, 9, 1, maxAnisotropy);
+  const mapTex = buildAlbedoDataTexture(albedo, size, 9, 1, maxAnisotropy);
+  const normalTex = buildNormalDataTexture(height, size, 4.6, 9, 1, maxAnisotropy);
+  if (arenaFullPbrBufferCache.size < 24) {
+    arenaFullPbrBufferCache.set(cacheKey, {
+      albedo,
+      normal: normalTex.image.data as Uint8Array,
+      orm: ormTex.image.data as Uint8Array,
+      size,
+      repeatX: 9,
+      repeatY: 1,
+    });
+  }
   return {
-    map: buildAlbedoDataTexture(albedo, size, 9, 1, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 4.6, 9, 1, maxAnisotropy),
+    map: mapTex,
+    normalMap: normalTex,
     roughnessMap: ormTex,
     aoMap: ormTex,
     metalnessMap: ormTex,
@@ -414,6 +483,39 @@ export function createBoardStonePbrSet(
 
   // 2. Per-cell Stone Surface Relief Maps (Normal + Packed ORM: AO, Roughness, Metalness) tiled 10x10 across board UVs
   const pbrSize = reliefSize >= 512 ? 512 : 256;
+  const cachedRelief = boardReliefBufferCache.get(pbrSize);
+  if (cachedRelief) {
+    const normalMap = new THREE.DataTexture(cachedRelief.normal, pbrSize, pbrSize, THREE.RGBAFormat);
+    normalMap.colorSpace = THREE.NoColorSpace;
+    normalMap.wrapS = THREE.RepeatWrapping;
+    normalMap.wrapT = THREE.RepeatWrapping;
+    normalMap.repeat.set(BOARD_SIZE, BOARD_SIZE);
+    normalMap.magFilter = THREE.LinearFilter;
+    normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+    normalMap.generateMipmaps = true;
+    normalMap.anisotropy = maxAnisotropy;
+    normalMap.needsUpdate = true;
+
+    const ormTex = new THREE.DataTexture(cachedRelief.orm, pbrSize, pbrSize, THREE.RGBAFormat);
+    ormTex.colorSpace = THREE.NoColorSpace;
+    ormTex.wrapS = THREE.RepeatWrapping;
+    ormTex.wrapT = THREE.RepeatWrapping;
+    ormTex.repeat.set(BOARD_SIZE, BOARD_SIZE);
+    ormTex.magFilter = THREE.LinearFilter;
+    ormTex.minFilter = THREE.LinearMipmapLinearFilter;
+    ormTex.generateMipmaps = true;
+    ormTex.anisotropy = maxAnisotropy;
+    ormTex.needsUpdate = true;
+
+    return {
+      map,
+      normalMap,
+      roughnessMap: ormTex,
+      aoMap: ormTex,
+      metalnessMap: ormTex,
+    };
+  }
+
   const height = new Float32Array(pbrSize * pbrSize);
   const rough = new Float32Array(pbrSize * pbrSize);
   const ao = new Float32Array(pbrSize * pbrSize);
@@ -458,9 +560,15 @@ export function createBoardStonePbrSet(
   }
 
   const ormTex = buildPackedOrmDataTexture(ao, rough, metal, pbrSize, BOARD_SIZE, BOARD_SIZE, maxAnisotropy);
+  const normalMap = buildNormalDataTexture(height, pbrSize, 4.6, BOARD_SIZE, BOARD_SIZE, maxAnisotropy);
+  boardReliefBufferCache.set(pbrSize, {
+    normal: normalMap.image.data as Uint8Array,
+    orm: ormTex.image.data as Uint8Array,
+  });
+
   return {
     map,
-    normalMap: buildNormalDataTexture(height, pbrSize, 4.6, BOARD_SIZE, BOARD_SIZE, maxAnisotropy),
+    normalMap,
     roughnessMap: ormTex,
     aoMap: ormTex,
     metalnessMap: ormTex,
@@ -482,6 +590,9 @@ export function createLadderMaterialPbrMaps(
   texSize: 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize >= 512 ? 512 : 256;
+  const cacheKey = `ladder:${materialStyle}:${primaryHex}:${accentHex}:${size}`;
+  const cached = arenaFullPbrBufferCache.get(cacheKey);
+  if (cached) return buildSetFromArenaCache(cached, maxAnisotropy);
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -581,9 +692,21 @@ export function createLadderMaterialPbrMaps(
   }
 
   const ormTex = buildPackedOrmDataTexture(ao, rough, metal, size, 2, 2, maxAnisotropy);
+  const mapTex = buildAlbedoDataTexture(albedo, size, 2, 2, maxAnisotropy);
+  const normalTex = buildNormalDataTexture(height, size, 4.4, 2, 2, maxAnisotropy);
+  if (arenaFullPbrBufferCache.size < 24) {
+    arenaFullPbrBufferCache.set(cacheKey, {
+      albedo,
+      normal: normalTex.image.data as Uint8Array,
+      orm: ormTex.image.data as Uint8Array,
+      size,
+      repeatX: 2,
+      repeatY: 2,
+    });
+  }
   return {
-    map: buildAlbedoDataTexture(albedo, size, 2, 2, maxAnisotropy),
-    normalMap: buildNormalDataTexture(height, size, 4.4, 2, 2, maxAnisotropy),
+    map: mapTex,
+    normalMap: normalTex,
     roughnessMap: ormTex,
     aoMap: ormTex,
     metalnessMap: ormTex,
@@ -599,6 +722,38 @@ export function createHammeredBronzePbrMaps(
   texSize = 256,
 ): Omit<PbrTextureSet, 'map'> {
   const size = texSize >= 256 ? 256 : 128;
+  const cached = bronzeBufferCache.get(size);
+  if (cached) {
+    const normalMap = new THREE.DataTexture(cached.normal, size, size, THREE.RGBAFormat);
+    normalMap.colorSpace = THREE.NoColorSpace;
+    normalMap.wrapS = THREE.RepeatWrapping;
+    normalMap.wrapT = THREE.RepeatWrapping;
+    normalMap.repeat.set(2, 2);
+    normalMap.magFilter = THREE.LinearFilter;
+    normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+    normalMap.generateMipmaps = true;
+    normalMap.anisotropy = maxAnisotropy;
+    normalMap.needsUpdate = true;
+
+    const ormTex = new THREE.DataTexture(cached.orm, size, size, THREE.RGBAFormat);
+    ormTex.colorSpace = THREE.NoColorSpace;
+    ormTex.wrapS = THREE.RepeatWrapping;
+    ormTex.wrapT = THREE.RepeatWrapping;
+    ormTex.repeat.set(2, 2);
+    ormTex.magFilter = THREE.LinearFilter;
+    ormTex.minFilter = THREE.LinearMipmapLinearFilter;
+    ormTex.generateMipmaps = true;
+    ormTex.anisotropy = maxAnisotropy;
+    ormTex.needsUpdate = true;
+
+    return {
+      normalMap,
+      roughnessMap: ormTex,
+      aoMap: ormTex,
+      metalnessMap: ormTex,
+    };
+  }
+
   const height = new Float32Array(size * size);
   const rough = new Float32Array(size * size);
   const ao = new Float32Array(size * size);
@@ -619,8 +774,14 @@ export function createHammeredBronzePbrMaps(
   }
 
   const ormTex = buildPackedOrmDataTexture(ao, rough, metal, size, 2, 2, maxAnisotropy);
+  const normalMap = buildNormalDataTexture(height, size, 2.4, 2, 2, maxAnisotropy);
+  bronzeBufferCache.set(size, {
+    normal: normalMap.image.data as Uint8Array,
+    orm: ormTex.image.data as Uint8Array,
+  });
+
   return {
-    normalMap: buildNormalDataTexture(height, size, 2.4, 2, 2, maxAnisotropy),
+    normalMap,
     roughnessMap: ormTex,
     aoMap: ormTex,
     metalnessMap: ormTex,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Camera, Compass, Home, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { BookOpen, Camera, Compass, Home, Menu, Sparkles, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import {
   BOARD_GAME_MODES,
   ONLINE_TURN_TIMEOUT_SEC,
@@ -7,6 +7,7 @@ import {
   type ConnectionMode,
   type DifficultyMode,
 } from '../../shared/gameConfig';
+import type { QualityPresetId } from '../three/perf/qualityPresets';
 import { AnimatedProgressRing } from './AnimatedProgressRing';
 import { SerpentCrestEmblem } from './FantasyIcons';
 
@@ -24,6 +25,8 @@ interface HUDTopBarProps {
   turnTimeLeftSec: number | null;
   isMyOnlineTurn: boolean;
   isAnimating: boolean;
+  graphicsPreset?: QualityPresetId;
+  onQuickToggleLightweight?: () => void;
   onToggleMute: () => void;
   onOpenTutorial: () => void;
   onOpenCameraSettings?: () => void;
@@ -52,6 +55,8 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   turnTimeLeftSec,
   isMyOnlineTurn,
   isAnimating,
+  graphicsPreset = 'auto',
+  onQuickToggleLightweight,
   onToggleMute,
   onOpenTutorial,
   onOpenCameraSettings,
@@ -60,6 +65,8 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   onReturnToMenu,
 }) => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  const isLightMode = graphicsPreset === 'potato' || graphicsPreset === 'low';
 
   const modeLabel =
     BOARD_GAME_MODES.find((m) => m.id === boardMode)?.label ?? 'Classic';
@@ -89,7 +96,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
       <header className="pointer-events-none fixed safe-hud-top z-20 px-2 sm:px-4 pt-1.5 sm:pt-3">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-1.5 sm:gap-2">
           {/* Left: Slim Brand & Active Match Title */}
-          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 rounded-xl border border-amber-500/25 bg-slate-950/78 sm:bg-slate-950/90 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 shadow-md min-w-0">
+          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 rounded-xl border border-amber-500/25 bg-slate-950/82 sm:bg-slate-950/90 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 shadow-md min-w-0">
             <SerpentCrestEmblem className="w-4 h-4 sm:w-6 sm:h-6 shrink-0" />
             <div className="leading-tight min-w-0">
               <div className="flex items-center gap-1.5">
@@ -123,8 +130,8 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             </div>
           </div>
 
-          {/* Right: Timers + Desktop Actions / Mobile Sidebar Button */}
-          <div className="pointer-events-auto flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Right: Timers + Tablet/Desktop Actions + Mobile Quick Controls */}
+          <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 md:gap-2 shrink-0">
             {showMatchClock && (
               <div
                 className={`flex items-center gap-1 sm:gap-2 rounded-xl border px-1.5 sm:px-2.5 py-0.5 sm:py-1 shadow-md bg-slate-950/80 sm:bg-slate-950/90 backdrop-blur-md ${
@@ -201,16 +208,39 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
               </div>
             )}
 
-            {/* Desktop Action Buttons */}
+            {/* 1-Tap Quick Lightweight Mode Toggle (Visible on Mobile, Tablet & Desktop) */}
+            {onQuickToggleLightweight && (
+              <button
+                type="button"
+                onClick={onQuickToggleLightweight}
+                className={`inline-flex items-center justify-center gap-1 rounded-xl border backdrop-blur-md h-9 sm:min-h-[38px] px-2 sm:px-2.5 text-[11px] font-bold transition-all cursor-pointer shadow-md ${
+                  isLightMode
+                    ? 'border-emerald-400/65 bg-emerald-500/20 text-emerald-200 hover:border-emerald-300'
+                    : 'border-slate-700/80 bg-slate-950/90 text-slate-200 hover:border-amber-400/50 hover:text-amber-200'
+                }`}
+                title={
+                  isLightMode
+                    ? 'Mode Super Ringan Aktif (Klik untuk ganti mode grafis)'
+                    : 'Aktifkan Mode Super Ringan 60 FPS'
+                }
+              >
+                <Zap className={`w-3.5 h-3.5 shrink-0 ${isLightMode ? 'text-emerald-300' : 'text-amber-300'}`} />
+                <span className="hidden md:inline">
+                  {isLightMode ? 'Mode Ringan ON' : 'Mode Ringan'}
+                </span>
+              </button>
+            )}
+
+            {/* Tablet & Desktop Action Buttons */}
             {onOpenOracleAI && (
               <button
                 type="button"
                 onClick={onOpenOracleAI}
-                className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/50 bg-amber-500/15 backdrop-blur-md min-h-[38px] px-3 text-xs font-bold text-amber-200 hover:border-amber-300 hover:text-amber-100 shadow-lg transition-all cursor-pointer"
+                className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/50 bg-amber-500/15 backdrop-blur-md min-h-[38px] px-2.5 md:px-3 text-xs font-bold text-amber-200 hover:border-amber-300 hover:text-amber-100 shadow-lg transition-all cursor-pointer"
                 title="Oracle Aether AI — Penasihat Strategi"
               >
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>Oracle AI</span>
+                <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                <span className="hidden md:inline">Oracle AI</span>
               </button>
             )}
 
@@ -237,11 +267,11 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             <button
               type="button"
               onClick={onReturnToMenu}
-              className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md min-h-[38px] px-3 text-xs font-semibold text-slate-200 hover:border-rose-400/50 hover:text-rose-200 transition-colors cursor-pointer"
+              className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md min-h-[38px] px-2.5 md:px-3 text-xs font-semibold text-slate-200 hover:border-rose-400/50 hover:text-rose-200 transition-colors cursor-pointer"
               title="Kembali ke Menu Utama"
             >
-              <Home className="w-4 h-4" />
-              <span>Menu</span>
+              <Home className="w-4 h-4 shrink-0" />
+              <span className="hidden md:inline">Menu</span>
             </button>
 
             {/* Mobile Single Menu Sidebar Button */}
@@ -260,7 +290,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
       {/* Mobile In-Game Sidebar Drawer */}
       {mobileDrawerOpen && (
         <div className="pointer-events-auto fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-xs sm:hidden">
-          <aside className="flex h-full w-72 max-w-[85vw] flex-col border-l border-slate-800 bg-slate-950/98 safe-drawer-inset space-y-4 shadow-2xl">
+          <aside className="flex h-full w-72 max-w-[85vw] flex-col border-l border-slate-800 bg-slate-950/98 safe-drawer-inset space-y-4 shadow-2xl overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <SerpentCrestEmblem className="w-5 h-5" />
@@ -279,6 +309,28 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             </div>
 
             <div className="space-y-2.5">
+              {onQuickToggleLightweight && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onQuickToggleLightweight();
+                  }}
+                  className={`w-full flex items-center justify-between min-h-[44px] px-3.5 rounded-xl border text-xs font-bold ${
+                    isLightMode
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
+                      : 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2.5">
+                    <Zap className="w-4 h-4 shrink-0" />
+                    <span>Mode Ringan (60 FPS)</span>
+                  </span>
+                  <span className="font-mono-num text-[11px]">
+                    {isLightMode ? 'AKTIF' : 'MATI'}
+                  </span>
+                </button>
+              )}
+
               {onResetOverview && (
                 <button
                   type="button"
@@ -303,7 +355,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                   className="w-full flex items-center gap-2.5 min-h-[44px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
                 >
                   <Camera className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span>Kamera & Performa Grafis (Ringan)</span>
+                  <span>Kamera & Detail Grafis</span>
                 </button>
               )}
 
@@ -371,3 +423,4 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
     </>
   );
 };
+

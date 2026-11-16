@@ -1434,20 +1434,29 @@ export function buildArenaEnvironment(
       m.receiveShadow = sh;
     }
 
-    for (const tree of treeLods) {
+    boulderLods.forEach((boulder, idx) => {
+      const keepOnTier = cfg.tier === 'potato' ? idx % 2 === 0 : true;
+      boulder.visible = showRocks && keepOnTier;
+    });
+
+    treeLods.forEach((tree, idx) => {
+      // Keep inner moat-bank trees; thin outer woodland ring on potato/low tiers to save draw calls
+      const keepOnTier =
+        cfg.tier === 'potato'
+          ? idx < 12 || idx % 2 === 0
+          : cfg.tier === 'low'
+            ? idx < 16 || idx % 3 !== 2
+            : true;
+      tree.visible = showTrees && keepOnTier;
       tree.traverse((obj) => {
         if ((obj as THREE.Mesh).isMesh) {
           obj.castShadow = sh && !impOnly;
           obj.receiveShadow = sh;
         }
       });
-    }
+    });
 
     applyLodBiasToGroup(group, cfg.lodBias);
-
-    treeLods.forEach((tree) => {
-      tree.visible = showTrees;
-    });
 
     vistaGroup.visible = showCastle;
   };

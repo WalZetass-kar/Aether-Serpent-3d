@@ -298,8 +298,8 @@ export class FantasyBoardEngine {
       this.renderer.capabilities.getMaxAnisotropy(),
     );
 
-    // Stage 1 (18%): Lighting & IBL
-    this.options.onBuildProgress?.(0.18, 'Menyiapkan pencahayaan & atmosfer WebGL2...');
+    // Stage 1 (14%): Lighting & IBL Atmosphere
+    this.options.onBuildProgress?.(0.14, 'Menyiapkan pencahayaan & atmosfer langit...');
     const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
     this.envMap = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = this.envMap;
@@ -310,8 +310,8 @@ export class FantasyBoardEngine {
     await this.yieldFrame();
     if (this.disposed) return;
 
-    // Stage 2 (35%): Sanctuary Terrain, Water, Waterfall & Forest Foliage
-    this.options.onBuildProgress?.(0.35, `Membangun lanskap ${this.boardConfig.name}...`);
+    // Stage 2 (28%): Sanctuary Terrain, Water, Waterfall & Forest Foliage
+    this.options.onBuildProgress?.(0.28, `Membangun lanskap ${this.boardConfig.name}...`);
     this.arenaEnv = createSanctuaryEnvironment(
       this.scene,
       maxAniso,
@@ -322,8 +322,8 @@ export class FantasyBoardEngine {
     await this.yieldFrame();
     if (this.disposed) return;
 
-    // Stage 3 (58%): Beveled Stone Board, Ladders & Spline Snakes
-    this.options.onBuildProgress?.(0.58, 'Mengukir papan batu runik & ular spline...');
+    // Stage 3 (44%): Beveled Stone Board Plinth & 100 Runic Tiles
+    this.options.onBuildProgress?.(0.44, 'Mengukir papan batu runik 100 petak...');
     const { boardGroup, boardCollider, tileHighlight } = buildBeveledStoneBoard(
       maxAniso,
       cfg,
@@ -337,14 +337,24 @@ export class FantasyBoardEngine {
       this.highlightTile(this.pendingHighlightTile);
       this.pendingHighlightTile = null;
     }
-
-    this.buildSnakesAndLadders(maxAniso, cfg);
     await this.yieldFrame();
     if (this.disposed) return;
 
-    // Stage 4 (78%): Special Shrines, Dice Dais, VFX & Hero Pawns
-    this.options.onBuildProgress?.(0.78, 'Memasang kuil rune, dadu & pion pahlawan...');
+    // Stage 4 (60%): Enchanted Ladders
+    this.options.onBuildProgress?.(0.6, 'Memahat tangga suci & jalur pendakian...');
+    this.buildLadders(maxAniso, cfg);
+    await this.yieldFrame();
+    if (this.disposed) return;
+
+    // Stage 5 (74%): 3D Spline Snakes & Special Shrines
+    this.options.onBuildProgress?.(0.74, 'Membangkitkan ular mistis & kuil artefak...');
+    this.buildSnakes(maxAniso, cfg);
     this.buildSpecialShrines(cfg);
+    await this.yieldFrame();
+    if (this.disposed) return;
+
+    // Stage 6 (88%): Dice Dais, VFX Pool & 3D Hero Pawns
+    this.options.onBuildProgress?.(0.88, 'Menurunkan pion pahlawan 3D & dadu altar...');
     this.buildDiceDais(cfg);
 
     this.diceGroup = createFantasyDice(maxAniso, this.diceSkinId);
@@ -392,8 +402,8 @@ export class FantasyBoardEngine {
     await this.yieldFrame();
     if (this.disposed) return;
 
-    // Stage 5 (92%): Shader Warmup, Adaptive Post-Processing & Warm-up Frame
-    this.options.onBuildProgress?.(0.92, 'Mengompilasi shader & efek kamera...');
+    // Stage 7 (96% -> 100%): Shader Warmup, Adaptive Post-Processing & First Frame
+    this.options.onBuildProgress?.(0.96, 'Menyinkronkan kamera & mengompilasi shader...');
     await this.yieldFrame();
     if (this.disposed) return;
 
@@ -401,7 +411,7 @@ export class FantasyBoardEngine {
     const height = this.container.clientHeight || window.innerHeight;
     applyLodBiasToGroup(this.scene, cfg.lodBias);
     this.syncPostProcessingPipeline(cfg, width, height);
-    if (!this.isSoftwareGl && cfg.tier !== 'potato') {
+    if (!this.isSoftwareGl && cfg.tier !== 'potato' && cfg.tier !== 'low') {
       this.renderer.compile(this.scene, this.camera);
     }
 
@@ -720,15 +730,11 @@ export class FantasyBoardEngine {
     this.applyBoardAtmosphere(cfg);
   }
 
-  private buildSnakesAndLadders(maxAnisotropy: number, cfg: QualityConfig) {
+  private buildLadders(maxAnisotropy: number, cfg: QualityConfig) {
     const activeLadders =
       this.boardConfig.ladders && this.boardConfig.ladders.length > 0
         ? this.boardConfig.ladders
         : LADDERS;
-    const activeSnakes =
-      this.boardConfig.snakes && this.boardConfig.snakes.length > 0
-        ? this.boardConfig.snakes
-        : SNAKES;
 
     for (const ladder of activeLadders) {
       if (ladder.from <= 1 || ladder.from >= 100 || ladder.to <= ladder.from || ladder.to > 100) {
@@ -740,6 +746,13 @@ export class FantasyBoardEngine {
       this.laddersById.set(ladder.id, res);
       this.scene.add(res.group);
     }
+  }
+
+  private buildSnakes(maxAnisotropy: number, cfg: QualityConfig) {
+    const activeSnakes =
+      this.boardConfig.snakes && this.boardConfig.snakes.length > 0
+        ? this.boardConfig.snakes
+        : SNAKES;
 
     const customSnake = this.boardConfig.snakeConfig;
     const hornHexNum = parseInt((customSnake.hornColor || '#fbbf24').replace('#', ''), 16) || 0xfbbf24;
@@ -770,6 +783,11 @@ export class FantasyBoardEngine {
       this.snakesById.set(snake.id, res);
       this.scene.add(res.group);
     });
+  }
+
+  private buildSnakesAndLadders(maxAnisotropy: number, cfg: QualityConfig) {
+    this.buildLadders(maxAnisotropy, cfg);
+    this.buildSnakes(maxAnisotropy, cfg);
   }
 
   private buildSpecialShrines(cfg: QualityConfig) {
@@ -1537,12 +1555,10 @@ export class FantasyBoardEngine {
     _projMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_projMatrix);
 
-    // Update Arena sanctuary water, wind foliage, waterfall cascade, mist & spores
-    this.arenaEnv?.update(elapsed, reduced);
-
-    // Floating special crystals (throttled on lighter tiers)
+    // Update Arena sanctuary water, wind foliage, waterfall cascade, mist & spores (throttled on light tiers)
     const runSecondary = !isLightTier || (this.frameCounter & 1) === 0;
     if (runSecondary) {
+      this.arenaEnv?.update(elapsed, reduced);
       for (let i = 0; i < this.shrineCrystals.length; i++) {
         const c = this.shrineCrystals[i];
         c.rotation.y = elapsed * 1.4 + i;

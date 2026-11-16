@@ -86,6 +86,7 @@ export class MainMenuEngine {
   private frameId = 0;
   private disposed = false;
   private paused = false;
+  private backgroundThrottled = false;
 
   // Post-Processing Pipeline (preset-adaptive, GPU only)
   private composer: EffectComposer | null = null;
@@ -376,6 +377,10 @@ export class MainMenuEngine {
     }
   }
 
+  public setBackgroundThrottled(throttled: boolean) {
+    this.backgroundThrottled = throttled;
+  }
+
   public getTelemetry(): LivePerfTelemetry {
     let activeObjects = 0;
     this.scene.traverseVisible(() => {
@@ -478,6 +483,8 @@ export class MainMenuEngine {
 
       if (this.isSoftwareGl) {
         afterDraw(tick);
+      } else if (this.backgroundThrottled) {
+        this.frameId = window.setTimeout(tick, 90);
       } else {
         this.frameId = requestAnimationFrame(tick);
       }

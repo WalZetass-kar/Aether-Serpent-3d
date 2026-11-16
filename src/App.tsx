@@ -439,6 +439,7 @@ export default function App() {
     if (!mount || menuEngineRef.current) return;
 
     const menuEngine = new MainMenuEngine(mount, graphicsPrefsRef.current);
+    menuEngine.setBackgroundThrottled(screenRef.current !== 'main_menu');
     menuEngineRef.current = menuEngine;
 
     return () => {
@@ -446,6 +447,11 @@ export default function App() {
       menuEngineRef.current = null;
     };
   }, [isMenuBackdropMounted]);
+
+  // Throttle 3D menu background when covered by Mode Selection, Game Config, or Multiplayer Lobby
+  useEffect(() => {
+    menuEngineRef.current?.setBackgroundThrottled(screen !== 'main_menu');
+  }, [screen]);
 
   // 2. Mount FantasyBoardEngine during Loading & Arena (staged progressive build)
   useEffect(() => {
@@ -490,7 +496,7 @@ export default function App() {
               }
               setScreen('arena');
             }
-          }, 260);
+          }, 120);
         },
       },
     );
@@ -2128,6 +2134,11 @@ export default function App() {
           qualityLabel={
             QUALITY_PRESETS[resolvePresetTier(graphicsPrefs.preset, deviceCaps)].label
           }
+          graphicsPreset={graphicsPrefs.preset}
+          onChangeGraphicsPreset={(preset) => {
+            soundEngine.playUiClick();
+            handleUpdateGraphicsPrefs({ ...graphicsPrefs, preset });
+          }}
         />
       )}
 
@@ -2159,6 +2170,22 @@ export default function App() {
             turnTimeLeftSec={turnTimeLeftSec}
             isMyOnlineTurn={isMyOnlineTurn}
             isAnimating={isAnimating}
+            graphicsPreset={graphicsPrefs.preset}
+            onQuickToggleLightweight={() => {
+              soundEngine.playUiClick();
+              const isCurrentlyLight =
+                graphicsPrefs.preset === 'potato' || graphicsPrefs.preset === 'low';
+              const nextPreset = isCurrentlyLight ? 'medium' : 'potato';
+              handleUpdateGraphicsPrefs({ ...graphicsPrefs, preset: nextPreset });
+              showToast(
+                nextPreset === 'potato'
+                  ? 'Mode Super Ringan (60 FPS) Aktif'
+                  : 'Mode HD Seimbang Aktif',
+                nextPreset === 'potato'
+                  ? 'Beban GPU & bayangan dikurangi agar permainan jauh lebih enteng'
+                  : 'Kualitas visual dikembalikan ke HD Seimbang',
+              );
+            }}
             onToggleMute={() => {
               soundEngine.playUiClick();
               const next = { ...profile, muted: !profile.muted };
@@ -2178,23 +2205,28 @@ export default function App() {
             onReturnToMenu={handleReturnToMenu}
           />
 
-          {/* Compact Mobile Player Standings Bar (auto-hidden when Mode Pandang Leluasa / dockCollapsed is active) */}
+          {/* Responsive Mobile & Tablet Player Standings Strip (auto-hidden when Mode Pandang Leluasa / dockCollapsed is active) */}
           {!dockCollapsed && (
-            <div className="pointer-events-none fixed safe-hud-subtop z-10 flex lg:hidden items-center gap-1 overflow-x-auto no-scrollbar">
+            <div className="pointer-events-none fixed safe-hud-subtop z-10 flex lg:hidden items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
               {players.map((p, idx) => {
                 const isTurn = idx === currentTurnIndex && !winner;
                 return (
                   <div
                     key={p.id}
-                    className={`flex items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] shrink-0 transition-colors backdrop-blur-xs ${
+                    className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs shrink-0 transition-all backdrop-blur-xs ${
                       isTurn
-                        ? 'border-amber-400/75 bg-slate-900/88 text-white shadow-sm'
-                        : 'border-slate-700/60 bg-slate-950/70 text-slate-300'
+                        ? 'border-amber-400/80 bg-slate-900/92 text-white shadow-md'
+                        : 'border-slate-700/60 bg-slate-950/75 text-slate-300'
                     }`}
                   >
-                    <ArchetypeEmblem archetypeIndex={p.archetypeIndex} className="w-3 h-3 shrink-0" />
-                    <span className="max-w-[64px] truncate font-medium">{p.name}</span>
-                    <span className="font-mono-num text-[9px] font-bold text-amber-300">
+                    <ArchetypeEmblem archetypeIndex={p.archetypeIndex} className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                    <span className="max-w-[68px] sm:max-w-[110px] truncate font-semibold">{p.name}</span>
+                    {p.shields > 0 && (
+                      <span className="hidden sm:inline font-mono-num text-[10px] font-bold text-sky-300">
+                        ❖{p.shields}
+                      </span>
+                    )}
+                    <span className="font-mono-num text-[10px] sm:text-[11px] font-bold text-amber-300 bg-amber-500/15 px-1.5 py-0.5 rounded-md">
                       P{p.tile}
                     </span>
                   </div>
@@ -2203,32 +2235,41 @@ export default function App() {
             </div>
           )}
 
-          <aside className="pointer-events-none fixed safe-hud-aside z-10 hidden lg:flex flex-col gap-1.5 w-56">
+          {/* Desktop Player Standings Sidebar */}
+          <aside className="pointer-events-none fixed safe-hud-aside z-10 hidden lg:flex flex-col gap-2 w-60">
             {players.map((p, idx) => {
               const isTurn = idx === currentTurnIndex && !winner;
               return (
                 <div
                   key={p.id}
-                  className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs transition-all backdrop-blur-md ${
                     isTurn
-                      ? 'border-amber-400/75 bg-slate-900/95 text-white shadow-md'
+                      ? 'border-amber-400/80 bg-slate-900/95 text-white shadow-lg'
                       : 'border-amber-500/20 bg-slate-900/85 text-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <ArchetypeEmblem archetypeIndex={p.archetypeIndex} className="w-4 h-4 shrink-0" />
-                    <span className="truncate font-medium">{p.name}</span>
+                    <div className="min-w-0 leading-tight">
+                      <div className="truncate font-semibold">{p.name}</div>
+                      <div className="text-[10px] text-slate-400 font-mono-num">
+                        Skor {p.score}
+                        {p.shields > 0 ? ` · ❖${p.shields}` : ''}
+                      </div>
+                    </div>
                     {boardMode === 'team' && p.team && (
                       <span
-                        className={`text-[10px] font-bold ${
-                          p.team === 'A' ? 'text-amber-300' : 'text-sky-300'
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          p.team === 'A'
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : 'bg-sky-500/20 text-sky-300'
                         }`}
                       >
                         {p.team}
                       </span>
                     )}
                   </div>
-                  <span className="font-mono-num text-[11px] font-semibold text-amber-300 shrink-0">
+                  <span className="font-mono-num text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-lg shrink-0">
                     P{p.tile}
                   </span>
                 </div>
