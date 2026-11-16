@@ -11,11 +11,11 @@ import {
   disambiguatePlayerName,
   type BoardGameMode,
   type PlayerState,
-} from './shared/gameConfig.ts';
+} from './shared/gameConfig';
 import {
   cloneBoardConfig,
   type BoardConfig,
-} from './shared/boardThemes.ts';
+} from './shared/boardThemes';
 import {
   assignBalancedTeam,
   broadcastRoom,
@@ -27,7 +27,7 @@ import {
   serializeRoom,
   tickRoomsMaintenance,
   type RoomChatLog,
-} from './shared/mpServerCore.ts';
+} from './shared/mpServerCore';
 
 dotenv.config();
 

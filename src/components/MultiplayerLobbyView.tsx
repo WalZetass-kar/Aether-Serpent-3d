@@ -451,12 +451,19 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
   const canStartMatch =
     onlineLobby.players.length >= 2 && allReady && onlineLobby.status === 'lobby';
 
+  const [deployGuideOpen, setDeployGuideOpen] = useState(false);
+
+  const buildInviteUrl = () => {
+    const params = new URLSearchParams();
+    params.set('room', onlineLobby.roomCode || '');
+    if (onlineLobby.roomName) params.set('name', onlineLobby.roomName);
+    if (onlineLobby.boardMode) params.set('mode', onlineLobby.boardMode);
+    return `${window.location.origin}/?${params.toString()}`;
+  };
+
   const handleCopyInvite = async (kind: 'link' | 'code') => {
     if (!onlineLobby.roomCode) return;
-    const text =
-      kind === 'link'
-        ? `${window.location.origin}/?room=${onlineLobby.roomCode}`
-        : onlineLobby.roomCode;
+    const text = kind === 'link' ? buildInviteUrl() : onlineLobby.roomCode;
     try {
       await navigator.clipboard.writeText(text);
       setCopiedType(kind);
@@ -468,7 +475,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
 
   const handleInviteShare = async () => {
     if (!onlineLobby.roomCode) return;
-    const url = `${window.location.origin}/?room=${onlineLobby.roomCode}`;
+    const url = buildInviteUrl();
     if (navigator.share) {
       try {
         await navigator.share({
@@ -611,6 +618,71 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
             {onlineLobby.error}
           </div>
         )}
+
+        {/* Network Transport Status & Cloud Deployment Helper Strip */}
+        <div className="rounded-2xl border border-amber-500/25 bg-slate-950/80 px-3.5 py-2.5 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-bold ${
+                  onlineLobby.transportMode === 'http'
+                    ? 'border-sky-400/45 bg-sky-500/15 text-sky-200'
+                    : 'border-emerald-400/45 bg-emerald-500/15 text-emerald-200'
+                }`}
+              >
+                <Wifi className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {onlineLobby.transportMode === 'http'
+                    ? 'Mode Cloud HTTP Sync (Kompatibel Vercel Serverless)'
+                    : 'Mode WebSocket Real-Time + Cloud Sync'}
+                </span>
+              </span>
+              {onlineLobby.pingMs ? (
+                <span className="font-mono-num text-[11px] text-slate-400">
+                  Ping ~{onlineLobby.pingMs}ms
+                </span>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setDeployGuideOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span>{deployGuideOpen ? 'Tutup Info Deploy' : 'Tips Main Daring & Deploy'}</span>
+            </button>
+          </div>
+
+          {deployGuideOpen && (
+            <div className="grid sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-800/90 text-[11px] text-slate-300 leading-relaxed">
+              <div className="rounded-xl border border-sky-500/25 bg-slate-900/80 p-3 space-y-1">
+                <div className="font-bold text-sky-300">
+                  1. Bermain di Vercel (Serverless HTTP Sync)
+                </div>
+                <p className="text-slate-400">
+                  Vercel tidak menyediakan server WebSocket permanen, sehingga game ini otomatis beralih ke{' '}
+                  <strong className="text-slate-200">HTTP Cloud Sync (`/api/mp/*`)</strong> dengan sinkronisasi cadangan antar-pemain setiap 1 detik. Gunakan tombol{' '}
+                  <strong className="text-amber-300">Undang Teman</strong> atau{' '}
+                  <strong className="text-amber-300">Kode 6 Digit</strong> untuk langsung bergabung.
+                </p>
+              </div>
+              <div className="rounded-xl border border-emerald-500/25 bg-slate-900/80 p-3 space-y-1">
+                <div className="font-bold text-emerald-300">
+                  2. Rekomendasi Hosting Full WebSocket (&lt;30ms)
+                </div>
+                <p className="text-slate-400">
+                  Ingin koneksi WebSocket penuh tanpa batas serverless? Deploy repo yang sama (sudah ada{' '}
+                  <code className="text-amber-200">npm start</code>) secara gratis/mudah ke{' '}
+                  <strong className="text-white">Render.com</strong> (Web Service),{' '}
+                  <strong className="text-white">Railway.app</strong>,{' '}
+                  <strong className="text-white">Koyeb</strong>, atau{' '}
+                  <strong className="text-white">Fly.io</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {!onlineLobby.roomCode ? (
           <div className="space-y-4">

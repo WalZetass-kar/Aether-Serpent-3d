@@ -18,12 +18,12 @@ import {
   type PlayerState,
   type TeamId,
   type TurnResolution,
-} from './gameConfig.ts';
+} from './gameConfig';
 import {
   DEFAULT_BOARD_CONFIGS,
   cloneBoardConfig,
   type BoardConfig,
-} from './boardThemes.ts';
+} from './boardThemes';
 
 // ---------------------------------------------------------------------------
 // Persistent JSON Store (Serverless-safe: falls back to os.tmpdir() on Vercel)
@@ -275,17 +275,175 @@ export function serializeRoom(room: MultiplayerRoom) {
   };
 }
 
+export function mergeRoomWithClientBackup(
+  room: MultiplayerRoom,
+  snapshot: unknown,
+): MultiplayerRoom {
+  if (!snapshot || typeof snapshot !== 'object') return room;
+  const s = snapshot as Partial<MultiplayerRoom>;
+  if (!s.code || String(s.code).toUpperCase() !== room.code || !Array.isArray(s.players)) {
+    return room;
+  }
+
+  let changed = false;
+
+  // 1. Merge players across stateless serverless instances (preserving up to 4 non-kicked players)
+  const existingIds = new Set(room.players.map((p) => p.id));
+  for (const incomingPlayer of s.players) {
+    if (
+      incomingPlayer &&
+      incomingPlayer.id &&
+      !existingIds.has(incomingPlayer.id) &&
+      !room.kickedPlayerIds.includes(incomingPlayer.id) &&
+      room.players.length < 4
+    ) {
+      room.players.push({
+        ...incomingPlayer,
+        connected: true,
+      });
+      existingIds.add(incomingPlayer.id);
+      changed = true;
+    }
+  }
+
+  // If the incoming snapshot has the authoritative host (e.g. room was cold-bootstrapped by a joining guest first)
+  if (s.hostId && s.hostId !== room.hostId && existingIds.has(s.hostId)) {
+    const sHost = s.players.find((p) => p.id === s.hostId);
+    if (sHost && s.name && !String(s.name).startsWith('Ruang #')) {
+      room.hostId = s.hostId;
+      room.name = String(s.name);
+      if (['classic', 'battle', 'team', 'time_attack'].includes(String(s.boardMode))) {
+        room.boardMode = s.boardMode as BoardGameMode;
+      }
+      if (typeof s.isPublic === 'boolean') {
+        room.isPublic = s.isPublic;
+      }
+      if (Number.isFinite(Number(s.timeLimitSec))) {
+        room.timeLimitSec = Number(s.timeLimitSec);
+      }
+      // Ensure host is first in player order while in lobby
+      if (room.status === 'lobby') {
+        const hostPlayer = room.players.find((p) => p.id === room.hostId);
+        if (hostPlayer) {
+          hostPlayer.ready = true;
+          room.players = [
+            hostPlayer,
+            ...room.players.filter((p) => p.id !== room.hostId),
+          ];
+        }
+      }
+      changed = true;
+    }
+  }
+
+  // Sync lobby ready states & team selections from snapshot if in lobby
+  if (room.status === 'lobby' && s.status === 'lobby') {
+    for (const sp of s.players) {
+      const rp = room.players.find((p) => p.id === sp.id);
+      if (rp && sp.id !== room.hostId && Boolean(sp.ready) !== Boolean(rp.ready)) {
+        rp.ready = Boolean(sp.ready);
+        changed = true;
+      }
+    }
+  }
+
+  // 2. Advance match state if client backup has newer turn events or match transition
+  const sEventId = Number(s.lastEventId) || 0;
+  const sTurnCount = Number(s.turnCount) || 0;
+  const statusRank = { lobby: 0, playing: 1, finished: 2 };
+  const roomRank = statusRank[room.status] ?? 0;
+  const snapRank = statusRank[s.status ?? 'lobby'] ?? 0;
+
+  if (
+    snapRank > roomRank ||
+    sEventId > room.lastEventId ||
+    (snapRank === roomRank && sTurnCount > room.turnCount)
+  ) {
+    if (s.status === 'playing' || s.status === 'finished') {
+      room.status = s.status;
+    }
+    room.currentTurnIndex = Number(s.currentTurnIndex) || 0;
+    room.turnCount = Math.max(room.turnCount, sTurnCount);
+    room.lastEventId = Math.max(room.lastEventId, sEventId);
+    room.winnerId = s.winnerId ? String(s.winnerId) : room.winnerId;
+    room.winningTeam =
+      s.winningTeam === 'A' || s.winningTeam === 'B' ? s.winningTeam : room.winningTeam;
+    if (typeof s.endsAt === 'number') room.endsAt = s.endsAt;
+    if (typeof s.turnDeadlineAt === 'number') room.turnDeadlineAt = s.turnDeadlineAt;
+    if (s.boardConfig && typeof s.boardConfig === 'object') {
+      room.boardConfig = cloneBoardConfig(s.boardConfig as BoardConfig);
+    }
+
+    // Update player tile/score/stats from newer snapshot while preserving any extra players
+    const snapMap = new Map(s.players.map((p) => [p.id, p]));
+    room.players = room.players.map((rp) => {
+      const sp = snapMap.get(rp.id);
+      return sp ? { ...rp, ...sp, connected: true } : rp;
+    });
+    changed = true;
+  }
+
+  // 3. Merge turnEvents by eventId
+  if (Array.isArray(s.turnEvents) && s.turnEvents.length > 0) {
+    const knownEv = new Set(room.turnEvents.map((e) => e.eventId));
+    for (const ev of s.turnEvents) {
+      if (ev && typeof ev.eventId === 'number' && !knownEv.has(ev.eventId)) {
+        room.turnEvents.push(ev);
+        knownEv.add(ev.eventId);
+        changed = true;
+      }
+    }
+    room.turnEvents.sort((a, b) => a.eventId - b.eventId);
+    room.turnEvents = room.turnEvents.slice(-8);
+  }
+
+  // 4. Merge chatMessages by timestamp + senderName
+  if (Array.isArray(s.chatMessages) && s.chatMessages.length > 0) {
+    const knownChat = new Set(
+      room.chatMessages.map((c) => `${c.timestamp}:${c.senderName}:${c.text}`),
+    );
+    for (const cm of s.chatMessages) {
+      if (!cm || !cm.text) continue;
+      const key = `${cm.timestamp}:${cm.senderName}:${cm.text}`;
+      if (!knownChat.has(key)) {
+        room.chatMessages.push({
+          id: cm.id || cm.timestamp || Date.now(),
+          senderId: cm.senderId || '',
+          senderName: cm.senderName || 'Pemain',
+          text: cm.text,
+          timestamp: cm.timestamp || Date.now(),
+        });
+        knownChat.add(key);
+        changed = true;
+      }
+    }
+    room.chatMessages.sort((a, b) => a.timestamp - b.timestamp);
+    room.chatMessages = room.chatMessages.slice(-24);
+  }
+
+  if (changed) {
+    room.updatedAt = Date.now();
+    saveRoomsToTmpCache();
+  }
+
+  return room;
+}
+
 export function rehydrateRoomFromSnapshotIfNeeded(
   code: string,
   snapshot: unknown,
 ): MultiplayerRoom | undefined {
   const cleanCode = code.trim().toUpperCase();
   const existing = rooms.get(cleanCode);
-  if (existing) return existing;
+  if (existing) {
+    return mergeRoomWithClientBackup(existing, snapshot);
+  }
 
   loadRoomsFromTmpCache();
   const fromTmp = rooms.get(cleanCode);
-  if (fromTmp) return fromTmp;
+  if (fromTmp) {
+    return mergeRoomWithClientBackup(fromTmp, snapshot);
+  }
 
   if (!snapshot || typeof snapshot !== 'object') return undefined;
   const s = snapshot as Partial<MultiplayerRoom>;
@@ -697,9 +855,47 @@ export function registerApiRoutes(app: Express): void {
     }
 
     const code = String(body.code || '').trim().toUpperCase();
-    const room = rehydrateRoomFromSnapshotIfNeeded(code, body.roomBackup);
+    let room = rehydrateRoomFromSnapshotIfNeeded(code, body.roomBackup);
 
     if (type === 'room:join') {
+      // On stateless serverless platforms (e.g. Vercel), a joining guest might hit a cold Lambda instance
+      // before the host's poll has warmed this instance. Bootstrap the room shell for valid 4-8 char codes
+      // so the guest can join and reconcile with the host on the next poll (~1s).
+      if (!room && code.length >= 4 && code.length <= 8) {
+        const now = Date.now();
+        const seedMode = ['classic', 'battle', 'team', 'time_attack'].includes(
+          String(body.boardMode),
+        )
+          ? (body.boardMode as BoardGameMode)
+          : 'classic';
+        room = {
+          code,
+          name: String(body.roomName || `Ruang #${code}`),
+          isPublic: true,
+          boardMode: seedMode,
+          boardConfig: cloneBoardConfig(DEFAULT_BOARD_CONFIGS[0]),
+          timeLimitSec: TIME_ATTACK_DEFAULT_SEC,
+          endsAt: null,
+          turnDeadlineAt: null,
+          hostId: String(body.hostId || playerId),
+          status: 'lobby',
+          players: [],
+          currentTurnIndex: 0,
+          winnerId: null,
+          winningTeam: null,
+          turnCount: 0,
+          lastEventId: 0,
+          turnEvents: [],
+          chatMessages: [],
+          kickedPlayerIds: [],
+          clients: new Map(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        rooms.set(code, room);
+        saveRoomsToTmpCache();
+      }
+
       if (!room) {
         res.status(404).json({ error: `Ruangan "${code}" tidak ditemukan.` });
         return;

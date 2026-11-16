@@ -1554,21 +1554,55 @@ export default function App() {
     [ensureWebSocket, handleMultiplayerServerEvent, profile.playerId],
   );
 
-  // Auto-open Multiplayer Lobby screen if URL has ?room=CODE (still never drops into arena directly)
+  // Auto-detect Vercel Serverless runtime & auto-open Multiplayer Lobby if URL has ?room=CODE
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const roomParam = params.get('room');
-    if (roomParam && roomParam.trim().length >= 4) {
-      setMultiplayerTabIntent('join');
-      setScreen('multiplayer_lobby');
-      void sendMultiplayerAction({
-        type: 'room:join',
-        code: roomParam.trim().toUpperCase(),
-        playerName: profile.name,
-        playerId: profile.playerId,
-        archetypeIndex: profile.archetypeIndex,
-      });
-    }
+    let cancelled = false;
+    const initMultiplayerTransportAndInvite = async () => {
+      try {
+        const t0 = performance.now();
+        const res = await fetch('/api/health');
+        if (res.ok) {
+          const data = (await res.json()) as { serverless?: boolean };
+          const rtt = Math.max(1, Math.round(performance.now() - t0));
+          lastPingRttRef.current = rtt;
+          if (!cancelled && data.serverless) {
+            mpTransportRef.current = 'http';
+            setOnlineLobby((prev) => ({
+              ...prev,
+              connected: true,
+              transportMode: 'http',
+              pingMs: rtt,
+            }));
+          }
+        }
+      } catch {
+        // Ignore initial health check error
+      }
+
+      if (cancelled) return;
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+      const roomNameParam = params.get('name');
+      const modeParam = params.get('mode');
+      if (roomParam && roomParam.trim().length >= 4) {
+        setMultiplayerTabIntent('join');
+        setScreen('multiplayer_lobby');
+        void sendMultiplayerAction({
+          type: 'room:join',
+          code: roomParam.trim().toUpperCase(),
+          roomName: roomNameParam ? roomNameParam.trim() : undefined,
+          boardMode: modeParam ? modeParam.trim() : undefined,
+          playerName: profile.name,
+          playerId: profile.playerId,
+          archetypeIndex: profile.archetypeIndex,
+        });
+      }
+    };
+
+    void initMultiplayerTransportAndInvite();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Unified Roll Handler (Solo, Local, or Online)
