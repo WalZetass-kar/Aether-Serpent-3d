@@ -278,6 +278,7 @@ export function serializeRoom(room: MultiplayerRoom) {
 export function mergeRoomWithClientBackup(
   room: MultiplayerRoom,
   snapshot: unknown,
+  callerPlayerId?: string,
 ): MultiplayerRoom {
   if (!snapshot || typeof snapshot !== 'object') return room;
   const s = snapshot as Partial<MultiplayerRoom>;
@@ -336,12 +337,31 @@ export function mergeRoomWithClientBackup(
     }
   }
 
-  // Sync lobby ready states & team selections from snapshot if in lobby
+  // Sync lobby ready states from snapshot ONLY monotonically (or for caller's own ready promotion)
+  // so a host's or other player's 1-second-old poll backup never overwrites a guest's newly set ready=true!
   if (room.status === 'lobby' && s.status === 'lobby') {
+    for (const rp of room.players) {
+      if (rp.id === room.hostId && !rp.ready) {
+        rp.ready = true;
+        changed = true;
+      }
+    }
     for (const sp of s.players) {
       const rp = room.players.find((p) => p.id === sp.id);
-      if (rp && sp.id !== room.hostId && Boolean(sp.ready) !== Boolean(rp.ready)) {
-        rp.ready = Boolean(sp.ready);
+      if (!rp || rp.id === room.hostId) continue;
+      // Only promote ready=true from backup (explicit room:ready action handles unready)
+      if (sp.ready === true && !rp.ready) {
+        rp.ready = true;
+        changed = true;
+      }
+      // Sync caller's own team selection if changed locally
+      if (
+        callerPlayerId &&
+        sp.id === callerPlayerId &&
+        (sp.team === 'A' || sp.team === 'B') &&
+        rp.team !== sp.team
+      ) {
+        rp.team = sp.team;
         changed = true;
       }
     }
@@ -432,17 +452,18 @@ export function mergeRoomWithClientBackup(
 export function rehydrateRoomFromSnapshotIfNeeded(
   code: string,
   snapshot: unknown,
+  callerPlayerId?: string,
 ): MultiplayerRoom | undefined {
   const cleanCode = code.trim().toUpperCase();
   const existing = rooms.get(cleanCode);
   if (existing) {
-    return mergeRoomWithClientBackup(existing, snapshot);
+    return mergeRoomWithClientBackup(existing, snapshot, callerPlayerId);
   }
 
   loadRoomsFromTmpCache();
   const fromTmp = rooms.get(cleanCode);
   if (fromTmp) {
-    return mergeRoomWithClientBackup(fromTmp, snapshot);
+    return mergeRoomWithClientBackup(fromTmp, snapshot, callerPlayerId);
   }
 
   if (!snapshot || typeof snapshot !== 'object') return undefined;
@@ -792,7 +813,7 @@ export function registerApiRoutes(app: Express): void {
       return;
     }
 
-    const room = rehydrateRoomFromSnapshotIfNeeded(code, snapshot);
+    const room = rehydrateRoomFromSnapshotIfNeeded(code, snapshot, playerId);
     if (!room) {
       res.status(404).json({ error: `Ruangan "${code}" sudah berakhir atau tidak ditemukan.` });
       return;
@@ -855,7 +876,7 @@ export function registerApiRoutes(app: Express): void {
     }
 
     const code = String(body.code || '').trim().toUpperCase();
-    let room = rehydrateRoomFromSnapshotIfNeeded(code, body.roomBackup);
+    let room = rehydrateRoomFromSnapshotIfNeeded(code, body.roomBackup, playerId);
 
     if (type === 'room:join') {
       // On stateless serverless platforms (e.g. Vercel), a joining guest might hit a cold Lambda instance
@@ -975,9 +996,23 @@ export function registerApiRoutes(app: Express): void {
     }
 
     if (type === 'room:ready') {
-      const player = room.players.find((p) => p.id === playerId);
+      const targetId = String(body.targetId || playerId);
+      const isHostCaller = room.hostId === playerId || room.players[0]?.id === playerId;
+      const player = room.players.find((p) => p.id === (isHostCaller ? targetId : playerId));
       if (player && room.status === 'lobby') {
-        player.ready = Boolean(body.ready);
+        player.ready = player.id === room.hostId ? true : Boolean(body.ready);
+        broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+      }
+      res.json({ ok: true, room: serializeRoom(room) });
+      return;
+    }
+
+    if (type === 'room:ready_all') {
+      const isHostCaller = room.hostId === playerId || room.players[0]?.id === playerId;
+      if (isHostCaller && room.status === 'lobby') {
+        room.players.forEach((p) => {
+          p.ready = true;
+        });
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
       }
       res.json({ ok: true, room: serializeRoom(room) });
@@ -987,7 +1022,8 @@ export function registerApiRoutes(app: Express): void {
     if (type === 'room:set_team') {
       if (room.status === 'lobby') {
         const targetId = String(body.targetId || playerId);
-        if (targetId === playerId || room.hostId === playerId) {
+        const isHostCaller = room.hostId === playerId || room.players[0]?.id === playerId;
+        if (targetId === playerId || isHostCaller) {
           const player = room.players.find((p) => p.id === targetId);
           if (player) {
             player.team = body.team === 'B' ? 'B' : 'A';
@@ -1000,7 +1036,8 @@ export function registerApiRoutes(app: Express): void {
     }
 
     if (type === 'room:update_settings') {
-      if (room.hostId === playerId && room.status === 'lobby') {
+      const isHostCaller = room.hostId === playerId || room.players[0]?.id === playerId;
+      if (isHostCaller && room.status === 'lobby') {
         if (typeof body.isPublic === 'boolean') {
           room.isPublic = body.isPublic;
         }
@@ -1020,7 +1057,8 @@ export function registerApiRoutes(app: Express): void {
     }
 
     if (type === 'room:kick') {
-      if (room.hostId === playerId && room.status === 'lobby') {
+      const isHostCaller = room.hostId === playerId || room.players[0]?.id === playerId;
+      if (isHostCaller && room.status === 'lobby') {
         const targetId = String(body.targetId || '');
         if (targetId && targetId !== room.hostId) {
           const kickedWs = room.clients.get(targetId);
@@ -1045,7 +1083,8 @@ export function registerApiRoutes(app: Express): void {
     }
 
     if (type === 'room:transfer_host') {
-      if (room.hostId === playerId) {
+      const isHostCaller = room.hostId === playerId || room.players[0]?.id === playerId;
+      if (isHostCaller) {
         const targetId = String(body.targetId || '');
         const target = room.players.find((p) => p.id === targetId);
         if (target) {
@@ -1059,7 +1098,8 @@ export function registerApiRoutes(app: Express): void {
     }
 
     if (type === 'room:start') {
-      if (room.hostId !== playerId) {
+      const isHostCaller = room.hostId === playerId || room.players[0]?.id === playerId;
+      if (!isHostCaller) {
         res.status(403).json({ error: 'Hanya tuan rumah yang dapat memulai pertandingan.' });
         return;
       }
@@ -1067,6 +1107,7 @@ export function registerApiRoutes(app: Express): void {
         res.status(400).json({ error: 'Minimal 2 pemain diperlukan untuk mode daring.' });
         return;
       }
+      room.hostId = playerId;
       if (body.boardConfig && typeof body.boardConfig === 'object') {
         room.boardConfig = cloneBoardConfig(body.boardConfig as BoardConfig);
       }
@@ -1079,6 +1120,8 @@ export function registerApiRoutes(app: Express): void {
         room.boardMode === 'time_attack' ? Date.now() + room.timeLimitSec * 1000 : null;
       room.turnDeadlineAt = Date.now() + ONLINE_TURN_TIMEOUT_SEC * 1000 + 4000;
       room.players.forEach((p, idx) => {
+        p.ready = true;
+        p.connected = true;
         p.tile = 1;
         p.score = 0;
         p.shields = 0;

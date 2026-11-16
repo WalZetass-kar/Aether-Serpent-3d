@@ -90,7 +90,8 @@ interface MultiplayerLobbyViewProps {
     timeLimitSec: number;
   }) => void;
   onOnlineJoinRoom: (code: string, playerName: string, archetypeIndex: number) => void;
-  onOnlineReady: (ready: boolean) => void;
+  onOnlineReady: (ready: boolean, targetId?: string) => void;
+  onOnlineReadyAll?: () => void;
   onOnlineStart: () => void;
   onOnlineLeave: () => void;
   onOnlineChat: (text: string) => void;
@@ -387,6 +388,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
   onOnlineCreateRoom,
   onOnlineJoinRoom,
   onOnlineReady,
+  onOnlineReadyAll,
   onOnlineStart,
   onOnlineLeave,
   onOnlineChat,
@@ -441,15 +443,29 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
     }
   }, [onlineLobby.roomCode, isOnlineNetwork, entryTab]);
 
-  const isHost = onlineLobby.hostId === onlineLobby.myPlayerId;
-  const allReady = onlineLobby.players.every((p) => p.id === onlineLobby.hostId || p.ready);
+  const isHost =
+    Boolean(
+      onlineLobby.hostId &&
+        onlineLobby.myPlayerId &&
+        onlineLobby.hostId === onlineLobby.myPlayerId,
+    ) || onlineLobby.players[0]?.id === onlineLobby.myPlayerId;
+  const hasMinPlayers = onlineLobby.players.length >= 2;
+  const allReady =
+    hasMinPlayers &&
+    onlineLobby.players.every(
+      (p, idx) => p.id === onlineLobby.hostId || idx === 0 || Boolean(p.ready),
+    );
   const readyCount = onlineLobby.players.filter(
-    (p) => p.id === onlineLobby.hostId || p.ready,
+    (p, idx) => p.id === onlineLobby.hostId || idx === 0 || Boolean(p.ready),
   ).length;
+  const unreadyGuests = onlineLobby.players.filter(
+    (p, idx) => p.id !== onlineLobby.hostId && idx !== 0 && !p.ready,
+  );
   const readinessDenominator = Math.max(2, onlineLobby.players.length);
   const readinessProgress = Math.min(1, readyCount / readinessDenominator);
+  // Allow Host to click Start as soon as >= 2 players are in the lobby (starting automatically marks all players ready)
   const canStartMatch =
-    onlineLobby.players.length >= 2 && allReady && onlineLobby.status === 'lobby';
+    hasMinPlayers && onlineLobby.status === 'lobby' && !onlineLobby.connecting;
 
   const [deployGuideOpen, setDeployGuideOpen] = useState(false);
 
@@ -1069,32 +1085,47 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
 
             {/* Animated Progress Rings: Room Readiness + 20s Turn Policy */}
             <div className="grid sm:grid-cols-2 gap-3">
-              <div className="flex items-center gap-3.5 glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5">
-                <AnimatedProgressRing
-                  progress={readinessProgress}
-                  size={52}
-                  strokeWidth={4}
-                  tone={canStartMatch ? 'emerald' : 'amber'}
-                  pulse
-                >
-                  <span className="font-mono-num text-xs font-bold text-white">
-                    {readyCount}/{onlineLobby.players.length}
-                  </span>
-                </AnimatedProgressRing>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-white">
-                    {canStartMatch
-                      ? 'Semua Pahlawan Siap!'
-                      : onlineLobby.players.length < 2
-                        ? 'Menunggu Pemain Lain'
-                        : 'Menunggu Kesiapan Pemain'}
+              <div className="flex items-center justify-between gap-3 glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <AnimatedProgressRing
+                    progress={readinessProgress}
+                    size={52}
+                    strokeWidth={4}
+                    tone={allReady ? 'emerald' : hasMinPlayers ? 'amber' : 'sky'}
+                    pulse
+                  >
+                    <span className="font-mono-num text-xs font-bold text-white">
+                      {readyCount}/{onlineLobby.players.length}
+                    </span>
+                  </AnimatedProgressRing>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white">
+                      {allReady
+                        ? 'Semua Pahlawan Siap Bertanding!'
+                        : hasMinPlayers
+                          ? 'Ruangan Siap Dimulai oleh Host'
+                          : 'Menunggu Pemain Lain Bergabung'}
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                      {allReady
+                        ? 'Seluruh pahlawan sudah menekan Siap. Host dapat langsung memulai laga!'
+                        : hasMinPlayers
+                          ? 'Minimal 2 pemain terpenuhi. Host dapat langsung menekan Mulai Laga Daring.'
+                          : 'Undang minimal 1 teman lagi (total 2–4 pemain) untuk memulai laga.'}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    {canStartMatch
-                      ? 'Host dapat memulai laga agar seluruh pemain masuk arena bersamaan.'
-                      : 'Minimal 2 pemain & semua tamu wajib menekan tombol Siap.'}
-                  </p>
                 </div>
+
+                {isHost && hasMinPlayers && !allReady && onOnlineReadyAll && (
+                  <button
+                    type="button"
+                    onClick={onOnlineReadyAll}
+                    className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/25 transition-colors cursor-pointer shrink-0"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Siapkan Semua</span>
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-3.5 glass-panel-soft rounded-2xl border border-amber-500/25 p-3.5">
@@ -1130,11 +1161,11 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                   roomTitle={onlineLobby.roomName}
                   isPublic={onlineLobby.isPublic}
                   timeLimitSec={onlineLobby.timeLimitSec}
-                  players={onlineLobby.players.map((p) => ({
+                  players={onlineLobby.players.map((p, idx) => ({
                     name: p.name,
                     archetypeIndex: p.archetypeIndex,
-                    ready: p.ready,
-                    isHost: p.id === onlineLobby.hostId,
+                    ready: p.id === onlineLobby.hostId || idx === 0 || p.ready,
+                    isHost: p.id === onlineLobby.hostId || idx === 0,
                   }))}
                 />
 
@@ -1176,37 +1207,44 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                 </div>
               </div>
 
-              {/* Right (Desktop) / First (Mobile): Players in Room + Chat + Ready/Start CTA */}
+              {/* Right (Desktop) / First (Mobile): Players in Room + Chat + Detailed Ready/Start CTA */}
               <div className="order-1 lg:order-2 lg:col-span-7 min-w-0 flex flex-col justify-between gap-4">
-                <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-200">
-                      Daftar Pemain ({onlineLobby.players.length}/4)
-                    </span>
+                <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-bold text-slate-200">
+                        Daftar Pahlawan di Lobi ({onlineLobby.players.length}/4)
+                      </span>
+                      <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-mono-num font-bold text-amber-300">
+                        {readyCount}/{onlineLobby.players.length} Siap
+                      </span>
+                    </div>
                     <span className="text-[11px] text-slate-400">
-                      Masuk arena secara serentak
+                      Urutan giliran sesuai slot #1–#4
                     </span>
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-2.5">
-                    {onlineLobby.players.map((p) => {
-                      const isPlayerHost = p.id === onlineLobby.hostId;
+                    {onlineLobby.players.map((p, idx) => {
+                      const isPlayerHost = p.id === onlineLobby.hostId || idx === 0;
                       const isSelf = p.id === onlineLobby.myPlayerId;
                       const isPlayerReady = isPlayerHost || Boolean(p.ready);
                       const arch = PLAYER_ARCHETYPES[p.archetypeIndex % PLAYER_ARCHETYPES.length];
                       return (
                         <div
                           key={p.id}
-                          className={`min-w-0 overflow-hidden rounded-2xl border p-3.5 space-y-2.5 ${
+                          className={`min-w-0 overflow-hidden rounded-2xl border p-3 sm:p-3.5 space-y-2.5 transition-colors ${
                             isSelf
-                              ? 'border-amber-400/55 bg-slate-900/90'
-                              : 'border-slate-700/80 bg-slate-900/65'
+                              ? 'border-amber-400/60 bg-slate-900/95 shadow-md'
+                              : isPlayerReady
+                                ? 'border-emerald-500/35 bg-slate-900/80'
+                                : 'border-slate-700/80 bg-slate-900/65'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2.5 min-w-0">
                               <AnimatedProgressRing
-                                progress={isPlayerReady ? 1 : 0.22}
+                                progress={isPlayerReady ? 1 : 0.25}
                                 size={42}
                                 strokeWidth={3}
                                 tone={isPlayerHost ? 'amber' : isPlayerReady ? 'emerald' : 'sky'}
@@ -1218,8 +1256,16 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                                 />
                               </AnimatedProgressRing>
                               <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 text-sm font-bold text-white">
+                                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white">
+                                  <span className="font-mono-num text-[10px] text-amber-300/90 shrink-0">
+                                    #{idx + 1}
+                                  </span>
                                   <span className="truncate">{p.name}</span>
+                                  {isSelf && (
+                                    <span className="rounded bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-bold text-amber-200 shrink-0">
+                                      Anda
+                                    </span>
+                                  )}
                                   {isPlayerHost && (
                                     <Crown
                                       className="w-3.5 h-3.5 text-amber-400 shrink-0"
@@ -1227,7 +1273,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                                     />
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400 mt-0.5">
                                   <span className="truncate">{arch.title}</span>
                                   <span>·</span>
                                   <span className="inline-flex items-center gap-1 shrink-0">
@@ -1236,22 +1282,36 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                                     ) : (
                                       <WifiOff className="w-3 h-3 text-rose-400" />
                                     )}
-                                    <span>Aktif</span>
+                                    <span className="font-mono-num">
+                                      {p.pingMs ? `${p.pingMs}ms` : 'Aktif'}
+                                    </span>
                                   </span>
                                 </div>
                               </div>
                             </div>
 
                             <span
-                              className={`text-[11px] font-bold whitespace-nowrap shrink-0 ${
+                              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap shrink-0 ${
                                 isPlayerHost
-                                  ? 'text-amber-300'
-                                  : p.ready
-                                    ? 'text-emerald-300'
-                                    : 'text-slate-400'
+                                  ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+                                  : isPlayerReady
+                                    ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
+                                    : 'border-slate-700 bg-slate-950/70 text-slate-400'
                               }`}
                             >
-                              {isPlayerHost ? 'Host' : p.ready ? 'Siap' : 'Menunggu'}
+                              {isPlayerHost ? (
+                                <>
+                                  <Crown className="w-3 h-3 text-amber-300" />
+                                  <span>Host · Siap</span>
+                                </>
+                              ) : isPlayerReady ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-300" />
+                                  <span>Siap</span>
+                                </>
+                              ) : (
+                                <span>Menunggu</span>
+                              )}
                             </span>
                           </div>
 
@@ -1275,7 +1335,18 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                               )}
 
                               {isHost && !isSelf && onlineLobby.status === 'lobby' && (
-                                <div className="flex items-center gap-1.5 ml-auto">
+                                <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                                  {!isPlayerReady && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onOnlineReady(true, p.id)}
+                                      title="Tandai pemain ini Siap"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-950/70 border border-emerald-500/45 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-900/80 cursor-pointer"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      Set Siap
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => onOnlineTransferHost(p.id)}
@@ -1304,12 +1375,17 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                   </div>
                 </div>
 
-                {/* Lobby Chat + Ready/Start CTA */}
-                <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-4 space-y-3">
-                  <div className="text-xs font-bold text-slate-300">Obrolan Lobi</div>
-                  <div className="h-28 overflow-y-auto custom-scroll space-y-1 text-xs pr-1 rounded-xl border border-slate-800/80 bg-slate-950/50 p-2.5">
+                {/* Lobby Chat + Detailed Pre-Launch Readiness & Start CTA */}
+                <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/20 p-3.5 sm:p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-300">Obrolan Lobi</span>
+                    <span className="text-[10px] text-slate-400">
+                      Pesan tampil instan ke semua pemain
+                    </span>
+                  </div>
+                  <div className="h-24 sm:h-28 overflow-y-auto custom-scroll space-y-1 text-xs pr-1 rounded-xl border border-slate-800/80 bg-slate-950/50 p-2.5">
                     {onlineLobby.chatMessages.length === 0 ? (
-                      <div className="text-slate-500 text-[11px] py-6 text-center">
+                      <div className="text-slate-500 text-[11px] py-5 text-center">
                         Sapa pemain lain sebelum pertandingan dimulai...
                       </div>
                     ) : (
@@ -1347,34 +1423,100 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                     </button>
                   </form>
 
-                  <div className="pt-1">
-                    {isHost ? (
-                      <button
-                        type="button"
-                        disabled={!canStartMatch}
-                        onClick={onOnlineStart}
-                        className="w-full min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold text-sm hover:brightness-105 disabled:opacity-45 disabled:cursor-not-allowed transition-all cursor-pointer shadow-lg"
-                      >
-                        <Play className="w-4 h-4" />
-                        {onlineLobby.players.length < 2
-                          ? 'Menunggu Minimal 2 Pemain...'
-                          : !allReady
-                            ? 'Menunggu Semua Pemain Menekan Siap...'
-                            : 'Mulai Laga Daring'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onOnlineReady(!meOnline?.ready)}
-                        className={`w-full min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl font-bold text-sm transition-colors cursor-pointer ${
-                          meOnline?.ready
-                            ? 'bg-emerald-600 text-white hover:bg-emerald-500'
-                            : 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                  {/* Detailed Match Launch Checklist & Action Box */}
+                  <div className="rounded-2xl border border-amber-500/30 bg-slate-950/85 p-3 sm:p-3.5 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <span className="font-bold text-amber-200">
+                        Status Peluncuran Arena 3D
+                      </span>
+                      <span
+                        className={`font-mono-num font-bold ${
+                          allReady
+                            ? 'text-emerald-300'
+                            : hasMinPlayers
+                              ? 'text-amber-300'
+                              : 'text-slate-400'
                         }`}
                       >
-                        <Check className="w-4 h-4" />
-                        {meOnline?.ready ? 'Saya Siap! (Klik untuk Batal)' : 'Saya Siap Bertanding'}
-                      </button>
+                        {allReady
+                          ? `✓ Semua Siap (${readyCount}/${onlineLobby.players.length})`
+                          : hasMinPlayers
+                            ? `${readyCount}/${onlineLobby.players.length} Siap · Siap Diluncurkan`
+                            : `Menunggu Pemain (${onlineLobby.players.length}/2 Min)`}
+                      </span>
+                    </div>
+
+                    {/* Per-player mini status pills */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {onlineLobby.players.map((p, idx) => {
+                        const readyFlag = p.id === onlineLobby.hostId || idx === 0 || Boolean(p.ready);
+                        return (
+                          <span
+                            key={`pill-${p.id}`}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-semibold max-w-[140px] ${
+                              readyFlag
+                                ? 'border-emerald-500/40 bg-emerald-500/12 text-emerald-200'
+                                : 'border-amber-500/35 bg-amber-500/10 text-amber-200'
+                            }`}
+                          >
+                            <span className="shrink-0">{readyFlag ? '✓' : '…'}</span>
+                            <span className="truncate">{p.name}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {isHost ? (
+                      <div className="space-y-2 pt-0.5">
+                        <button
+                          type="button"
+                          disabled={!canStartMatch}
+                          onClick={onOnlineStart}
+                          className={`w-full min-h-[50px] inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg disabled:opacity-45 disabled:cursor-not-allowed ${
+                            allReady
+                              ? 'bg-gradient-to-r from-emerald-400 via-amber-400 to-amber-500 text-slate-950 hover:brightness-105'
+                              : 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 hover:brightness-105'
+                          }`}
+                        >
+                          <Play className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 fill-current" />
+                          <span>
+                            {!hasMinPlayers
+                              ? 'Menunggu Minimal 2 Pemain di Ruangan...'
+                              : allReady
+                                ? `Mulai Laga Daring Sekarang (${onlineLobby.players.length} Pemain)`
+                                : `Mulai Laga Daring (${readyCount}/${onlineLobby.players.length} Siap · Otomatis Masuk)`}
+                          </span>
+                        </button>
+                        {hasMinPlayers && unreadyGuests.length > 0 && (
+                          <p className="text-[10px] text-slate-400 text-center">
+                            Tip Host: Menekan <strong className="text-amber-300">Mulai Laga Daring</strong> akan otomatis menyiapkan seluruh pemain yang ada di ruangan dan langsung masuk ke arena 3D.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => onOnlineReady(!meOnline?.ready)}
+                          className={`w-full min-h-[50px] inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg ${
+                            meOnline?.ready
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-500 border border-emerald-400/60'
+                              : 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 hover:brightness-105'
+                          }`}
+                        >
+                          <Check className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                          <span>
+                            {meOnline?.ready
+                              ? 'Status Anda: SIAP BERTANDING! (Klik untuk Batal)'
+                              : 'Saya Siap Bertanding — Klik di Sini'}
+                          </span>
+                        </button>
+                        <p className="text-[10px] text-slate-400 text-center">
+                          {meOnline?.ready
+                            ? 'Menunggu Tuan Rumah (Host) menekan tombol Mulai Laga Daring...'
+                            : 'Tekan tombol di atas untuk memberi tanda Siap kepada Host.'}
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>

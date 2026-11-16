@@ -1330,7 +1330,11 @@ export default function App() {
 
     const pollInterval = window.setInterval(async () => {
       const wsOpen = wsRef.current && wsRef.current.readyState === WebSocket.OPEN;
-      if (wsOpen && mpTransportRef.current === 'ws') return;
+      // Keep polling active while in 'lobby' even if WebSocket is open so hybrid WS/HTTP players
+      // always synchronize ready states and match start within ~1s.
+      if (wsOpen && mpTransportRef.current === 'ws' && onlineLobbyRef.current.status !== 'lobby') {
+        return;
+      }
 
       const t0 = performance.now();
       try {
@@ -1489,7 +1493,13 @@ export default function App() {
         code: payload.code ?? onlineLobbyRef.current.roomCode,
       };
 
-      if (mpTransportRef.current === 'ws') {
+      const actionType = String(payload.type || '');
+      const alwaysConfirmViaHttp =
+        actionType === 'room:ready' ||
+        actionType === 'room:ready_all' ||
+        actionType === 'room:start';
+
+      if (mpTransportRef.current === 'ws' && !alwaysConfirmViaHttp) {
         try {
           const ws = await ensureWebSocket();
           if (ws.readyState === WebSocket.OPEN) {
@@ -2075,8 +2085,11 @@ export default function App() {
               archetypeIndex: arch,
             });
           }}
-          onOnlineReady={(ready) => {
-            void sendMultiplayerAction({ type: 'room:ready', ready });
+          onOnlineReady={(ready, targetId) => {
+            void sendMultiplayerAction({ type: 'room:ready', ready, targetId });
+          }}
+          onOnlineReadyAll={() => {
+            void sendMultiplayerAction({ type: 'room:ready_all' });
           }}
           onOnlineStart={() => {
             const chosenBoard = resolveBoardForMatch();

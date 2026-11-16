@@ -23,6 +23,7 @@ import {
   detachPlayerFromRoom,
   executeRoomTurnRoll,
   registerApiRoutes,
+  rehydrateRoomFromSnapshotIfNeeded,
   rooms,
   serializeRoom,
   tickRoomsMaintenance,
@@ -224,21 +225,49 @@ async function startServer() {
         return;
       }
 
-      if (!attachedRoomCode || !attachedPlayerId) {
+      // Automatically recover roomCode and playerId from payload if WebSocket reconnected
+      const resolvedCode = String(msg.code || attachedRoomCode || '')
+        .trim()
+        .toUpperCase();
+      const resolvedPlayerId = String(msg.playerId || attachedPlayerId || '').trim();
+
+      if (!resolvedCode || !resolvedPlayerId) {
         sendError(ws, 'Anda belum terhubung ke ruangan.');
         return;
       }
 
-      const room = rooms.get(attachedRoomCode);
+      const room =
+        rooms.get(resolvedCode) ??
+        rehydrateRoomFromSnapshotIfNeeded(resolvedCode, msg.roomBackup, resolvedPlayerId);
       if (!room) {
         sendError(ws, 'Ruangan sudah berakhir.');
         return;
       }
 
+      attachedRoomCode = room.code;
+      attachedPlayerId = resolvedPlayerId;
+      room.clients.set(resolvedPlayerId, ws);
+
+      const isHostCaller =
+        room.hostId === resolvedPlayerId || room.players[0]?.id === resolvedPlayerId;
+
       if (type === 'room:ready') {
-        const player = room.players.find((p) => p.id === attachedPlayerId);
+        const targetId = String(msg.targetId || resolvedPlayerId);
+        const player = room.players.find(
+          (p) => p.id === (isHostCaller ? targetId : resolvedPlayerId),
+        );
         if (player && room.status === 'lobby') {
-          player.ready = Boolean(msg.ready);
+          player.ready = player.id === room.hostId ? true : Boolean(msg.ready);
+          broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+        }
+        return;
+      }
+
+      if (type === 'room:ready_all') {
+        if (isHostCaller && room.status === 'lobby') {
+          room.players.forEach((p) => {
+            p.ready = true;
+          });
           broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         }
         return;
@@ -246,8 +275,8 @@ async function startServer() {
 
       if (type === 'room:set_team') {
         if (room.status !== 'lobby') return;
-        const targetId = String(msg.targetId || attachedPlayerId);
-        if (targetId !== attachedPlayerId && room.hostId !== attachedPlayerId) return;
+        const targetId = String(msg.targetId || resolvedPlayerId);
+        if (targetId !== resolvedPlayerId && !isHostCaller) return;
         const player = room.players.find((p) => p.id === targetId);
         if (player) {
           player.team = msg.team === 'B' ? 'B' : 'A';
@@ -257,7 +286,7 @@ async function startServer() {
       }
 
       if (type === 'room:update_settings') {
-        if (room.hostId !== attachedPlayerId || room.status !== 'lobby') return;
+        if (!isHostCaller || room.status !== 'lobby') return;
         if (typeof msg.isPublic === 'boolean') {
           room.isPublic = msg.isPublic;
         }
@@ -275,12 +304,14 @@ async function startServer() {
       }
 
       if (type === 'room:kick') {
-        if (room.hostId !== attachedPlayerId || room.status !== 'lobby') return;
+        if (!isHostCaller || room.status !== 'lobby') return;
         const targetId = String(msg.targetId || '');
         if (!targetId || targetId === room.hostId) return;
         const kickedWs = room.clients.get(targetId);
         if (kickedWs && kickedWs.readyState === WebSocket.OPEN) {
-          kickedWs.send(JSON.stringify({ type: 'room:kicked', message: 'Anda dikeluarkan oleh tuan rumah.' }));
+          kickedWs.send(
+            JSON.stringify({ type: 'room:kicked', message: 'Anda dikeluarkan oleh tuan rumah.' }),
+          );
         }
         room.clients.delete(targetId);
         room.players = room.players.filter((p) => p.id !== targetId);
@@ -292,7 +323,7 @@ async function startServer() {
       }
 
       if (type === 'room:transfer_host') {
-        if (room.hostId !== attachedPlayerId) return;
+        if (!isHostCaller) return;
         const targetId = String(msg.targetId || '');
         const target = room.players.find((p) => p.id === targetId);
         if (target) {
@@ -304,7 +335,7 @@ async function startServer() {
       }
 
       if (type === 'room:start') {
-        if (room.hostId !== attachedPlayerId) {
+        if (!isHostCaller) {
           sendError(ws, 'Hanya tuan rumah yang dapat memulai pertandingan.');
           return;
         }
@@ -312,6 +343,7 @@ async function startServer() {
           sendError(ws, 'Minimal 2 pemain diperlukan untuk mode daring.');
           return;
         }
+        room.hostId = resolvedPlayerId;
         if (msg.boardConfig && typeof msg.boardConfig === 'object') {
           room.boardConfig = cloneBoardConfig(msg.boardConfig as BoardConfig);
         }
@@ -320,9 +352,12 @@ async function startServer() {
         room.winnerId = null;
         room.winningTeam = null;
         room.turnCount = 0;
-        room.endsAt = room.boardMode === 'time_attack' ? Date.now() + room.timeLimitSec * 1000 : null;
+        room.endsAt =
+          room.boardMode === 'time_attack' ? Date.now() + room.timeLimitSec * 1000 : null;
         room.turnDeadlineAt = Date.now() + ONLINE_TURN_TIMEOUT_SEC * 1000 + 4000;
         room.players.forEach((p, idx) => {
+          p.ready = true;
+          p.connected = true;
           p.tile = 1;
           p.score = 0;
           p.shields = 0;
@@ -341,7 +376,7 @@ async function startServer() {
       if (type === 'game:roll') {
         if (room.status !== 'playing') return;
         const activePlayer = room.players[room.currentTurnIndex];
-        if (!activePlayer || activePlayer.id !== attachedPlayerId) {
+        if (!activePlayer || activePlayer.id !== resolvedPlayerId) {
           sendError(ws, 'Bukan giliran Anda.');
           return;
         }
