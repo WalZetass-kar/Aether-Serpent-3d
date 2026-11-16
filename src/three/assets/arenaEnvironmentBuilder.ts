@@ -27,10 +27,12 @@ import {
 } from './foliageBuilder';
 import { createRunicMoatTexture } from '../textures';
 import { QUALITY_PRESETS, type QualityConfig } from '../perf/qualityPresets';
+import { buildSkyAtmosphere } from './skyAtmosphereBuilder';
 
 export interface ArenaEnvironmentHandle {
   group: THREE.Group;
   update: (elapsed: number, reducedEffects: boolean) => void;
+  updateSkyConfig: (boardConfig?: BoardConfig) => void;
   applyQuality: (cfg: QualityConfig) => void;
   dispose: () => void;
 }
@@ -90,32 +92,6 @@ export function arenaGroundHeightAt(x: number, z: number): number {
 }
 
 import type { BoardConfig } from '../../../shared/boardThemes';
-
-function getSkyPalette(skyPreset: BoardConfig['environmentConfig']['skyPreset']): {
-  top: number;
-  mid: number;
-  horizon: number;
-} {
-  switch (skyPreset) {
-    case 'volcanic_ash':
-      return { top: 0x0b0507, mid: 0x260c0e, horizon: 0x6b1d0f };
-    case 'aurora_frost':
-      return { top: 0x030c1c, mid: 0x0b2a4a, horizon: 0x1e607a };
-    case 'golden_mirage':
-      return { top: 0x170f08, mid: 0x45260d, horizon: 0x8a4b14 };
-    case 'abyssal_sea':
-      return { top: 0x020f1a, mid: 0x05283d, horizon: 0x0d5c75 };
-    case 'eclipse_void':
-      return { top: 0x05020d, mid: 0x180930, horizon: 0x3b1363 };
-    case 'astral_dawn':
-      return { top: 0x071329, mid: 0x153563, horizon: 0x386796 };
-    case 'temple_sunset':
-      return { top: 0x091713, mid: 0x1b3b2d, horizon: 0x4d411c };
-    case 'twilight_forest':
-    default:
-      return { top: 0x050a18, mid: 0x101c34, horizon: 0x163d4f };
-  }
-}
 
 function getBiomePalette(themeId: BoardConfig['themeId']): {
   courtyard: number;
@@ -270,7 +246,6 @@ export function buildArenaEnvironment(
   const themeId = boardConfig?.themeId ?? 'enchanted_forest';
   const envCfg = boardConfig?.environmentConfig;
   const vfxCfg = boardConfig?.visualEffects;
-  const skyPalette = getSkyPalette(envCfg?.skyPreset ?? 'twilight_forest');
   const biome = getBiomePalette(themeId);
 
   const showTrees = envCfg?.showTrees ?? true;
@@ -296,44 +271,9 @@ export function buildArenaEnvironment(
   const disposableGeos: THREE.BufferGeometry[] = [];
   const disposableMats: THREE.Material[] = [];
 
-  // 2. Theme-Adaptive Sanctuary Sky Dome
-  const skyGeo = new THREE.SphereGeometry(
-    95,
-    quality.tier === 'potato' ? 18 : 32,
-    quality.tier === 'potato' ? 12 : 20,
-  );
-  const skyMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    uniforms: {
-      uTopColor: { value: new THREE.Color(skyPalette.top) },
-      uMidColor: { value: new THREE.Color(skyPalette.mid) },
-      uHorizonColor: { value: new THREE.Color(skyPalette.horizon) },
-    },
-    vertexShader: `
-      varying vec3 vSkyWorld;
-      void main() {
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        vSkyWorld = wp.xyz;
-        gl_Position = projectionMatrix * viewMatrix * wp;
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 uTopColor;
-      uniform vec3 uMidColor;
-      uniform vec3 uHorizonColor;
-      varying vec3 vSkyWorld;
-      void main() {
-        float h = clamp(normalize(vSkyWorld).y, 0.0, 1.0);
-        vec3 col = mix(uHorizonColor, uMidColor, smoothstep(0.0, 0.25, h));
-        col = mix(col, uTopColor, smoothstep(0.25, 0.85, h));
-        gl_FragColor = vec4(col, 1.0);
-      }
-    `,
-  });
-  disposableGeos.push(skyGeo);
-  disposableMats.push(skyMat);
-  group.add(new THREE.Mesh(skyGeo, skyMat));
+  // 2. Theme-Adaptive Dynamic Sky Dome (Sun, Clouds, Birds, Rainbow / Moon, Twinkling Stars, Shooting Stars)
+  const skyAtmosphere = buildSkyAtmosphere(quality, boardConfig);
+  group.add(skyAtmosphere.group);
 
   // 3. Sculpted Sanctuary Island, Moat Channel & Biome Terrain with Vertex Biome Colors
   const tSeg = quality.terrainSegments;
@@ -1521,6 +1461,7 @@ export function buildArenaEnvironment(
   const update = (elapsed: number, reducedEffects: boolean) => {
     uTime.value = elapsed;
     uWindTime.value = elapsed;
+    skyAtmosphere.update(elapsed, reducedEffects);
 
     const minInterval =
       currentQuality.tier === 'potato' ? 0.055 : currentQuality.tier === 'low' ? 0.035 : 0;
@@ -1577,8 +1518,31 @@ export function buildArenaEnvironment(
     sporeInst.instanceMatrix.needsUpdate = true;
   };
 
+  const updateSkyConfig = (nextCfg?: BoardConfig) => {
+    skyAtmosphere.updateSkyConfig(nextCfg);
+  };
+
   const dispose = () => {
     scene.remove(group);
+    skyAtmosphere.dispose();
+    const disposedGeos = new Set<THREE.BufferGeometry>();
+    const disposedMats = new Set<THREE.Material>();
+    group.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh || (obj as THREE.Points).isPoints) {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.geometry && !disposedGeos.has(mesh.geometry)) {
+          disposedGeos.add(mesh.geometry);
+          mesh.geometry.dispose();
+        }
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          if (m && !disposedMats.has(m)) {
+            disposedMats.add(m);
+            m.dispose();
+          }
+        }
+      }
+    });
     disposePbrTextureSet(terrainPbr);
     disposePbrTextureSet(rockPbr);
     disposePbrTextureSet(barkPbr);
@@ -1589,9 +1553,13 @@ export function buildArenaEnvironment(
     foliageAtlas.normalMap.dispose();
     mistTex.dispose();
     moatTex.dispose();
-    disposableGeos.forEach((g) => g.dispose());
-    disposableMats.forEach((m) => m.dispose());
+    disposableGeos.forEach((g) => {
+      if (!disposedGeos.has(g)) g.dispose();
+    });
+    disposableMats.forEach((m) => {
+      if (!disposedMats.has(m)) m.dispose();
+    });
   };
 
-  return { group, update, applyQuality, dispose };
+  return { group, update, updateSkyConfig, applyQuality, dispose };
 }

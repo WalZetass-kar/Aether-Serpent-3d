@@ -88,7 +88,9 @@ export type SkyPresetStyle =
   | 'abyssal_sea'
   | 'eclipse_void'
   | 'astral_dawn'
-  | 'temple_sunset';
+  | 'temple_sunset'
+  | 'radiant_day'
+  | 'starlit_night';
 
 export type EnvironmentDecorationStyle =
   | 'runic_obelisks'

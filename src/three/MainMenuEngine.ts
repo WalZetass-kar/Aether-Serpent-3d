@@ -104,6 +104,7 @@ export class MainMenuEngine {
   private pointerNorm = { x: 0, y: 0 };
   private baseCamPos = new THREE.Vector3(0.55, 4.15, 13.7);
   private baseLookAt = new THREE.Vector3(-0.35, 2.75, -1.6);
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(
     container: HTMLElement,
@@ -201,6 +202,12 @@ export class MainMenuEngine {
     }
 
     window.addEventListener('resize', this.handleResize);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.handleResize();
+      });
+      this.resizeObserver.observe(this.container);
+    }
     window.addEventListener('pointermove', this.handlePointerMove, { passive: true });
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
     this.startLoop();
@@ -236,7 +243,11 @@ export class MainMenuEngine {
 
   private updateCameraFraming(width: number, height: number) {
     const aspect = width / Math.max(1, height);
-    if (aspect < 0.95) {
+    if (aspect < 0.65) {
+      // Narrow mobile portrait: frame the dragon & waterfall cleanly in upper half above the menu card
+      this.baseCamPos.set(-1.35, 4.85, 18.2);
+      this.baseLookAt.set(-1.85, 2.45, -1.8);
+    } else if (aspect < 0.95) {
       this.baseCamPos.set(-1.1, 4.65, 16.5);
       this.baseLookAt.set(-1.6, 2.85, -1.8);
     } else {
@@ -503,6 +514,8 @@ export class MainMenuEngine {
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
     window.removeEventListener('resize', this.handleResize);
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     window.removeEventListener('pointermove', this.handlePointerMove);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
 

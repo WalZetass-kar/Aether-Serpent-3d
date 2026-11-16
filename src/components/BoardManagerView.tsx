@@ -8,6 +8,7 @@ import {
   Eye,
   Heart,
   Layers,
+  Moon,
   Palette,
   Play,
   Plus,
@@ -15,6 +16,8 @@ import {
   Save,
   Shuffle,
   Sparkles,
+  Sun,
+  Sunset,
   Trash2,
   Wand2,
 } from 'lucide-react';
@@ -42,7 +45,7 @@ import {
   setDefaultBoard,
   toggleFavoriteBoard,
 } from '../services/boardStorageService';
-import { FantasyBoardEngine } from '../three/FantasyBoardEngine';
+import { FantasyBoardEngine, type TileInspectInfo } from '../three/FantasyBoardEngine';
 import type { DiceSkinId } from '../../shared/gameConfig';
 import type { GraphicsPreferences } from '../three/perf/qualityPresets';
 
@@ -57,6 +60,30 @@ interface BoardManagerViewProps {
 
 type CollectionCategory = 'default' | 'custom' | 'favorite';
 type CreatorSection = 'board' | 'tile' | 'snake' | 'ladder' | 'environment' | 'vfx';
+
+function getBoardVisualSignature(b: BoardConfig): string {
+  return JSON.stringify({
+    themeId: b.themeId,
+    ladders: b.ladders,
+    snakes: b.snakes,
+    boardSettings: b.boardSettings,
+    tileConfig: b.tileConfig,
+    snakeConfig: b.snakeConfig,
+    ladderConfig: b.ladderConfig,
+    environmentConfig: b.environmentConfig,
+    visualEffects: b.visualEffects,
+  });
+}
+
+function getBoardFastSyncSignature(b: BoardConfig): string {
+  return JSON.stringify({
+    skyPreset: b.environmentConfig.skyPreset,
+    lightingPreset: b.environmentConfig.lightingPreset,
+    fogIntensity: b.environmentConfig.fogIntensity,
+    ambientIntensity: b.visualEffects.ambientIntensity,
+    shadowsEnabled: b.visualEffects.shadowsEnabled,
+  });
+}
 
 export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   initialTab = 'collection',
@@ -83,30 +110,63 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   const [draftBoard, setDraftBoard] = useState<BoardConfig>(() =>
     createTemplateFromTheme(selectedBoard.themeId, `Kustom ${selectedBoard.name}`),
   );
+  const [hasUnsavedDraft, setHasUnsavedDraft] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
+  const [buildProgress, setBuildProgress] = useState(0);
+  const [buildStage, setBuildStage] = useState('Menyiapkan Studio Papan 3D...');
+  const [webglLost, setWebglLost] = useState(false);
+  const [engineMountKey, setEngineMountKey] = useState(0);
+  const [inspectedTile, setInspectedTile] = useState<TileInspectInfo | null>(null);
+  const [mobilePreviewSize, setMobilePreviewSize] = useState<'compact' | 'expanded' | 'hidden'>('compact');
 
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<FantasyBoardEngine | null>(null);
+  const lastBuiltSigRef = useRef<string>('');
+  const lastFastSigRef = useRef<string>('');
 
   const active3DBoard = activeModeTab === 'creator' ? draftBoard : previewBoard;
+  const activeVisualSignature = useMemo(() => getBoardVisualSignature(active3DBoard), [active3DBoard]);
+  const activeFastSignature = useMemo(() => getBoardFastSyncSignature(active3DBoard), [active3DBoard]);
 
-  // Mount live 3D preview engine once
+  const activeBoardRef = useRef<BoardConfig>(active3DBoard);
+  activeBoardRef.current = active3DBoard;
+
+  // Mount live 3D preview engine
   useEffect(() => {
     const container = previewContainerRef.current;
     if (!container) return;
 
     setPreviewReady(false);
+    setBuildProgress(0.08);
+    setWebglLost(false);
+    const initialBoard = cloneBoardConfig(activeBoardRef.current);
+    const initialSig = getBoardVisualSignature(initialBoard);
+    const initialFastSig = getBoardFastSyncSignature(initialBoard);
+
     const engine = new FantasyBoardEngine(
       container,
-      {},
+      {
+        onTileInspected: (info) => {
+          setInspectedTile(info);
+        },
+        onWebGLContextLost: (lost) => {
+          setWebglLost(lost);
+        },
+      },
       {
         graphicsPrefs,
         diceSkinId,
-        boardConfig: active3DBoard,
+        boardConfig: initialBoard,
+        onBuildProgress: (progress, stage) => {
+          setBuildProgress(progress);
+          setBuildStage(stage);
+        },
         onBuildReady: () => {
+          lastBuiltSigRef.current = initialSig;
+          lastFastSigRef.current = initialFastSig;
           setPreviewReady(true);
         },
       },
@@ -117,16 +177,27 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
       engine.dispose();
       engineRef.current = null;
     };
-  }, []);
+  }, [engineMountKey]);
 
-  // Live-update 3D preview whenever active3DBoard changes
+  // Smartly debounced live-update of 3D preview whenever visual configuration changes
   useEffect(() => {
     if (!engineRef.current || !previewReady) return;
+    if (lastBuiltSigRef.current === activeVisualSignature) return;
+
+    const onlyFastAtmosphere = lastFastSigRef.current !== activeFastSignature;
+    const delayMs = onlyFastAtmosphere ? 65 : 240;
+
     const timer = window.setTimeout(() => {
-      engineRef.current?.updateBoardConfig(active3DBoard);
-    }, 60);
+      try {
+        engineRef.current?.updateBoardConfig(activeBoardRef.current);
+        lastBuiltSigRef.current = activeVisualSignature;
+        lastFastSigRef.current = activeFastSignature;
+      } catch {
+        // Keep UI responsive even if a WebGL texture update hits transient state
+      }
+    }, delayMs);
     return () => window.clearTimeout(timer);
-  }, [active3DBoard, previewReady]);
+  }, [activeVisualSignature, activeFastSignature, previewReady]);
 
   const showNotice = (msg: string) => {
     setSaveToast(msg);
@@ -233,6 +304,9 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
       cloned.id = `draft_${Date.now()}`;
       cloned.name = board.isCustom ? `${board.name} (Edit)` : `Kustom ${board.name}`;
       cloned.isCustom = true;
+      setHasUnsavedDraft(true);
+    } else {
+      setHasUnsavedDraft(false);
     }
     setDraftBoard(cloned);
     setActiveModeTab('creator');
@@ -248,6 +322,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
       createdAt: prev.createdAt,
       updatedAt: Date.now(),
     }));
+    setHasUnsavedDraft(true);
     showNotice(`Preset tema ${BOARD_THEME_LABELS[themeId]} diterapkan ke editor.`);
   };
 
@@ -256,8 +331,25 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
     setCollection({ ...state });
     setDraftBoard(cloneBoardConfig(saved));
     setPreviewBoard(cloneBoardConfig(saved));
+    setHasUnsavedDraft(false);
     onBoardSelectionChanged?.(saved, state.selectionMode);
     showNotice(`Papan "${saved.name}" berhasil disimpan ke My Custom Boards!`);
+  };
+
+  const handlePlayBoard = (boardToPlay: BoardConfig) => {
+    const isDraftOrCreator =
+      boardToPlay.id.startsWith('draft_') || (activeModeTab === 'creator' && hasUnsavedDraft);
+    if (isDraftOrCreator || (activeModeTab === 'creator' && boardToPlay.isCustom)) {
+      const { state, saved } = saveCustomBoard(boardToPlay);
+      setCollection({ ...state });
+      setDraftBoard(cloneBoardConfig(saved));
+      setPreviewBoard(cloneBoardConfig(saved));
+      setHasUnsavedDraft(false);
+      onBoardSelectionChanged?.(saved, 'custom');
+      onPlayWithBoard(saved);
+      return;
+    }
+    onPlayWithBoard(boardToPlay);
   };
 
   const handleRandomizeJumps = (target: 'both' | 'ladders' | 'snakes') => {
@@ -414,20 +506,20 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 flex flex-col select-none">
+    <div className="relative safe-viewport bg-slate-950 text-slate-100 flex flex-col select-none">
       {/* Top Navigation Header */}
-      <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/25 bg-slate-950/90 px-4 py-3 backdrop-blur-md">
-        <div className="flex items-center gap-3">
+      <header className="relative z-20 flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/25 bg-slate-950/92 safe-header-bar pb-2 sm:px-4 sm:py-3 backdrop-blur-md">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-white transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-white transition-colors cursor-pointer shrink-0"
           >
             <ArrowLeft className="w-4 h-4 text-amber-400" />
-            Kembali
+            <span className="hidden xs:inline sm:inline">Kembali</span>
           </button>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="hidden sm:flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">
                 Multi Board System & 3D Studio
               </span>
@@ -435,56 +527,56 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                 {allBoards.length} Papan Tersedia
               </span>
             </div>
-            <h1 className="font-display text-lg sm:text-xl font-bold text-gold-gradient">
-              Koleksi Dunia Papan & Custom Board Creator
+            <h1 className="font-display text-sm sm:text-xl font-bold text-gold-gradient truncate">
+              Koleksi Papan & 3D Creator
             </h1>
           </div>
         </div>
 
         {/* Mode Switcher Tabs: Collection vs Custom Creator */}
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-xl border border-slate-800 bg-slate-900/90 p-1">
+        <div className="flex items-center justify-between w-full sm:w-auto gap-1.5 sm:gap-2">
+          <div className="inline-flex flex-1 sm:flex-initial rounded-xl border border-slate-800 bg-slate-900/90 p-0.5 sm:p-1">
             <button
               type="button"
               onClick={() => setActiveModeTab('collection')}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer ${
                 activeModeTab === 'collection'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Layers className="w-3.5 h-3.5" />
-              Koleksi Papan ({allBoards.length})
+              <Layers className="w-3.5 h-3.5 shrink-0" />
+              <span>Koleksi ({allBoards.length})</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveModeTab('creator')}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer ${
                 activeModeTab === 'creator'
                   ? 'bg-amber-500 text-slate-950 shadow'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Wand2 className="w-3.5 h-3.5" />
-              Custom Board Creator
+              <Wand2 className="w-3.5 h-3.5 shrink-0" />
+              <span>3D Creator</span>
             </button>
           </div>
 
           <button
             type="button"
-            onClick={() => onPlayWithBoard(active3DBoard)}
-            className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-slate-950 shadow-lg hover:bg-amber-400 transition-colors cursor-pointer"
+            onClick={() => handlePlayBoard(active3DBoard)}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold text-slate-950 shadow-lg hover:bg-amber-400 transition-colors cursor-pointer shrink-0"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            Mainkan Papan Ini
+            <span>{activeModeTab === 'creator' ? 'Simpan & Main' : 'Mainkan'}</span>
           </button>
         </div>
       </header>
 
-      {/* Main Split Workspace: Left Controls + Right Interactive 3D Viewport */}
-      <div className="relative flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 overflow-hidden">
-        {/* Left Control Column (7 cols on desktop) */}
-        <div className="lg:col-span-7 flex flex-col min-h-0 border-r border-slate-800/80 bg-slate-950/95 overflow-y-auto p-4 sm:p-5 space-y-4">
+      {/* Main Split Workspace: Top 3D Preview on Mobile / Right 5-col 3D Preview on Desktop */}
+      <div className="relative flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden">
+        {/* Left Control Column (7 cols on desktop, scrollable bottom panel on mobile) */}
+        <div className="order-2 lg:order-1 flex-1 lg:col-span-7 lg:h-full flex flex-col min-h-0 border-r border-slate-800/80 bg-slate-950/95 overflow-y-auto custom-scroll p-3 sm:p-5 space-y-3.5 sm:space-y-4">
           {activeModeTab === 'collection' ? (
             <>
               {/* Board Selection Mode Bar (Manual / Random / Custom) */}
@@ -594,6 +686,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                   onClick={() => {
                     const fresh = createTemplateFromTheme('enchanted_forest', 'Papan Fantasi Baru');
                     setDraftBoard(fresh);
+                    setHasUnsavedDraft(true);
                     setActiveModeTab('creator');
                   }}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-3.5 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-900/60 transition-colors cursor-pointer"
@@ -750,7 +843,12 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => setPreviewBoard(cloneBoardConfig(board))}
+                              onClick={() => {
+                                setPreviewBoard(cloneBoardConfig(board));
+                                if (mobilePreviewSize === 'hidden') {
+                                  setMobilePreviewSize('compact');
+                                }
+                              }}
                               className="inline-flex items-center justify-center gap-1 rounded-lg border border-cyan-500/30 bg-cyan-950/40 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/50 cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -758,7 +856,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => onPlayWithBoard(board)}
+                              onClick={() => handlePlayBoard(board)}
                               className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer"
                             >
                               <Play className="w-3.5 h-3.5 fill-current" />
@@ -1439,51 +1537,66 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scroll pr-1">
                       {draftBoard.snakes.map((snake, idx) => (
                         <div
                           key={snake.id}
-                          className="grid grid-cols-12 items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2"
+                          className="flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2.5"
                         >
-                          <div className="col-span-1 text-center text-[11px] font-bold text-emerald-400">
-                            #{idx + 1}
+                          <div className="flex items-center gap-2 sm:col-span-6">
+                            <span className="text-[11px] font-bold text-emerald-400 shrink-0 w-6">
+                              #{idx + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <label className="block text-[10px] text-slate-400">Nama Ular</label>
+                              <input
+                                type="text"
+                                value={snake.name}
+                                onChange={(e) => handleUpdateSnake(idx, 'name', e.target.value)}
+                                className="w-full rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-white"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSnake(idx)}
+                              disabled={draftBoard.snakes.length <= 2}
+                              title="Hapus Ular"
+                              className="sm:hidden p-1.5 rounded-lg text-rose-400 hover:bg-rose-950/60 disabled:opacity-30 cursor-pointer shrink-0 mt-3"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <div className="col-span-5">
-                            <label className="block text-[10px] text-slate-400">Nama Ular</label>
-                            <input
-                              type="text"
-                              value={snake.name}
-                              onChange={(e) => handleUpdateSnake(idx, 'name', e.target.value)}
-                              className="w-full rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white"
-                            />
+
+                          <div className="grid grid-cols-2 gap-2 sm:col-span-5">
+                            <div>
+                              <label className="block text-[10px] text-rose-300 font-semibold truncate">
+                                Kepala (Dari)
+                              </label>
+                              <input
+                                type="number"
+                                min={12}
+                                max={99}
+                                value={snake.from}
+                                onChange={(e) => handleUpdateSnake(idx, 'from', Number(e.target.value))}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-bold text-amber-300"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-emerald-300 font-semibold truncate">
+                                Ekor (Turun ke)
+                              </label>
+                              <input
+                                type="number"
+                                min={2}
+                                max={Math.max(2, snake.from - 5)}
+                                value={snake.to}
+                                onChange={(e) => handleUpdateSnake(idx, 'to', Number(e.target.value))}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-bold text-emerald-300"
+                              />
+                            </div>
                           </div>
-                          <div className="col-span-2">
-                            <label className="block text-[10px] text-rose-300 font-semibold">
-                              Kepala (Dari)
-                            </label>
-                            <input
-                              type="number"
-                              min={12}
-                              max={99}
-                              value={snake.from}
-                              onChange={(e) => handleUpdateSnake(idx, 'from', Number(e.target.value))}
-                              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-amber-300"
-                            />
-                          </div>
-                          <div className="col-span-3">
-                            <label className="block text-[10px] text-emerald-300 font-semibold">
-                              Ekor (Turun ke)
-                            </label>
-                            <input
-                              type="number"
-                              min={2}
-                              max={Math.max(2, snake.from - 5)}
-                              value={snake.to}
-                              onChange={(e) => handleUpdateSnake(idx, 'to', Number(e.target.value))}
-                              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-emerald-300"
-                            />
-                          </div>
-                          <div className="col-span-1 flex justify-end">
+
+                          <div className="hidden sm:flex sm:col-span-1 justify-end">
                             <button
                               type="button"
                               onClick={() => handleRemoveSnake(idx)}
@@ -1659,51 +1772,66 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scroll pr-1">
                       {draftBoard.ladders.map((ladder, idx) => (
                         <div
                           key={ladder.id}
-                          className="grid grid-cols-12 items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2"
+                          className="flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2.5"
                         >
-                          <div className="col-span-1 text-center text-[11px] font-bold text-amber-400">
-                            #{idx + 1}
+                          <div className="flex items-center gap-2 sm:col-span-6">
+                            <span className="text-[11px] font-bold text-amber-400 shrink-0 w-6">
+                              #{idx + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <label className="block text-[10px] text-slate-400">Nama Tangga</label>
+                              <input
+                                type="text"
+                                value={ladder.name}
+                                onChange={(e) => handleUpdateLadder(idx, 'name', e.target.value)}
+                                className="w-full rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-white"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLadder(idx)}
+                              disabled={draftBoard.ladders.length <= 2}
+                              title="Hapus Tangga"
+                              className="sm:hidden p-1.5 rounded-lg text-rose-400 hover:bg-rose-950/60 disabled:opacity-30 cursor-pointer shrink-0 mt-3"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <div className="col-span-5">
-                            <label className="block text-[10px] text-slate-400">Nama Tangga</label>
-                            <input
-                              type="text"
-                              value={ladder.name}
-                              onChange={(e) => handleUpdateLadder(idx, 'name', e.target.value)}
-                              className="w-full rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white"
-                            />
+
+                          <div className="grid grid-cols-2 gap-2 sm:col-span-5">
+                            <div>
+                              <label className="block text-[10px] text-amber-300 font-semibold truncate">
+                                Bawah (Dari)
+                              </label>
+                              <input
+                                type="number"
+                                min={2}
+                                max={94}
+                                value={ladder.from}
+                                onChange={(e) => handleUpdateLadder(idx, 'from', Number(e.target.value))}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-bold text-amber-300"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-emerald-300 font-semibold truncate">
+                                Atas (Naik ke)
+                              </label>
+                              <input
+                                type="number"
+                                min={Math.min(99, ladder.from + 4)}
+                                max={99}
+                                value={ladder.to}
+                                onChange={(e) => handleUpdateLadder(idx, 'to', Number(e.target.value))}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-bold text-emerald-300"
+                              />
+                            </div>
                           </div>
-                          <div className="col-span-2">
-                            <label className="block text-[10px] text-amber-300 font-semibold">
-                              Bawah (Dari)
-                            </label>
-                            <input
-                              type="number"
-                              min={2}
-                              max={94}
-                              value={ladder.from}
-                              onChange={(e) => handleUpdateLadder(idx, 'from', Number(e.target.value))}
-                              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-amber-300"
-                            />
-                          </div>
-                          <div className="col-span-3">
-                            <label className="block text-[10px] text-emerald-300 font-semibold">
-                              Atas (Naik ke)
-                            </label>
-                            <input
-                              type="number"
-                              min={Math.min(99, ladder.from + 4)}
-                              max={99}
-                              value={ladder.to}
-                              onChange={(e) => handleUpdateLadder(idx, 'to', Number(e.target.value))}
-                              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-emerald-300"
-                            />
-                          </div>
-                          <div className="col-span-1 flex justify-end">
+
+                          <div className="hidden sm:flex sm:col-span-1 justify-end">
                             <button
                               type="button"
                               onClick={() => handleRemoveLadder(idx)}
@@ -1724,9 +1852,83 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
               {/* Section E: ENVIRONMENT CUSTOMIZATION */}
               {creatorSection === 'environment' && (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/75 p-4 space-y-4">
-                  <h3 className="text-sm font-bold text-amber-300">
-                    E. Kustomisasi Lingkungan 3D (Environment Customization)
-                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold text-amber-300">
+                      E. Kustomisasi Lingkungan 3D & Langit (Sky & Environment)
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraftBoard((prev) => ({
+                            ...prev,
+                            environmentConfig: {
+                              ...prev.environmentConfig,
+                              skyPreset: 'radiant_day',
+                              lightingPreset: 'emerald_canopy',
+                            },
+                          }))
+                        }
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                          draftBoard.environmentConfig.skyPreset === 'radiant_day' ||
+                          draftBoard.environmentConfig.skyPreset === 'twilight_forest' ||
+                          draftBoard.environmentConfig.skyPreset === 'aurora_frost' ||
+                          draftBoard.environmentConfig.skyPreset === 'golden_mirage' ||
+                          draftBoard.environmentConfig.skyPreset === 'astral_dawn'
+                            ? 'border-sky-400/70 bg-sky-500/20 text-sky-200'
+                            : 'border-slate-700 bg-slate-950 text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        <Sun className="w-3.5 h-3.5 text-amber-300" />
+                        Siang
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraftBoard((prev) => ({
+                            ...prev,
+                            environmentConfig: {
+                              ...prev.environmentConfig,
+                              skyPreset: 'temple_sunset',
+                              lightingPreset: 'torchlit_sanctum',
+                            },
+                          }))
+                        }
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                          draftBoard.environmentConfig.skyPreset === 'temple_sunset'
+                            ? 'border-orange-400/70 bg-orange-500/20 text-orange-200'
+                            : 'border-slate-700 bg-slate-950 text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        <Sunset className="w-3.5 h-3.5 text-orange-300" />
+                        Senja
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraftBoard((prev) => ({
+                            ...prev,
+                            environmentConfig: {
+                              ...prev.environmentConfig,
+                              skyPreset: 'starlit_night',
+                              lightingPreset: 'shadow_moon',
+                            },
+                          }))
+                        }
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                          draftBoard.environmentConfig.skyPreset === 'starlit_night' ||
+                          draftBoard.environmentConfig.skyPreset === 'eclipse_void' ||
+                          draftBoard.environmentConfig.skyPreset === 'volcanic_ash' ||
+                          draftBoard.environmentConfig.skyPreset === 'abyssal_sea'
+                            ? 'border-indigo-400/70 bg-indigo-500/20 text-indigo-200'
+                            : 'border-slate-700 bg-slate-950 text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        <Moon className="w-3.5 h-3.5 text-indigo-300" />
+                        Malam
+                      </button>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1">
@@ -1746,14 +1948,16 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         }
                         className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-white"
                       >
-                        <option value="twilight_forest">Twilight Enchanted Forest</option>
-                        <option value="volcanic_ash">Volcanic Magma Sky</option>
-                        <option value="aurora_frost">Arctic Aurora Borealis</option>
-                        <option value="golden_mirage">Golden Desert Mirage</option>
-                        <option value="abyssal_sea">Deep Atlantis Ocean</option>
-                        <option value="eclipse_void">Shadow Realm Eclipse</option>
-                        <option value="astral_dawn">Celestial Astral Dawn</option>
-                        <option value="temple_sunset">Ancient Temple Sunset</option>
+                        <option value="twilight_forest">Siang Cerah · Lembah Zamrud (Matahari, Awan, Pelangi)</option>
+                        <option value="radiant_day">Siang Cerah · Cakrawala Biru (Matahari, Awan, Burung)</option>
+                        <option value="aurora_frost">Siang Kutub · Kerajaan Es (Matahari & Awan Salju)</option>
+                        <option value="golden_mirage">Siang Terik · Gurun Emas (Matahari & Awan Pasir)</option>
+                        <option value="astral_dawn">Siang Surgawi · Langit Astral (Matahari & Pelangi)</option>
+                        <option value="temple_sunset">Senja Keemasan · Kuil Kuno (Matahari Terbenam)</option>
+                        <option value="eclipse_void">Malam Berbintang · Gerhana (Bulan & Bintang Jatuh)</option>
+                        <option value="volcanic_ash">Malam Vulkanik · Kaldera (Bulan Merah & Meteor)</option>
+                        <option value="abyssal_sea">Malam Samudra · Atlantis (Bulan, Aurora & Bintang Jatuh)</option>
+                        <option value="starlit_night">Malam Berbintang · Galaksi (Bulan, Bintang & Bintang Jatuh)</option>
                       </select>
                     </div>
 
@@ -2014,32 +2218,147 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           )}
         </div>
 
-        {/* Right Column: Live Interactive 3D Preview Viewport (5 cols on desktop) */}
-        <div className="lg:col-span-5 relative flex flex-col min-h-[320px] lg:min-h-0 bg-slate-950">
-          <div ref={previewContainerRef} className="relative flex-1 w-full h-full" />
+        {/* Right Column (Desktop) / Top Docked Bar (Mobile): Live Interactive 3D Preview Viewport */}
+        <div
+          className={`order-1 lg:order-2 lg:col-span-5 lg:h-full lg:min-h-0 relative flex flex-col shrink-0 border-b lg:border-b-0 border-amber-500/25 bg-slate-950 overflow-hidden transition-all duration-200 ${
+            mobilePreviewSize === 'hidden'
+              ? 'h-11'
+              : mobilePreviewSize === 'expanded'
+                ? 'h-[290px] sm:h-[340px]'
+                : 'h-[195px] sm:h-[240px]'
+          }`}
+        >
+          <div
+            ref={previewContainerRef}
+            className={`relative flex-1 w-full h-full min-h-0 overflow-hidden ${
+              mobilePreviewSize === 'hidden' ? 'invisible lg:visible' : ''
+            }`}
+          />
 
-          {/* Top-Left Live 3D Preview Overlay Badge */}
-          <div className="pointer-events-none absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
-            <div className="rounded-xl border border-amber-500/35 bg-slate-950/85 px-3.5 py-2 backdrop-blur-md">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300">
-                  Live 3D Preview · Putar & Zoom Kamera
+          {/* 3D Studio Loading Overlay while initial scene builds */}
+          {!previewReady && !webglLost && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/90 px-4 text-center">
+              <div className="w-9 h-9 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin mb-3" />
+              <div className="text-xs font-bold text-amber-300">{buildStage}</div>
+              <div className="mt-2 w-44 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-amber-400 transition-all duration-200"
+                  style={{ width: `${Math.round(Math.max(10, buildProgress * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* WebGL Context Lost Recovery Overlay */}
+          {webglLost && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/95 px-4 text-center">
+              <p className="text-xs font-bold text-rose-300 mb-2">
+                Konteks WebGL 3D sempat terputus.
+              </p>
+              <button
+                type="button"
+                onClick={() => setEngineMountKey((k) => k + 1)}
+                className="rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer"
+              >
+                Muat Ulang Pratinjau 3D
+              </button>
+            </div>
+          )}
+
+          {/* Top-Left Live 3D Preview Overlay Badge & Mobile Size Controls */}
+          <div className="pointer-events-none absolute top-2 left-2.5 right-2.5 sm:top-3 sm:left-3 sm:right-3 flex items-start justify-between gap-2 z-10">
+            <div className="pointer-events-auto rounded-xl border border-amber-500/35 bg-slate-950/88 px-2.5 py-1.5 sm:px-3.5 sm:py-2 max-w-[62%] sm:max-w-none">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-amber-300 truncate">
+                  Live 3D Preview
                 </span>
               </div>
-              <div className="font-display text-sm font-bold text-white mt-0.5">
-                {active3DBoard.name}
+              {mobilePreviewSize !== 'hidden' && (
+                <>
+                  <div className="font-display text-xs sm:text-sm font-bold text-white truncate mt-0.5">
+                    {active3DBoard.name}
+                  </div>
+                  <div className="hidden sm:block text-[11px] text-slate-300 truncate">
+                    Tema: {BOARD_THEME_LABELS[active3DBoard.themeId]}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="pointer-events-auto flex flex-col items-end gap-1.5">
+              {/* Mobile Preview Height Switcher */}
+              <div className="inline-flex lg:hidden rounded-lg border border-slate-700/90 bg-slate-950/90 p-0.5">
+                {(
+                  [
+                    { id: 'compact', label: 'Ringkas' },
+                    { id: 'expanded', label: 'Luas' },
+                    { id: 'hidden', label: 'Tutup' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setMobilePreviewSize(opt.id)}
+                    className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                      mobilePreviewSize === opt.id
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-              <div className="text-[11px] text-slate-300">
-                Tema: {BOARD_THEME_LABELS[active3DBoard.themeId]}
+
+              {/* Camera Quick Snap Buttons */}
+              <div
+                className={`inline-flex rounded-lg border border-slate-700/80 bg-slate-950/85 p-0.5 ${
+                  mobilePreviewSize === 'hidden' ? 'hidden lg:inline-flex' : ''
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => engineRef.current?.snapCameraOverview('isometric')}
+                  className="px-2 py-1 rounded-md text-[10px] font-semibold text-slate-200 hover:bg-slate-800 hover:text-amber-300 cursor-pointer"
+                >
+                  Isometrik
+                </button>
+                <button
+                  type="button"
+                  onClick={() => engineRef.current?.snapCameraOverview('topdown')}
+                  className="px-2 py-1 rounded-md text-[10px] font-semibold text-slate-200 hover:bg-slate-800 hover:text-amber-300 cursor-pointer"
+                >
+                  Tampak Atas
+                </button>
               </div>
             </div>
           </div>
 
+          {/* Interactive Inspected Tile Chip (when user clicks a tile on 3D board) */}
+          {inspectedTile && mobilePreviewSize !== 'hidden' && (
+            <div className="pointer-events-auto absolute bottom-3 left-3 z-10 max-w-[85%] rounded-xl border border-amber-500/45 bg-slate-950/92 px-3 py-1.5 text-[11px] shadow-xl">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-amber-300 truncate">{inspectedTile.title}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInspectedTile(null);
+                    engineRef.current?.highlightTile(null);
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-300 truncate">{inspectedTile.description}</p>
+            </div>
+          )}
+
           {/* Bottom Toast / Quick Info Overlay */}
           {saveToast && (
-            <div className="pointer-events-none absolute bottom-4 left-4 right-4 flex justify-center">
-              <div className="rounded-xl border border-emerald-400/50 bg-slate-950/90 px-4 py-2 text-xs font-bold text-emerald-300 shadow-xl">
+            <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-20 flex justify-center">
+              <div className="rounded-xl border border-emerald-400/50 bg-slate-950/92 px-3.5 py-1.5 text-[11px] sm:text-xs font-bold text-emerald-300 shadow-xl text-center">
                 {saveToast}
               </div>
             </div>

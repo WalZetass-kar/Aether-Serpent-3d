@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   Cloud,
+  Compass,
   Eye,
   EyeOff,
   SlidersHorizontal,
@@ -52,6 +53,7 @@ interface BottomControlDockProps {
   boardMode: BoardGameMode;
   cameraMode: CameraMode;
   onChangeCameraMode: (mode: CameraMode) => void;
+  onResetOverview?: () => void;
   onOpenCameraSettings: () => void;
   onRollDice: () => void;
   onSendEmote?: (emoji: string) => void;
@@ -74,6 +76,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
   boardMode,
   cameraMode,
   onChangeCameraMode,
+  onResetOverview,
   onOpenCameraSettings,
   onRollDice,
   onSendEmote,
@@ -110,6 +113,23 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
       : mode === 'online' && !isMyOnlineTurn
         ? 'Tunggu'
         : 'Lempar';
+
+  const cameraModeShortLabel =
+    cameraMode === 'isometric'
+      ? 'Papan'
+      : cameraMode === 'auto_follow'
+        ? 'Ikuti'
+        : 'Dinamis';
+
+  const handleCycleMobileCamera = () => {
+    const order: CameraMode[] = ['cinematic', 'isometric', 'auto_follow'];
+    const idx = order.indexOf(cameraMode);
+    const next = order[(idx + 1) % order.length];
+    onChangeCameraMode(next);
+    if (next === 'isometric') {
+      onResetOverview?.();
+    }
+  };
 
   const showEmoteButton = mode === 'online' && Boolean(onSendEmote);
   const showTurnProgress = mode === 'online' && turnTimeLeftSec !== null && !isAnimating;
@@ -162,30 +182,39 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
       {/* ===================================================================== */}
       {/* 1. MOBILE RIGHT-SIDE CONTROL RAIL (< md) — unobstructed center board   */}
       {/* ===================================================================== */}
-      <div className="md:hidden fixed right-2.5 bottom-3 z-20 flex flex-col items-end gap-2">
+      <div className="md:hidden fixed safe-dock-mobile z-20 flex flex-col items-end gap-1.5">
         {collapsed ? (
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={onToggleCollapse}
-              className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-amber-500/40 bg-slate-950/90 backdrop-blur-md min-h-[44px] px-3 text-xs font-semibold text-amber-200 shadow-lg cursor-pointer"
+              className="inline-flex items-center justify-center gap-1 rounded-xl border border-amber-500/35 bg-slate-950/80 backdrop-blur-md min-h-[40px] px-2.5 text-[11px] font-semibold text-amber-200 shadow-md cursor-pointer"
               aria-label="Tampilkan Kontrol"
             >
-              <Eye className="w-4 h-4" />
-              <span>Kontrol</span>
+              <Eye className="w-3.5 h-3.5" />
+              <span>HUD</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCycleMobileCamera}
+              className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-700/80 bg-slate-950/80 backdrop-blur-md min-h-[40px] px-2.5 text-[11px] font-semibold text-slate-200 shadow-md cursor-pointer"
+              aria-label="Ganti Sudut Pandang Kamera"
+            >
+              <Compass className="w-3.5 h-3.5 text-amber-300" />
+              <span>{cameraModeShortLabel}</span>
             </button>
             <button
               type="button"
               disabled={rollDisabled}
               onClick={onRollDice}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl min-h-[44px] min-w-[44px] px-3 text-xs font-bold shadow-lg transition-all cursor-pointer ${
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl min-h-[40px] min-w-[44px] px-3 text-xs font-bold shadow-lg transition-all cursor-pointer ${
                 rollDisabled
-                  ? 'border border-slate-700 bg-slate-900/90 text-slate-400 cursor-not-allowed'
+                  ? 'border border-slate-700 bg-slate-900/85 text-slate-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-amber-500/25 active:scale-95'
               }`}
               aria-label={rollLabel}
             >
-              <FacetedDiceIcon className="w-5 h-5" />
+              <FacetedDiceIcon className="w-4 h-4" />
               <span>{mobileRollLabel}</span>
             </button>
           </div>
@@ -193,29 +222,29 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
           <>
             {/* Compact Active Turn Pill Card */}
             {active && (
-              <div className="flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-slate-950/90 backdrop-blur-md px-2.5 py-1.5 shadow-lg max-w-[172px]">
+              <div className="flex items-center gap-1.5 rounded-xl border border-amber-500/25 bg-slate-950/78 backdrop-blur-md px-2 py-1 shadow-md max-w-[152px]">
                 {showTurnProgress ? (
                   <AnimatedProgressRing
                     progress={turnProgress}
-                    size={30}
-                    strokeWidth={3}
+                    size={26}
+                    strokeWidth={2.5}
                     tone={isMyOnlineTurn ? 'amber' : 'sky'}
                     urgent={turnUrgent}
                   >
-                    <ArchetypeEmblem archetypeIndex={active.archetypeIndex} className="w-3.5 h-3.5" />
+                    <ArchetypeEmblem archetypeIndex={active.archetypeIndex} className="w-3 h-3" />
                   </AnimatedProgressRing>
                 ) : (
-                  <ArchetypeEmblem archetypeIndex={active.archetypeIndex} className="w-5 h-5 shrink-0" />
+                  <ArchetypeEmblem archetypeIndex={active.archetypeIndex} className="w-4 h-4 shrink-0" />
                 )}
                 <div className="min-w-0 leading-tight">
-                  <div className="text-[11px] font-bold text-white truncate">
+                  <div className="text-[10px] font-bold text-white truncate">
                     {active.name}
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <div className="flex items-center gap-1 text-[9px] text-slate-300">
                     <span className="font-mono-num text-amber-300 font-semibold">P{active.tile}</span>
                     {boardMode === 'team' && active.team && (
                       <span className={active.team === 'A' ? 'text-amber-300' : 'text-sky-300'}>
-                        Tim {active.team}
+                        T{active.team}
                       </span>
                     )}
                     {lastRoll !== null && (
@@ -227,11 +256,34 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
             )}
 
             {/* Right-Side Stacked Control Rail */}
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-1.5">
+              {/* 1-Tap Quick Camera / Full Board View Switcher */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onToggleCollapse}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-700/75 bg-slate-950/78 backdrop-blur-md w-9 h-9 text-slate-300 hover:text-amber-200 shadow-md cursor-pointer"
+                  title="Mode Pandang Leluasa (Sembunyikan Panel)"
+                  aria-label="Mode Pandang Leluasa"
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCycleMobileCamera}
+                  className="inline-flex items-center justify-center gap-1 rounded-xl border border-amber-500/30 bg-slate-950/80 backdrop-blur-md h-9 px-2.5 text-[10px] font-bold text-amber-200 shadow-md active:scale-95 transition-transform cursor-pointer"
+                  title="Ganti Sudut Pandang Kamera (Dinamis / Papan Penuh / Ikuti)"
+                  aria-label="Ganti Sudut Pandang Kamera"
+                >
+                  <Compass className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>{cameraModeShortLabel}</span>
+                </button>
+              </div>
+
               {/* Collapsible Secondary Tools Drawer (opens to the left of right rail) */}
-              <div ref={mobileToolsRef} className="relative flex items-center gap-2">
+              <div ref={mobileToolsRef} className="relative flex items-center gap-1.5">
                 {mobileToolsOpen && (
-                  <div className="absolute right-full bottom-0 mr-2 w-56 rounded-2xl border border-amber-500/35 bg-slate-950/95 backdrop-blur-xl p-3 shadow-2xl space-y-2.5">
+                  <div className="absolute right-full bottom-0 mr-2 w-56 max-w-[calc(100dvw-5rem)] rounded-2xl border border-amber-500/35 bg-slate-950/95 backdrop-blur-xl p-3 shadow-2xl space-y-2.5">
                     <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                       <span className="text-xs font-bold text-amber-200">Kontrol Arena</span>
                       <button
@@ -246,7 +298,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
 
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                        Mode Kamera
+                        Sudut Kamera 3D
                       </span>
                       <div className="grid grid-cols-3 gap-1">
                         {(['cinematic', 'auto_follow', 'isometric'] as CameraMode[]).map((cm) => {
@@ -260,8 +312,11 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                             <button
                               key={cm}
                               type="button"
-                              onClick={() => onChangeCameraMode(cm)}
-                              className={`min-h-[36px] rounded-lg px-1.5 text-[11px] font-semibold transition-colors cursor-pointer ${
+                              onClick={() => {
+                                onChangeCameraMode(cm);
+                                if (cm === 'isometric') onResetOverview?.();
+                              }}
+                              className={`min-h-[34px] rounded-lg px-1.5 text-[11px] font-semibold transition-colors cursor-pointer ${
                                 cameraMode === cm
                                   ? 'bg-amber-500 text-slate-950'
                                   : 'bg-slate-800/80 text-slate-300 hover:text-white'
@@ -274,6 +329,20 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                       </div>
                     </div>
 
+                    {onResetOverview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileToolsOpen(false);
+                          onResetOverview();
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 min-h-[36px] rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-[11px] font-semibold text-emerald-200 cursor-pointer"
+                      >
+                        <Compass className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Reset Pandang Papan Penuh</span>
+                      </button>
+                    )}
+
                     <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-800">
                       <button
                         type="button"
@@ -281,7 +350,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                           setMobileToolsOpen(false);
                           onOpenCameraSettings();
                         }}
-                        className="flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
+                        className="flex items-center justify-center gap-1.5 min-h-[38px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
                       >
                         <Camera className="w-3.5 h-3.5 text-amber-300" />
                         <span>Grafis</span>
@@ -292,7 +361,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                           setMobileToolsOpen(false);
                           onOpenLeaderboard();
                         }}
-                        className="flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
+                        className="flex items-center justify-center gap-1.5 min-h-[38px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
                       >
                         <Trophy className="w-3.5 h-3.5 text-amber-300" />
                         <span>Skor</span>
@@ -303,7 +372,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                           setMobileToolsOpen(false);
                           onOpenAchievements();
                         }}
-                        className="flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
+                        className="flex items-center justify-center gap-1.5 min-h-[38px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
                       >
                         <Award className="w-3.5 h-3.5 text-amber-300" />
                         <span>Misi</span>
@@ -314,7 +383,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                           setMobileToolsOpen(false);
                           onOpenCloud();
                         }}
-                        className="flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
+                        className="flex items-center justify-center gap-1.5 min-h-[38px] rounded-xl border border-slate-700/80 bg-slate-900 text-xs font-medium text-slate-200 cursor-pointer"
                       >
                         <Cloud className="w-3.5 h-3.5 text-amber-300" />
                         <span>Cloud</span>
@@ -327,10 +396,10 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                         setMobileToolsOpen(false);
                         onToggleCollapse();
                       }}
-                      className="w-full flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700/70 bg-slate-900/70 text-xs text-slate-300 cursor-pointer"
+                      className="w-full flex items-center justify-center gap-1.5 min-h-[38px] rounded-xl border border-slate-700/70 bg-slate-900/70 text-xs text-slate-300 cursor-pointer"
                     >
                       <EyeOff className="w-3.5 h-3.5" />
-                      <span>Sembunyikan Panel</span>
+                      <span>Mode Pandang Leluasa</span>
                     </button>
                   </div>
                 )}
@@ -341,10 +410,10 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                     setEmoteMenuOpen(false);
                     setMobileToolsOpen((o) => !o);
                   }}
-                  className={`inline-flex items-center justify-center rounded-2xl border backdrop-blur-md min-w-[44px] min-h-[44px] shadow-lg transition-colors cursor-pointer ${
+                  className={`inline-flex items-center justify-center rounded-xl border backdrop-blur-md w-10 h-10 shadow-md transition-colors cursor-pointer ${
                     mobileToolsOpen
                       ? 'border-amber-400 bg-amber-500/20 text-amber-200'
-                      : 'border-slate-700/80 bg-slate-950/90 text-slate-200 hover:border-amber-400/50'
+                      : 'border-slate-700/80 bg-slate-950/80 text-slate-200 hover:border-amber-400/50'
                   }`}
                   aria-label="Menu Kontrol & Pengaturan"
                   title="Menu Kontrol & Pengaturan"
@@ -360,7 +429,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                     <div
                       role="menu"
                       aria-label="Pilih Emote Multiplayer"
-                      className="absolute right-full bottom-0 mr-2 w-56 rounded-2xl border border-amber-500/35 bg-slate-950/95 backdrop-blur-xl p-2.5 shadow-2xl"
+                      className="absolute right-full bottom-0 mr-2 w-56 max-w-[calc(100dvw-5rem)] rounded-2xl border border-amber-500/35 bg-slate-950/95 backdrop-blur-xl p-2.5 shadow-2xl"
                     >
                       <div className="text-[11px] font-semibold text-amber-200 mb-1.5 px-1">
                         Kirim Emote
@@ -371,7 +440,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                             key={item.emoji}
                             type="button"
                             onClick={() => handleSelectEmote(item.emoji)}
-                            className="flex flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/90 hover:border-amber-400/60 hover:bg-slate-800 min-h-[44px] min-w-[44px] text-lg transition-transform active:scale-95 cursor-pointer"
+                            className="flex flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/90 hover:border-amber-400/60 hover:bg-slate-800 min-h-[42px] min-w-[42px] text-lg transition-transform active:scale-95 cursor-pointer"
                             title={item.label}
                             aria-label={`Emote ${item.label}`}
                           >
@@ -388,15 +457,15 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                       setMobileToolsOpen(false);
                       setEmoteMenuOpen((o) => !o);
                     }}
-                    className={`inline-flex items-center justify-center rounded-2xl border backdrop-blur-md min-w-[44px] min-h-[44px] shadow-lg transition-colors cursor-pointer ${
+                    className={`inline-flex items-center justify-center rounded-xl border backdrop-blur-md w-10 h-10 shadow-md transition-colors cursor-pointer ${
                       emoteMenuOpen
                         ? 'border-amber-400 bg-amber-500/20 text-amber-200'
-                        : 'border-slate-700/80 bg-slate-950/90 text-slate-200 hover:border-amber-400/50'
+                        : 'border-slate-700/80 bg-slate-950/80 text-slate-200 hover:border-amber-400/50'
                     }`}
                     aria-label="Kirim Emote"
                     title="Kirim Emote"
                   >
-                    <Smile className="w-5 h-5" />
+                    <Smile className="w-4 h-4" />
                   </button>
                 </div>
               )}
@@ -406,14 +475,14 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                 type="button"
                 disabled={rollDisabled}
                 onClick={onRollDice}
-                className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl min-w-[68px] min-h-[64px] px-3 py-2 text-xs font-bold shadow-xl transition-all cursor-pointer ${
+                className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl min-w-[60px] min-h-[56px] px-2.5 py-1.5 text-[11px] font-bold shadow-xl transition-all cursor-pointer ${
                   rollDisabled
-                    ? 'border border-slate-700 bg-slate-900/90 text-slate-400 cursor-not-allowed'
+                    ? 'border border-slate-700 bg-slate-900/85 text-slate-400 cursor-not-allowed'
                     : 'bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 text-slate-950 shadow-amber-500/30 active:scale-95'
                 }`}
                 aria-label={rollLabel}
               >
-                <FacetedDiceIcon className="w-6 h-6" />
+                <FacetedDiceIcon className="w-5 h-5" />
                 <span className="leading-none">{mobileRollLabel}</span>
               </button>
             </div>
@@ -425,7 +494,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
       {/* 2. DESKTOP BOTTOM CONTROL DOCK (>= md)                                */}
       {/* ===================================================================== */}
       {collapsed ? (
-        <div className="hidden md:block fixed bottom-4 left-1/2 -translate-x-1/2 z-20">
+        <div className="hidden md:block fixed safe-dock-desktop left-1/2 -translate-x-1/2 z-20">
           <button
             type="button"
             onClick={onToggleCollapse}
@@ -436,7 +505,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
           </button>
         </div>
       ) : (
-        <div className="hidden md:block pointer-events-none fixed bottom-3 left-1/2 -translate-x-1/2 z-20 w-[94vw] max-w-4xl">
+        <div className="hidden md:block pointer-events-none fixed safe-dock-desktop left-1/2 -translate-x-1/2 z-20 w-[94vw] max-w-4xl">
           <div className="pointer-events-auto glass-panel rounded-2xl px-4 py-2.5 shadow-2xl flex items-center justify-between gap-3">
             {/* Active Turn Info */}
             <div className="flex items-center gap-2.5 min-w-0">

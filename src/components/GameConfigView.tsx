@@ -171,28 +171,28 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   };
 
   return (
-    <div className="relative z-10 flex flex-col w-full h-full p-4 sm:p-6 lg:px-10 lg:py-7 overflow-y-auto custom-scroll">
+    <div className="relative z-10 flex flex-col w-full h-full safe-page-scroll overflow-y-auto custom-scroll">
       {/* Header */}
-      <header className="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <header className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4 shrink-0">
         <button
           type="button"
           onClick={onBackToModeSelection}
-          className="glass-panel-soft inline-flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-200 hover:text-amber-200 hover:border-amber-400/50 transition-colors cursor-pointer whitespace-nowrap"
+          className="glass-panel-soft inline-flex items-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-200 hover:text-amber-200 hover:border-amber-400/50 transition-colors cursor-pointer whitespace-nowrap"
         >
           <ArrowLeft className="w-4 h-4 text-amber-400" />
-          Kembali ke Pilih Mode
+          <span>Pilih Mode</span>
         </button>
 
-        <div className="glass-panel-soft rounded-xl px-3.5 py-2 flex items-center gap-2.5">
-          <SerpentCrestEmblem className="w-6 h-6 shrink-0" />
-          <span className="font-display text-sm sm:text-base font-bold text-gold-gradient">
-            Konfigurasi Pertandingan
+        <div className="glass-panel-soft rounded-xl px-2.5 sm:px-3.5 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-2.5">
+          <SerpentCrestEmblem className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+          <span className="font-display text-xs sm:text-base font-bold text-gold-gradient">
+            Konfigurasi Laga
           </span>
         </div>
       </header>
 
       {/* Configuration Card */}
-      <main className="my-auto mx-auto w-full max-w-4xl glass-panel rounded-3xl p-5 sm:p-7 space-y-5">
+      <main className="my-auto mx-auto w-full max-w-4xl shrink-0 overflow-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-7 space-y-4 sm:space-y-5">
         {/* Selected Mode Banner */}
         <div className="rounded-2xl border border-amber-500/25 bg-slate-950/65 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -655,6 +655,18 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
           Mulai Permainan
         </button>
       </main>
+
+      <footer className="mt-4 text-center text-xs text-slate-400">
+        Developed By{' '}
+        <a
+          href="https://portfolionyaihwal.my.id"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-bold text-amber-300 hover:text-amber-200 underline underline-offset-2 transition-colors"
+        >
+          WalZetass
+        </a>
+      </footer>
     </div>
   );
 };

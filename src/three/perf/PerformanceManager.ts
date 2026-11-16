@@ -175,9 +175,22 @@ export function probeDeviceCapabilities(): DeviceCapabilitiesReport {
     benchMs = 35;
   }
 
+  const isMobileDevice =
+    typeof window !== 'undefined' &&
+    (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') ||
+      (navigator.maxTouchPoints > 1 && Math.min(window.innerWidth, window.innerHeight) < 900) ||
+      /Adreno|Mali|PowerVR|Samsung\s*Xclipse/i.test(gpuRenderer));
+
   let recommendedTier: ResolvedQualityTier = 'medium';
   if (isSoftwareGl || maxTextureSize <= 2048 || benchMs > 28) {
     recommendedTier = 'potato';
+  } else if (isMobileDevice) {
+    // Keep Android & mobile devices cool, responsive, and lightweight by default
+    if (benchMs > 10 || (devMem !== null && devMem <= 4) || cores <= 4) {
+      recommendedTier = 'low';
+    } else {
+      recommendedTier = 'low';
+    }
   } else if (benchMs > 12 || (devMem !== null && devMem <= 2) || cores <= 2) {
     recommendedTier = 'low';
   } else if (
@@ -261,8 +274,12 @@ export class AdaptivePerformanceManager {
 
   public getEffectivePixelRatio(): number {
     if (this.capabilities.isSoftwareGl) return 1;
-    const baseDpr = Math.min(this.capabilities.devicePixelRatio || 1, 2);
-    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.9, 2.0);
+    const isMobileViewport =
+      typeof window !== 'undefined' &&
+      (window.innerWidth < 960 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''));
+    const maxDprCap = isMobileViewport ? 1.35 : 1.85;
+    const baseDpr = Math.min(this.capabilities.devicePixelRatio || 1, maxDprCap);
+    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.75, maxDprCap);
   }
 
   public setPreset(preset: QualityPresetId, autoAdjust: boolean): { changed: boolean } {
@@ -276,7 +293,7 @@ export class AdaptivePerformanceManager {
     this.resScale = QUALITY_PRESETS[this.effectiveTier].defaultResScale;
     this.lowFpsAccumSec = 0;
     this.highHeadroomAccumSec = 0;
-    this.cooldownSec = 2.0;
+    this.cooldownSec = 1.5;
 
     return {
       changed: prevTier !== this.effectiveTier || Math.abs(prevRes - this.resScale) > 0.01,
@@ -327,7 +344,7 @@ export class AdaptivePerformanceManager {
       }
     }
 
-    if (!this.autoAdjust || this.capabilities.isSoftwareGl || this.frameCount < 24) {
+    if (!this.autoAdjust || this.capabilities.isSoftwareGl || this.frameCount < 18) {
       return { qualityChanged: false, resChanged: false };
     }
 
@@ -340,20 +357,20 @@ export class AdaptivePerformanceManager {
     const cfg = QUALITY_PRESETS[this.effectiveTier];
     const targetMs = 1000 / cfg.targetFps;
 
-    // Consistent FPS drop: frame time > 1.32x target budget for >= 2.2s
-    if (avgMs > targetMs * 1.32) {
+    // Fast step-down when frame time exceeds 1.25x target budget for >= 1.4s
+    if (avgMs > targetMs * 1.25) {
       this.highHeadroomAccumSec = 0;
       this.lowFpsAccumSec += dtSec;
-      if (this.lowFpsAccumSec >= 2.2) {
+      if (this.lowFpsAccumSec >= 1.4) {
         this.lowFpsAccumSec = 0;
-        this.cooldownSec = 4.5;
+        this.cooldownSec = 3.5;
         return this.stepDown();
       }
-    } else if (avgMs < targetMs * 0.68 && (this.autoStep < 0 || this.resScale < cfg.defaultResScale)) {
-      // Hysteresis: sustained headroom for >= 8.0s before stepping back up
+    } else if (avgMs < targetMs * 0.65 && (this.autoStep < 0 || this.resScale < cfg.defaultResScale)) {
+      // Hysteresis: sustained headroom for >= 9.0s before stepping back up
       this.lowFpsAccumSec = 0;
       this.highHeadroomAccumSec += dtSec;
-      if (this.highHeadroomAccumSec >= 8.0) {
+      if (this.highHeadroomAccumSec >= 9.0) {
         this.highHeadroomAccumSec = 0;
         this.cooldownSec = 6.0;
         return this.stepUp();

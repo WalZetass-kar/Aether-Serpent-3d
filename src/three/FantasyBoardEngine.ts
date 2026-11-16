@@ -40,6 +40,7 @@ import {
   type SerpentBuildResult,
 } from './models';
 import type { ArenaEnvironmentHandle } from './assets/arenaEnvironmentBuilder';
+import { getSkyThemeSpec } from './assets/skyAtmosphereBuilder';
 import { disposePbrTextureSet, type PbrTextureSet } from './assets/pbrTextures';
 import { applyLodBiasToGroup } from './assets/foliageBuilder';
 import { probeKtx2Capabilities } from './assets/assetPipeline';
@@ -164,7 +165,6 @@ export class FantasyBoardEngine {
   private snakesById = new Map<string, SerpentBuildResult>();
   private laddersById = new Map<string, LadderBuildResult>();
   private shrineCrystals: THREE.Object3D[] = [];
-  private starField: THREE.Points | null = null;
 
   private pawns: Map<string, PawnModelHandle> = new Map();
   private pawnArchetypes: Map<string, number> = new Map();
@@ -195,6 +195,7 @@ export class FantasyBoardEngine {
   private particles: ParticleState[] = [];
 
   private pointerDownPos = { x: 0, y: 0 };
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(
     container: HTMLElement,
@@ -221,8 +222,10 @@ export class FantasyBoardEngine {
     this.renderer.toneMappingExposure = 1.04;
     this.renderer.setPixelRatio(this.perf.getEffectivePixelRatio());
     this.renderer.shadowMap.enabled = cfg.shadowsEnabled && !this.isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.shadowMap.autoUpdate = true;
+    this.renderer.shadowMap.type =
+      cfg.tier === 'high' || cfg.tier === 'ultra' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
 
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
@@ -239,18 +242,23 @@ export class FantasyBoardEngine {
     this.scene.background = new THREE.Color(0x0b1224);
     this.scene.fog = new THREE.FogExp2(0x112b3c, 0.0048);
 
-    this.camera = new THREE.PerspectiveCamera(44, width / height, 0.2, 160);
-    this.camera.position.set(0, 18.5, 20.5);
+    this.camera = new THREE.PerspectiveCamera(48, width / height, 0.25, 155);
+    this.camera.position.set(0, 19.5, 21.5);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.set(0, 0, 1.0);
+    this.controls.target.set(0, 0, 0.8);
     this.controls.enableDamping = !this.isSoftwareGl;
     this.controls.dampingFactor = 0.08;
-    this.controls.minDistance = 4.5;
-    this.controls.maxDistance = 38;
-    this.controls.minPolarAngle = 0.18;
-    this.controls.maxPolarAngle = Math.PI * 0.45;
+    this.controls.minDistance = 4.0;
+    this.controls.maxDistance = 48;
+    this.controls.minPolarAngle = 0.14;
+    this.controls.maxPolarAngle = Math.PI * 0.47;
     this.controls.enablePan = true;
+    this.controls.screenSpacePanning = false;
+    this.controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
 
     this.cameraController = new DynamicCameraController(this.camera, this.controls);
     this.vfxPool = new VfxPool(this.scene);
@@ -332,10 +340,9 @@ export class FantasyBoardEngine {
     await this.yieldFrame();
     if (this.disposed) return;
 
-    // Stage 4 (78%): Special Shrines, Starfield, Dice Dais, VFX & Hero Pawns
+    // Stage 4 (78%): Special Shrines, Dice Dais, VFX & Hero Pawns
     this.options.onBuildProgress?.(0.78, 'Memasang kuil rune, dadu & pion pahlawan...');
     this.buildSpecialShrines(cfg);
-    this.buildStarfield(cfg);
     this.buildDiceDais(cfg);
 
     this.diceGroup = createFantasyDice(maxAniso, this.diceSkinId);
@@ -484,24 +491,17 @@ export class FantasyBoardEngine {
 
       if (targetMode === 'bloom_dof_fxaa' || targetMode === 'ultra_ssao') {
         this.bloomPass = new UnrealBloomPass(
-          new THREE.Vector2(Math.max(1, width), Math.max(1, height)),
-          0.26,
-          0.35,
+          new THREE.Vector2(Math.max(1, Math.round(width * 0.5)), Math.max(1, Math.round(height * 0.5))),
+          0.24,
+          0.32,
           0.88,
         );
         this.composer.addPass(this.bloomPass);
       }
 
-      this.bokehPass = new BokehPass(this.scene, this.camera, {
-        focus: 10.5,
-        aperture: 0,
-        maxblur: 0,
-      });
-      this.bokehPass.enabled = false;
       this.outputPass = new OutputPass();
       this.fxaaPass = new FXAAPass();
 
-      this.composer.addPass(this.bokehPass);
       this.composer.addPass(this.outputPass);
       this.composer.addPass(this.fxaaPass);
     }
@@ -518,7 +518,14 @@ export class FantasyBoardEngine {
   }
 
   private getLightingPresetColors() {
+    const skySpec = getSkyThemeSpec(
+      this.boardConfig.environmentConfig.skyPreset,
+      this.boardConfig.themeId,
+    );
     const preset = this.boardConfig.environmentConfig.lightingPreset;
+    const isDaySky = skySpec.mode === 'day';
+    const isSunsetSky = skySpec.mode === 'sunset';
+
     switch (preset) {
       case 'magma_glow':
         return {
@@ -526,26 +533,32 @@ export class FantasyBoardEngine {
           hemiGround: 0x3b0d0c,
           keyColor: 0xffedd5,
           rimColor: 0xef4444,
-          fogColor: 0x2a0f0d,
-          bgColor: 0x140707,
+          fogColor: isDaySky ? skySpec.fogColor : 0x2a0f0d,
+          bgColor: isDaySky ? skySpec.bgColor : 0x140707,
+          baseKeyIntensity: isDaySky ? 2.45 : 2.1,
+          baseHemiIntensity: isDaySky ? 1.08 : 0.92,
         };
       case 'arctic_noon':
         return {
           hemiSky: 0xe0f2fe,
-          hemiGround: 0x1e3a5f,
+          hemiGround: 0x3b5c7d,
           keyColor: 0xffffff,
-          rimColor: 0x38bdf8,
-          fogColor: 0x0f2d4a,
-          bgColor: 0x07192b,
+          rimColor: 0x7dd3fc,
+          fogColor: isDaySky ? skySpec.fogColor : isSunsetSky ? skySpec.fogColor : 0x0f2d4a,
+          bgColor: isDaySky ? skySpec.bgColor : isSunsetSky ? skySpec.bgColor : 0x07192b,
+          baseKeyIntensity: isDaySky ? 2.6 : 2.2,
+          baseHemiIntensity: isDaySky ? 1.15 : 0.96,
         };
       case 'desert_sun':
         return {
-          hemiSky: 0xfde68a,
-          hemiGround: 0x45270f,
-          keyColor: 0xfffbeb,
+          hemiSky: 0xfef3c7,
+          hemiGround: 0x784820,
+          keyColor: 0xfff8de,
           rimColor: 0xf59e0b,
-          fogColor: 0x38220f,
-          bgColor: 0x1c1008,
+          fogColor: isDaySky ? skySpec.fogColor : isSunsetSky ? skySpec.fogColor : 0x38220f,
+          bgColor: isDaySky ? skySpec.bgColor : isSunsetSky ? skySpec.bgColor : 0x1c1008,
+          baseKeyIntensity: isDaySky ? 2.68 : 2.25,
+          baseHemiIntensity: isDaySky ? 1.14 : 0.98,
         };
       case 'bioluminescent':
         return {
@@ -553,8 +566,10 @@ export class FantasyBoardEngine {
           hemiGround: 0x083344,
           keyColor: 0xecfeff,
           rimColor: 0x06b6d4,
-          fogColor: 0x062c3d,
-          bgColor: 0x031824,
+          fogColor: isDaySky ? skySpec.fogColor : 0x083347,
+          bgColor: isDaySky ? skySpec.bgColor : 0x031824,
+          baseKeyIntensity: 2.15,
+          baseHemiIntensity: 0.95,
         };
       case 'shadow_moon':
         return {
@@ -562,42 +577,54 @@ export class FantasyBoardEngine {
           hemiGround: 0x1e1035,
           keyColor: 0xf3e8ff,
           rimColor: 0x9333ea,
-          fogColor: 0x1b0b2e,
-          bgColor: 0x0c0417,
+          fogColor: isDaySky ? skySpec.fogColor : 0x1c0b33,
+          bgColor: isDaySky ? skySpec.bgColor : 0x0a0417,
+          baseKeyIntensity: 2.08,
+          baseHemiIntensity: 0.9,
         };
       case 'divine_radiance':
         return {
-          hemiSky: 0xfef08a,
-          hemiGround: 0x1e3a8a,
+          hemiSky: 0xfef3c7,
+          hemiGround: 0x3b4d7a,
           keyColor: 0xfffbeb,
           rimColor: 0x60a5fa,
-          fogColor: 0x152c59,
-          bgColor: 0x09152e,
+          fogColor: isDaySky ? skySpec.fogColor : isSunsetSky ? skySpec.fogColor : 0x152c59,
+          bgColor: isDaySky ? skySpec.bgColor : isSunsetSky ? skySpec.bgColor : 0x09152e,
+          baseKeyIntensity: isDaySky ? 2.65 : 2.25,
+          baseHemiIntensity: isDaySky ? 1.16 : 0.98,
         };
       case 'torchlit_sanctum':
         return {
           hemiSky: 0xfcd34d,
-          hemiGround: 0x1b2e23,
-          keyColor: 0xffedd5,
-          rimColor: 0x10b981,
-          fogColor: 0x172b22,
-          bgColor: 0x0a1712,
+          hemiGround: 0x26382b,
+          keyColor: 0xffe8c2,
+          rimColor: 0xf59e0b,
+          fogColor: isDaySky ? skySpec.fogColor : isSunsetSky ? skySpec.fogColor : 0x172b22,
+          bgColor: isDaySky ? skySpec.bgColor : isSunsetSky ? skySpec.bgColor : 0x0a1712,
+          baseKeyIntensity: isSunsetSky ? 2.38 : 2.25,
+          baseHemiIntensity: isSunsetSky ? 1.02 : 0.96,
         };
       case 'emerald_canopy':
       default:
         return {
-          hemiSky: 0x93c5fd,
-          hemiGround: 0x1e293b,
-          keyColor: 0xfff1d6,
-          rimColor: 0x6366f1,
-          fogColor: 0x112b3c,
-          bgColor: 0x0b1224,
+          hemiSky: isDaySky ? skySpec.hemiSky : 0x93c5fd,
+          hemiGround: isDaySky ? skySpec.hemiGround : 0x1e293b,
+          keyColor: isDaySky ? skySpec.keyColor : 0xfff1d6,
+          rimColor: isDaySky ? skySpec.rimColor : 0x6366f1,
+          fogColor: skySpec.fogColor,
+          bgColor: skySpec.bgColor,
+          baseKeyIntensity: skySpec.keyIntensity,
+          baseHemiIntensity: skySpec.hemiIntensity,
         };
     }
   }
 
   private applyBoardAtmosphere(cfg: QualityConfig) {
     const lCols = this.getLightingPresetColors();
+    const skySpec = getSkyThemeSpec(
+      this.boardConfig.environmentConfig.skyPreset,
+      this.boardConfig.themeId,
+    );
     const ambMult = THREE.MathUtils.clamp(
       this.boardConfig.visualEffects.ambientIntensity ?? 0.9,
       0.35,
@@ -611,27 +638,51 @@ export class FantasyBoardEngine {
     const userShadows = this.boardConfig.visualEffects.shadowsEnabled ?? true;
     const shadows = cfg.shadowsEnabled && userShadows && !this.isSoftwareGl;
 
-    this.scene.background = new THREE.Color(lCols.bgColor);
-    this.scene.fog = new THREE.FogExp2(lCols.fogColor, 0.0014 + fogMult * 0.0065);
+    if (this.scene.background instanceof THREE.Color) {
+      this.scene.background.setHex(lCols.bgColor);
+    } else {
+      this.scene.background = new THREE.Color(lCols.bgColor);
+    }
+
+    const fogDensity =
+      skySpec.mode === 'day'
+        ? 0.0008 + fogMult * 0.0038
+        : 0.0014 + fogMult * 0.0062;
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.setHex(lCols.fogColor);
+      this.scene.fog.density = fogDensity;
+    } else {
+      this.scene.fog = new THREE.FogExp2(lCols.fogColor, fogDensity);
+    }
 
     if (this.hemiLight) {
       this.hemiLight.color.setHex(lCols.hemiSky);
       this.hemiLight.groundColor.setHex(lCols.hemiGround);
-      this.hemiLight.intensity = 0.96 * ambMult;
+      this.hemiLight.intensity = lCols.baseHemiIntensity * ambMult;
     }
     if (this.keyLight) {
       this.keyLight.color.setHex(lCols.keyColor);
-      this.keyLight.intensity = 2.25 * ambMult;
+      this.keyLight.intensity = lCols.baseKeyIntensity * ambMult;
       this.keyLight.castShadow = shadows;
+      // Align sun/moon key light gently with celestial body azimuth
+      const az = skySpec.mode === 'night' ? skySpec.moonAzimuth : skySpec.sunAzimuth;
+      const el = skySpec.mode === 'night' ? skySpec.moonElevation : skySpec.sunElevation;
+      this.keyLight.position.set(
+        Math.sin(az) * 24 + 8,
+        16 + el * 18,
+        -Math.cos(az) * 14 + 14,
+      );
     }
     if (this.rimLight) {
       this.rimLight.color.setHex(lCols.rimColor);
-      this.rimLight.intensity = 0.85 * ambMult;
+      this.rimLight.intensity = (skySpec.mode === 'day' ? 0.68 : 0.88) * ambMult;
     }
     this.renderer.shadowMap.enabled = shadows;
+    this.renderer.shadowMap.needsUpdate = shadows;
     if (this.bloomPass) {
       this.bloomPass.strength =
-        0.14 + THREE.MathUtils.clamp(this.boardConfig.visualEffects.glowIntensity ?? 0.55, 0, 1) * 0.28;
+        (skySpec.mode === 'day' ? 0.1 : 0.15) +
+        THREE.MathUtils.clamp(this.boardConfig.visualEffects.glowIntensity ?? 0.55, 0, 1) * 0.26;
     }
   }
 
@@ -805,29 +856,6 @@ export class FantasyBoardEngine {
     this.scene.add(daisGroup);
   }
 
-  private buildStarfield(cfg: QualityConfig) {
-    const count = cfg.tier === 'potato' ? 90 : cfg.tier === 'low' ? 160 : 260;
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const theta = ((i * 137.5) % 360) * (Math.PI / 180);
-      const r = 34 + (i % 15) * 2.1;
-      const y = 8 + ((i * 19) % 28);
-      positions[i * 3] = Math.cos(theta) * r;
-      positions[i * 3 + 1] = y;
-      positions[i * 3 + 2] = Math.sin(theta) * r;
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({
-      color: 0xe2e8f0,
-      size: 0.22,
-      transparent: true,
-      opacity: 0.78,
-    });
-    this.starField = new THREE.Points(geo, mat);
-    this.scene.add(this.starField);
-  }
-
   // ---------------------------------------------------------------------------
   // Runtime Quality Adaptation, Telemetry & Benchmark API
   // ---------------------------------------------------------------------------
@@ -929,12 +957,47 @@ export class FantasyBoardEngine {
   }
 
   /**
-   * Live-updates the 3D board, tiles, snakes, ladders, environment, lighting, and VFX
-   * in real time (used by Custom Board Creator & Board Preview and when switching boards).
+   * Smartly diffs and live-updates only the changed 3D board domains
+   * (board/tiles, snakes/ladders, environment, sky, lighting/VFX) so slider drags
+   * and live 3D Creator edits run smoothly without redundant texture rebuilds.
    */
   public updateBoardConfig(nextConfig: BoardConfig) {
-    this.boardConfig = cloneBoardConfig(nextConfig);
+    const prev = this.boardConfig;
+    const clonedNext = cloneBoardConfig(nextConfig);
+    this.boardConfig = clonedNext;
     if (!this.ready || this.disposed) return;
+
+    const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+    const themeChanged = prev.themeId !== clonedNext.themeId;
+    const jumpsChanged =
+      !sameJson(prev.ladders, clonedNext.ladders) || !sameJson(prev.snakes, clonedNext.snakes);
+
+    const boardOrTilesChanged =
+      themeChanged ||
+      jumpsChanged ||
+      !sameJson(prev.boardSettings, clonedNext.boardSettings) ||
+      !sameJson(prev.tileConfig, clonedNext.tileConfig) ||
+      prev.visualEffects.glowIntensity !== clonedNext.visualEffects.glowIntensity;
+
+    const snakesOrLaddersChanged =
+      jumpsChanged ||
+      !sameJson(prev.snakeConfig, clonedNext.snakeConfig) ||
+      !sameJson(prev.ladderConfig, clonedNext.ladderConfig);
+
+    const envStructureChanged =
+      themeChanged ||
+      prev.environmentConfig.showTrees !== clonedNext.environmentConfig.showTrees ||
+      prev.environmentConfig.showRocks !== clonedNext.environmentConfig.showRocks ||
+      prev.environmentConfig.showCastle !== clonedNext.environmentConfig.showCastle ||
+      prev.environmentConfig.showWaterfall !== clonedNext.environmentConfig.showWaterfall ||
+      prev.environmentConfig.decorations !== clonedNext.environmentConfig.decorations ||
+      prev.visualEffects.particleStyle !== clonedNext.visualEffects.particleStyle ||
+      prev.visualEffects.particleDensity !== clonedNext.visualEffects.particleDensity;
+
+    const skyOnlyChanged =
+      !envStructureChanged &&
+      prev.environmentConfig.skyPreset !== clonedNext.environmentConfig.skyPreset;
 
     const cfg = this.perf.getQualityConfig();
     const maxAniso = Math.min(
@@ -942,51 +1005,59 @@ export class FantasyBoardEngine {
       this.renderer.capabilities.getMaxAnisotropy(),
     );
 
-    // 1. Dispose & replace Board Plinth + 100 Tiles
-    if (this.boardGroup) {
-      this.scene.remove(this.boardGroup);
-      this.disposeGroupResources(this.boardGroup);
-      this.boardGroup = null;
+    // 1. Rebuild Board Plinth + 100 Tiles only when needed
+    if (boardOrTilesChanged) {
+      if (this.boardGroup) {
+        this.scene.remove(this.boardGroup);
+        this.disposeGroupResources(this.boardGroup);
+        this.boardGroup = null;
+      }
+      const { boardGroup, boardCollider, tileHighlight } = buildBeveledStoneBoard(
+        maxAniso,
+        cfg,
+        this.boardConfig,
+      );
+      this.boardGroup = boardGroup;
+      this.boardCollider = boardCollider;
+      this.tileHighlightMesh = tileHighlight;
+      this.scene.add(boardGroup);
     }
-    const { boardGroup, boardCollider, tileHighlight } = buildBeveledStoneBoard(
-      maxAniso,
-      cfg,
-      this.boardConfig,
-    );
-    this.boardGroup = boardGroup;
-    this.boardCollider = boardCollider;
-    this.tileHighlightMesh = tileHighlight;
-    this.scene.add(boardGroup);
 
-    // 2. Dispose & replace Ladders & Snakes
-    this.laddersById.forEach((l) => {
-      this.scene.remove(l.group);
-      this.disposeGroupResources(l.group);
-    });
-    this.laddersById.clear();
+    // 2. Rebuild Ladders & Snakes only when needed
+    if (snakesOrLaddersChanged) {
+      this.laddersById.forEach((l) => {
+        this.scene.remove(l.group);
+        this.disposeGroupResources(l.group);
+      });
+      this.laddersById.clear();
 
-    this.snakesById.forEach((s) => {
-      this.scene.remove(s.group);
-      this.disposeGroupResources(s.group);
-    });
-    this.snakesById.clear();
+      this.snakesById.forEach((s) => {
+        this.scene.remove(s.group);
+        this.disposeGroupResources(s.group);
+      });
+      this.snakesById.clear();
 
-    this.buildSnakesAndLadders(maxAniso, cfg);
-
-    // 3. Dispose & replace Sanctuary Environment
-    if (this.arenaEnv) {
-      this.arenaEnv.dispose();
-      this.arenaEnv = null;
+      this.buildSnakesAndLadders(maxAniso, cfg);
     }
-    this.arenaEnv = createSanctuaryEnvironment(
-      this.scene,
-      maxAniso,
-      this.isSoftwareGl,
-      cfg,
-      this.boardConfig,
-    );
 
-    // 4. Update Atmosphere, Fog, Shadows & Lighting
+    // 3. Rebuild Sanctuary Environment only when terrain/props/trees/waterfall/particles change
+    if (envStructureChanged) {
+      if (this.arenaEnv) {
+        this.arenaEnv.dispose();
+        this.arenaEnv = null;
+      }
+      this.arenaEnv = createSanctuaryEnvironment(
+        this.scene,
+        maxAniso,
+        this.isSoftwareGl,
+        cfg,
+        this.boardConfig,
+      );
+    } else if (skyOnlyChanged) {
+      this.arenaEnv?.updateSkyConfig(this.boardConfig);
+    }
+
+    // 4. Instant Atmosphere, Fog, Shadows & Lighting refresh
     this.applyBoardAtmosphere(cfg);
   }
 
@@ -1179,6 +1250,12 @@ export class FantasyBoardEngine {
 
   private bindEvents() {
     window.addEventListener('resize', this.handleResize);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.handleResize();
+      });
+      this.resizeObserver.observe(this.container);
+    }
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
     const canvas = this.renderer.domElement;
     canvas.addEventListener('pointerdown', this.handlePointerDown);
@@ -1205,8 +1282,8 @@ export class FantasyBoardEngine {
 
   private handleResize = () => {
     if (this.disposed) return;
-    const width = this.container.clientWidth || window.innerWidth;
-    const height = this.container.clientHeight || window.innerHeight;
+    const width = Math.max(1, this.container.clientWidth || window.innerWidth);
+    const height = Math.max(1, this.container.clientHeight || window.innerHeight);
     const pr = this.perf.getEffectivePixelRatio();
 
     this.camera.aspect = width / height;
@@ -1381,7 +1458,16 @@ export class FantasyBoardEngine {
   private updateScene(dt: number, elapsed: number) {
     this.frameCounter++;
     const cfg = this.perf.getQualityConfig();
-    const reduced = this.cameraController.getSettings().reducedEffects || cfg.tier === 'potato';
+    const isLightTier = cfg.tier === 'potato' || cfg.tier === 'low';
+    const reduced = this.cameraController.getSettings().reducedEffects || isLightTier;
+    const seqState = this.sequenceController?.getState() ?? 'idle';
+
+    // Throttle shadowMap updates: update every frame during active turn animations, or every 4th frame when idle
+    if (this.renderer.shadowMap.enabled) {
+      if (seqState !== 'idle' || (this.frameCounter & 3) === 0) {
+        this.renderer.shadowMap.needsUpdate = true;
+      }
+    }
 
     // Update camera & frustum matrix first for accurate distance/frustum culling
     this.cameraController.update(dt);
@@ -1392,16 +1478,13 @@ export class FantasyBoardEngine {
     // Update Arena sanctuary water, wind foliage, waterfall cascade, mist & spores
     this.arenaEnv?.update(elapsed, reduced);
 
-    // Floating special crystals & starfield (throttled on Potato)
-    const runSecondary = cfg.tier !== 'potato' || (this.frameCounter & 1) === 0;
+    // Floating special crystals (throttled on lighter tiers)
+    const runSecondary = !isLightTier || (this.frameCounter & 1) === 0;
     if (runSecondary) {
       for (let i = 0; i < this.shrineCrystals.length; i++) {
         const c = this.shrineCrystals[i];
         c.rotation.y = elapsed * 1.4 + i;
         c.position.y = 0.28 + Math.sin(elapsed * 2.2 + i) * 0.055;
-      }
-      if (this.starField) {
-        this.starField.rotation.y = elapsed * 0.012;
       }
     }
 
@@ -1411,18 +1494,18 @@ export class FantasyBoardEngine {
       if (snake.bodyMaterial.userData.uTime) {
         snake.bodyMaterial.userData.uTime.value = elapsed + sIdx * 1.3;
       }
-      if (snake.bodyMaterial.userData.uSwallowPos) {
-        snake.bodyMaterial.userData.uSwallowPos.value = snake.eatState.swallowProgress;
-      }
-      if (snake.bodyMaterial.userData.uSwallowAmp) {
-        snake.bodyMaterial.userData.uSwallowAmp.value = snake.eatState.swallowAmp;
-      }
-
-      if (!snake.eatState.active) {
+      if (snake.eatState.active) {
+        if (snake.bodyMaterial.userData.uSwallowPos) {
+          snake.bodyMaterial.userData.uSwallowPos.value = snake.eatState.swallowProgress;
+        }
+        if (snake.bodyMaterial.userData.uSwallowAmp) {
+          snake.bodyMaterial.userData.uSwallowAmp.value = snake.eatState.swallowAmp;
+        }
+      } else if (runSecondary) {
         snake.headGroup.getWorldPosition(_sphereScratch.center);
         _sphereScratch.radius = 1.6;
         const distSq = _sphereScratch.center.distanceToSquared(this.camera.position);
-        if (distSq <= 784 && _frustum.intersectsSphere(_sphereScratch)) {
+        if (distSq <= 625 && _frustum.intersectsSphere(_sphereScratch)) {
           const swayRoll = Math.sin(elapsed * 1.9 + sIdx) * 0.085;
           const swayYaw = Math.cos(elapsed * 1.3 + sIdx * 1.7) * 0.05;
           _euler.set(0, swayYaw, swayRoll, 'YXZ');
@@ -1437,30 +1520,46 @@ export class FantasyBoardEngine {
       sIdx++;
     }
 
-    // Pawn AnimationMixer, idle slot damping, & active crest spin
-    const seqState = this.sequenceController?.getState() ?? 'idle';
+    // Pawn AnimationMixer, idle slot damping, & smooth floating/rotating idle presence
     const allowSlotDamp = seqState === 'idle' || seqState === 'returning';
+    let pawnIdx = 0;
     for (const [id, handle] of this.pawns.entries()) {
-      handle.mixer.update(dt);
+      const isActive = id === this.activeTurnPlayerId;
+      const phaseOffset = pawnIdx * 1.57;
+      if (isActive || seqState !== 'idle' || runSecondary) {
+        handle.mixer.update(isActive || seqState !== 'idle' ? dt : dt * 2);
+      }
       const target = this.pawnTargets.get(id);
       if (allowSlotDamp && target && handle.group.visible && handle.group.scale.y === 1) {
         handle.group.position.x = THREE.MathUtils.damp(handle.group.position.x, target.x, 9, dt);
         handle.group.position.z = THREE.MathUtils.damp(handle.group.position.z, target.z, 9, dt);
+        // Subtle idle levitation & slow rotational poise while waiting on a tile
+        const floatAmp = isActive ? 0.048 : 0.022;
+        const floatFreq = isActive ? 2.8 : 1.7;
+        const targetIdleY = Math.max(0, Math.sin(elapsed * floatFreq + phaseOffset)) * floatAmp;
+        handle.group.position.y = THREE.MathUtils.damp(handle.group.position.y, targetIdleY, 7, dt);
       }
       if (handle.shieldRing.visible) {
         handle.shieldRing.rotation.z = elapsed * 1.8;
       }
-      const isActive = id === this.activeTurnPlayerId;
+      const baseCrestY = (handle.crestMesh.userData.baseY as number | undefined) ?? 1.44;
       handle.activeHalo.visible = isActive;
       if (isActive) {
         const haloPulse = 1 + Math.sin(elapsed * 3.5) * 0.05;
         handle.activeHalo.scale.set(haloPulse, haloPulse, 1);
         handle.activeHalo.rotation.z = elapsed * 0.9;
-        handle.crestMesh.position.y = 1.14 + Math.sin(elapsed * 4.0) * 0.06;
-        handle.crestMesh.rotation.y = elapsed * 1.6;
+        handle.crestMesh.position.y = baseCrestY + Math.sin(elapsed * 4.0) * 0.065;
+        handle.crestMesh.rotation.y = elapsed * 1.8;
       } else {
-        handle.crestMesh.position.y = THREE.MathUtils.damp(handle.crestMesh.position.y, 1.12, 8, dt);
+        handle.crestMesh.position.y = THREE.MathUtils.damp(
+          handle.crestMesh.position.y,
+          baseCrestY + Math.sin(elapsed * 2.1 + phaseOffset) * 0.028,
+          8,
+          dt,
+        );
+        handle.crestMesh.rotation.y = elapsed * 0.75 + phaseOffset;
       }
+      pawnIdx++;
     }
 
     // Pooled 3D Skill VFX Update
@@ -1511,6 +1610,8 @@ export class FantasyBoardEngine {
     clearTimeout(this.frameId);
 
     window.removeEventListener('resize', this.handleResize);
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('pointerdown', this.handlePointerDown);

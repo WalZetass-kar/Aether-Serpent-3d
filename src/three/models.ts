@@ -32,8 +32,16 @@ import {
   buildArenaEnvironment,
   type ArenaEnvironmentHandle,
 } from './assets/arenaEnvironmentBuilder';
+import {
+  buildDetailedHeroPawn,
+  clearHeroPawnCaches,
+  type PawnClipName,
+  type PawnModelHandle,
+} from './assets/heroPawnBuilder';
 import { applyLodBiasToGroup } from './assets/foliageBuilder';
 import { QUALITY_PRESETS, type QualityConfig } from './perf/qualityPresets';
+
+export type { PawnClipName, PawnModelHandle };
 
 let sharedContactShadowTex: THREE.CanvasTexture | null = null;
 function getContactShadowTex(): THREE.CanvasTexture {
@@ -214,6 +222,7 @@ function getSharedSnakeStaticMats(maxAnisotropy: number) {
  * is cleanly reclaimed when leaving a match.
  */
 export function clearSharedArenaCaches(): void {
+  clearHeroPawnCaches();
   if (sharedContactShadowTex) {
     sharedContactShadowTex.dispose();
     sharedContactShadowTex = null;
@@ -254,72 +263,9 @@ export function clearSharedArenaCaches(): void {
   }
 }
 
-export type PawnClipName = 'idle' | 'walk' | 'climb' | 'cast' | 'victory';
-
-export interface PawnModelHandle {
-  group: THREE.Group;
-  bodyPivot: THREE.Group;
-  leftArmPivot: THREE.Group;
-  rightArmPivot: THREE.Group;
-  shieldRing: THREE.Mesh;
-  activeHalo: THREE.Mesh;
-  crestMesh: THREE.Mesh;
-  mixer: THREE.AnimationMixer;
-  actions: Record<PawnClipName, THREE.AnimationAction>;
-  playClip: (name: PawnClipName, fadeSec?: number) => void;
-}
-
-function buildPawnAnimationClips(): Record<PawnClipName, THREE.AnimationClip> {
-  const idleClip = new THREE.AnimationClip('idle', 1.8, [
-    new THREE.VectorKeyframeTrack('.position', [0, 0.9, 1.8], [0, 0, 0, 0, 0.03, 0, 0, 0, 0]),
-    new THREE.NumberKeyframeTrack('leftArmPivot.rotation[x]', [0, 0.9, 1.8], [0.08, -0.05, 0.08]),
-    new THREE.NumberKeyframeTrack('rightArmPivot.rotation[x]', [0, 0.9, 1.8], [-0.05, 0.08, -0.05]),
-  ]);
-
-  const walkClip = new THREE.AnimationClip('walk', 0.44, [
-    new THREE.NumberKeyframeTrack('bodyPivot.rotation[x]', [0, 0.22, 0.44], [0.12, 0.22, 0.12]),
-    new THREE.NumberKeyframeTrack('leftArmPivot.rotation[x]', [0, 0.22, 0.44], [-0.65, 0.55, -0.65]),
-    new THREE.NumberKeyframeTrack('rightArmPivot.rotation[x]', [0, 0.22, 0.44], [0.55, -0.65, 0.55]),
-  ]);
-
-  const climbClip = new THREE.AnimationClip('climb', 0.64, [
-    new THREE.NumberKeyframeTrack('bodyPivot.rotation[x]', [0, 0.32, 0.64], [0.24, 0.32, 0.24]),
-    new THREE.NumberKeyframeTrack('bodyPivot.rotation[z]', [0, 0.16, 0.48, 0.64], [0, 0.09, -0.09, 0]),
-    new THREE.NumberKeyframeTrack('leftArmPivot.rotation[x]', [0, 0.32, 0.64], [-2.15, -0.45, -2.15]),
-    new THREE.NumberKeyframeTrack('rightArmPivot.rotation[x]', [0, 0.32, 0.64], [-0.45, -2.15, -0.45]),
-  ]);
-
-  const castClip = new THREE.AnimationClip('cast', 0.72, [
-    new THREE.NumberKeyframeTrack('bodyPivot.position[y]', [0, 0.36, 0.72], [0, 0.18, 0]),
-    new THREE.NumberKeyframeTrack('bodyPivot.rotation[x]', [0, 0.36, 0.72], [0, -0.18, 0]),
-    new THREE.NumberKeyframeTrack('leftArmPivot.rotation[x]', [0, 0.3, 0.72], [0, -2.35, -0.2]),
-    new THREE.NumberKeyframeTrack('rightArmPivot.rotation[x]', [0, 0.3, 0.72], [0, -2.35, -0.2]),
-    new THREE.NumberKeyframeTrack('leftArmPivot.rotation[z]', [0, 0.3, 0.72], [0.1, 0.55, 0.1]),
-    new THREE.NumberKeyframeTrack('rightArmPivot.rotation[z]', [0, 0.3, 0.72], [-0.1, -0.55, -0.1]),
-  ]);
-
-  const victoryClip = new THREE.AnimationClip('victory', 0.9, [
-    new THREE.NumberKeyframeTrack('bodyPivot.position[y]', [0, 0.28, 0.56, 0.9], [0, 0.22, 0.04, 0]),
-    new THREE.NumberKeyframeTrack('leftArmPivot.rotation[x]', [0, 0.45, 0.9], [-2.4, -2.6, -2.4]),
-    new THREE.NumberKeyframeTrack('rightArmPivot.rotation[x]', [0, 0.45, 0.9], [-2.4, -2.6, -2.4]),
-    new THREE.NumberKeyframeTrack('leftArmPivot.rotation[z]', [0, 0.45, 0.9], [0.42, 0.65, 0.42]),
-    new THREE.NumberKeyframeTrack('rightArmPivot.rotation[z]', [0, 0.45, 0.9], [-0.42, -0.65, -0.42]),
-  ]);
-
-  return { idle: idleClip, walk: walkClip, climb: climbClip, cast: castClip, victory: victoryClip };
-}
-
-let cachedPawnClips: Record<PawnClipName, THREE.AnimationClip> | null = null;
-function getPawnClips() {
-  if (!cachedPawnClips) {
-    cachedPawnClips = buildPawnAnimationClips();
-  }
-  return cachedPawnClips;
-}
-
 /**
- * Builds a Detailed Fantasy Hero Figurine Pawn with hammered-bronze PBR armor,
- * woven cape/cloak, sculpted helmet/crown unique to archetypeIndex, grounded shadow,
+ * Builds a Detailed Fantasy Hero Figurine Pawn with sculpted multi-part anatomy,
+ * high-contrast paint zones, archetype weapons/props, grounded shadow,
  * active-turn base halo, and articulated AnimationMixer rig.
  */
 export function createHeroPawn(
@@ -328,339 +274,14 @@ export function createHeroPawn(
   archetypeIndex: number,
   quality: QualityConfig = QUALITY_PRESETS.high,
 ): PawnModelHandle {
-  const shadows = quality.shadowsEnabled;
-  const group = new THREE.Group();
-  const bodyPivot = new THREE.Group();
-  bodyPivot.name = 'bodyPivot';
-  group.add(bodyPivot);
-
-  const bronzePbr = getBronzePbr(quality.anisotropyCap, Math.min(512, quality.pbrTexSize) as 256 | 512);
-
-  const clothMat = new THREE.MeshStandardMaterial({
-    color: colorHex,
-    roughness: 0.78,
-    metalness: 0.08,
-  });
-  const armorMetalMat = new THREE.MeshStandardMaterial({
-    color: 0xeab308,
-    normalMap: bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.8, 0.8),
-    roughnessMap: bronzePbr.roughnessMap,
-    aoMap: bronzePbr.aoMap,
-    aoMapIntensity: 0.75,
-    roughness: 0.26,
-    metalness: 0.88,
-  });
-  const steelTrimMat = new THREE.MeshStandardMaterial({
-    color: 0xcbd5e1,
-    normalMap: bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.65, 0.65),
-    roughnessMap: bronzePbr.roughnessMap,
-    roughness: 0.24,
-    metalness: 0.9,
-  });
-  const basaltBaseMat = new THREE.MeshStandardMaterial({
-    color: 0x1e293b,
-    roughness: 0.72,
-    metalness: 0.22,
-  });
-  const crystalMat = new THREE.MeshPhysicalMaterial({
-    color: accentHex,
-    emissive: colorHex,
-    emissiveIntensity: 0.3,
-    roughness: 0.12,
-    metalness: 0.14,
-    clearcoat: quality.tier === 'potato' ? 0.0 : 1.0,
-    clearcoatRoughness: 0.08,
-  });
-
-  // Soft Grounded Contact Shadow
-  const shadowPlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.18, 1.18),
-    new THREE.MeshBasicMaterial({
-      map: getContactShadowTex(),
-      transparent: true,
-      depthWrite: false,
-      opacity: 0.64,
-    }),
+  const bronzePbr = getBronzePbr(
+    quality.anisotropyCap,
+    Math.min(512, quality.pbrTexSize) as 256 | 512,
   );
-  shadowPlane.rotation.x = -Math.PI / 2;
-  shadowPlane.position.y = 0.015;
-  group.add(shadowPlane);
-
-  // Subtle Active-Turn Gilded Floor Halo (toggled by FantasyBoardEngine)
-  const activeHalo = new THREE.Mesh(
-    new THREE.RingGeometry(0.46, 0.57, 28),
-    new THREE.MeshBasicMaterial({
-      color: 0xfbbf24,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.78,
-      depthWrite: false,
-    }),
-  );
-  activeHalo.rotation.x = -Math.PI / 2;
-  activeHalo.position.y = 0.025;
-  activeHalo.visible = false;
-  group.add(activeHalo);
-
-  // Stepped Carved Basalt & Bronze Plinth
-  const baseGeo = new THREE.CylinderGeometry(0.36, 0.44, 0.12, 8);
-  ensureUv2(baseGeo);
-  const baseMesh = new THREE.Mesh(baseGeo, basaltBaseMat);
-  baseMesh.position.y = 0.06;
-  baseMesh.castShadow = shadows;
-  baseMesh.receiveShadow = shadows;
-  bodyPivot.add(baseMesh);
-
-  const rimGeo = new THREE.CylinderGeometry(0.38, 0.4, 0.045, 8);
-  ensureUv2(rimGeo);
-  const baseRim = new THREE.Mesh(rimGeo, armorMetalMat);
-  baseRim.position.y = 0.135;
-  baseRim.castShadow = shadows;
-  bodyPivot.add(baseRim);
-
-  // Sculpted Hero Body LOD (LOD0 full Lathe + cloak + collar; LOD1 low-poly silhouette >20m)
-  const bodyLod = new THREE.LOD();
-  const bodyLod0 = new THREE.Group();
-  bodyLod0.userData.baseLodDist = 0;
-
-  const lathePoints = [
-    new THREE.Vector2(0.0, 0.15),
-    new THREE.Vector2(0.31, 0.15),
-    new THREE.Vector2(0.25, 0.34),
-    new THREE.Vector2(0.185, 0.56),
-    new THREE.Vector2(0.27, 0.76),
-    new THREE.Vector2(0.15, 0.92),
-    new THREE.Vector2(0.0, 0.94),
-  ];
-  const torsoGeo = new THREE.LatheGeometry(lathePoints, quality.tier === 'potato' ? 12 : 20);
-  ensureUv2(torsoGeo);
-  const torsoMesh = new THREE.Mesh(torsoGeo, clothMat);
-  torsoMesh.castShadow = shadows;
-  torsoMesh.receiveShadow = shadows;
-  bodyLod0.add(torsoMesh);
-
-  // Brushed Chestplate Armor & Waist Belt
-  const breastplateGeo = new THREE.CylinderGeometry(0.278, 0.218, 0.24, 12);
-  ensureUv2(breastplateGeo);
-  const breastplate = new THREE.Mesh(breastplateGeo, steelTrimMat);
-  breastplate.position.y = 0.69;
-  breastplate.scale.set(1.04, 1, 0.94);
-  breastplate.castShadow = shadows;
-  bodyLod0.add(breastplate);
-
-  const collarGeo = new THREE.TorusGeometry(0.215, 0.038, 8, 20);
-  ensureUv2(collarGeo);
-  const collarMesh = new THREE.Mesh(collarGeo, armorMetalMat);
-  collarMesh.rotation.x = Math.PI / 2;
-  collarMesh.position.y = 0.55;
-  collarMesh.castShadow = shadows;
-  bodyLod0.add(collarMesh);
-
-  // Flowing Woven Back Cloak
-  const cloakShape = new THREE.Shape();
-  cloakShape.moveTo(-0.18, 0);
-  cloakShape.lineTo(0.18, 0);
-  cloakShape.lineTo(0.28, -0.58);
-  cloakShape.quadraticCurveTo(0, -0.66, -0.28, -0.58);
-  cloakShape.closePath();
-  const cloakGeo = new THREE.ExtrudeGeometry(cloakShape, {
-    depth: 0.03,
-    bevelEnabled: quality.tier !== 'potato',
-    bevelThickness: 0.012,
-    bevelSize: 0.012,
-    bevelSegments: 2,
+  return buildDetailedHeroPawn(colorHex, accentHex, archetypeIndex, quality, {
+    bronzePbr,
+    contactShadowTex: getContactShadowTex(),
   });
-  ensureUv2(cloakGeo);
-  const cloakMesh = new THREE.Mesh(cloakGeo, clothMat);
-  cloakMesh.position.set(0, 0.79, -0.2);
-  cloakMesh.rotation.x = 0.22;
-  cloakMesh.castShadow = shadows;
-  bodyLod0.add(cloakMesh);
-
-  // Gorget / Shoulder Mantle
-  const mantleGeo = new THREE.CylinderGeometry(0.28, 0.2, 0.11, 10);
-  ensureUv2(mantleGeo);
-  const mantleMesh = new THREE.Mesh(mantleGeo, armorMetalMat);
-  mantleMesh.position.y = 0.83;
-  mantleMesh.castShadow = shadows;
-  bodyLod0.add(mantleMesh);
-
-  // LOD1 simplified torso silhouette for distant overview
-  const bodyLod1 = new THREE.Group();
-  bodyLod1.userData.baseLodDist = 20;
-  const simpleTorso = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.24, 0.3, 0.76, 8),
-    clothMat,
-  );
-  simpleTorso.position.y = 0.54;
-  simpleTorso.castShadow = shadows;
-  bodyLod1.add(simpleTorso);
-
-  bodyLod.addLevel(bodyLod0, 0);
-  bodyLod.addLevel(bodyLod1, 20 * quality.lodBias);
-  bodyPivot.add(bodyLod);
-
-  // Sculpted Head & Helmet Base
-  const headBaseGeo = new THREE.SphereGeometry(0.155, 12, 10);
-  headBaseGeo.scale(0.95, 1.08, 1.0);
-  ensureUv2(headBaseGeo);
-  const headMesh = new THREE.Mesh(headBaseGeo, steelTrimMat);
-  headMesh.position.y = 0.99;
-  headMesh.castShadow = shadows;
-  bodyPivot.add(headMesh);
-
-  // Articulated Hero Arms & Gauntlets
-  const buildArmPivot = (name: string, side: -1 | 1) => {
-    const pivot = new THREE.Group();
-    pivot.name = name;
-    pivot.position.set(side * 0.29, 0.77, 0);
-
-    const pauldronGeo = new THREE.SphereGeometry(0.088, 10, 8);
-    pauldronGeo.scale(1.1, 0.85, 1.05);
-    ensureUv2(pauldronGeo);
-    const pauldron = new THREE.Mesh(pauldronGeo, armorMetalMat);
-    pauldron.castShadow = true;
-    pivot.add(pauldron);
-
-    const upperArmGeo = new THREE.CylinderGeometry(0.044, 0.052, 0.23, 8);
-    ensureUv2(upperArmGeo);
-    const upperArm = new THREE.Mesh(upperArmGeo, clothMat);
-    upperArm.position.set(side * 0.03, -0.14, 0.04);
-    upperArm.rotation.z = side * 0.18;
-    upperArm.castShadow = true;
-    pivot.add(upperArm);
-
-    const gauntletGeo = new THREE.CylinderGeometry(0.056, 0.042, 0.15, 8);
-    ensureUv2(gauntletGeo);
-    const gauntlet = new THREE.Mesh(gauntletGeo, steelTrimMat);
-    gauntlet.position.set(side * 0.055, -0.29, 0.07);
-    gauntlet.castShadow = true;
-    pivot.add(gauntlet);
-
-    return pivot;
-  };
-
-  const leftArmPivot = buildArmPivot('leftArmPivot', -1);
-  const rightArmPivot = buildArmPivot('rightArmPivot', 1);
-  bodyPivot.add(leftArmPivot);
-  bodyPivot.add(rightArmPivot);
-
-  // Archetype-distinct Sculpted Helms & Regalia
-  if (archetypeIndex === 0) {
-    // Winged Valkyrie Knight Helm
-    const visorGeo = new THREE.CylinderGeometry(0.165, 0.15, 0.11, 10, 1, false, -0.9, 1.8);
-    const visor = new THREE.Mesh(visorGeo, armorMetalMat);
-    visor.position.set(0, 0.98, 0.02);
-    bodyPivot.add(visor);
-
-    const wingGeo = new THREE.ConeGeometry(0.058, 0.36, 5);
-    [-1, 1].forEach((side) => {
-      const plume = new THREE.Mesh(wingGeo, armorMetalMat);
-      plume.position.set(side * 0.21, 1.05, -0.02);
-      plume.rotation.z = -side * 0.46;
-      plume.castShadow = true;
-      bodyPivot.add(plume);
-    });
-  } else if (archetypeIndex === 1) {
-    // Arcane Scholar Hood & Astrolabe Ring
-    const hoodGeo = new THREE.ConeGeometry(0.21, 0.32, 10);
-    const hood = new THREE.Mesh(hoodGeo, clothMat);
-    hood.position.set(0, 1.04, -0.03);
-    hood.rotation.x = -0.22;
-    bodyPivot.add(hood);
-
-    const arcaneRing = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.02, 8, 28), armorMetalMat);
-    arcaneRing.position.y = 1.15;
-    arcaneRing.rotation.set(Math.PI / 3, 0.2, 0.35);
-    bodyPivot.add(arcaneRing);
-  } else if (archetypeIndex === 2) {
-    // Verdant Ranger Stag Horns & Mantle
-    const antlerGeo = new THREE.ConeGeometry(0.032, 0.28, 6);
-    [-1, 1].forEach((side) => {
-      const horn = new THREE.Mesh(antlerGeo, armorMetalMat);
-      horn.position.set(side * 0.14, 1.13, 0);
-      horn.rotation.z = -side * 0.52;
-      horn.castShadow = true;
-      bodyPivot.add(horn);
-    });
-  } else {
-    // Solar Sentinel Sun-Crested Crown
-    const crownBand = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.022, 8, 20), armorMetalMat);
-    crownBand.rotation.x = Math.PI / 2;
-    crownBand.position.y = 1.07;
-    bodyPivot.add(crownBand);
-
-    const sunHalo = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.018, 8, 24), armorMetalMat);
-    sunHalo.position.set(0, 1.14, -0.06);
-    bodyPivot.add(sunHalo);
-  }
-
-  let crestGeo: THREE.BufferGeometry;
-  if (archetypeIndex === 0) crestGeo = new THREE.ConeGeometry(0.14, 0.32, 6);
-  else if (archetypeIndex === 1) crestGeo = new THREE.OctahedronGeometry(0.15, 0);
-  else if (archetypeIndex === 2) crestGeo = new THREE.DodecahedronGeometry(0.14, 0);
-  else crestGeo = new THREE.IcosahedronGeometry(0.14, 0);
-
-  const crestMesh = new THREE.Mesh(crestGeo, crystalMat);
-  crestMesh.position.y = 1.28;
-  crestMesh.castShadow = true;
-  bodyPivot.add(crestMesh);
-
-  const shieldRingMat = new THREE.MeshStandardMaterial({
-    color: 0x60a5fa,
-    emissive: 0x2563eb,
-    emissiveIntensity: 0.65,
-    roughness: 0.22,
-    metalness: 0.82,
-  });
-  const shieldRing = new THREE.Mesh(new THREE.TorusGeometry(0.47, 0.03, 10, 28), shieldRingMat);
-  shieldRing.rotation.x = Math.PI / 2.2;
-  shieldRing.position.y = 0.64;
-  shieldRing.visible = false;
-  bodyPivot.add(shieldRing);
-
-  const mixer = new THREE.AnimationMixer(bodyPivot);
-  const clips = getPawnClips();
-  const actions: Record<PawnClipName, THREE.AnimationAction> = {
-    idle: mixer.clipAction(clips.idle),
-    walk: mixer.clipAction(clips.walk),
-    climb: mixer.clipAction(clips.climb),
-    cast: mixer.clipAction(clips.cast),
-    victory: mixer.clipAction(clips.victory),
-  };
-  actions.cast.loop = THREE.LoopOnce;
-  actions.cast.clampWhenFinished = true;
-
-  let activeClip: PawnClipName = 'idle';
-  actions.idle.play();
-
-  const playClip = (name: PawnClipName, fadeSec = 0.16) => {
-    if (name === activeClip && name !== 'cast') return;
-    const prevAction = actions[activeClip];
-    const nextAction = actions[name];
-    nextAction.reset();
-    nextAction.enabled = true;
-    nextAction.play();
-    if (prevAction && prevAction !== nextAction) {
-      prevAction.crossFadeTo(nextAction, fadeSec, false);
-    }
-    activeClip = name;
-  };
-
-  return {
-    group,
-    bodyPivot,
-    leftArmPivot,
-    rightArmPivot,
-    shieldRing,
-    activeHalo,
-    crestMesh,
-    mixer,
-    actions,
-    playClip,
-  };
 }
 
 /**

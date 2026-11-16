@@ -25,11 +25,11 @@ export interface CameraDofTarget {
 
 export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   mode: 'auto_follow',
-  distance: 10.5,
-  height: 8.2,
-  sensitivity: 1.0,
+  distance: 12.2,
+  height: 9.4,
+  sensitivity: 1.05,
   smoothness: 5.5,
-  fov: 44,
+  fov: 48,
   reducedEffects: false,
 };
 
@@ -115,7 +115,8 @@ export class DynamicCameraController {
 
   private handleControlsEnd = () => {
     this.isUserDragging = false;
-    this.manualPauseUntil = performance.now() + 2400;
+    // Give mobile/touch players plenty of time to inspect the board freely after dragging/pinching
+    this.manualPauseUntil = performance.now() + 4200;
   };
 
   public getSettings(): CameraSettings {
@@ -126,11 +127,11 @@ export class DynamicCameraController {
     this.settings = {
       ...this.settings,
       ...partial,
-      distance: THREE.MathUtils.clamp(partial.distance ?? this.settings.distance, 6.5, 22),
-      height: THREE.MathUtils.clamp(partial.height ?? this.settings.height, 4.0, 18.0),
+      distance: THREE.MathUtils.clamp(partial.distance ?? this.settings.distance, 6.5, 24),
+      height: THREE.MathUtils.clamp(partial.height ?? this.settings.height, 4.0, 20.0),
       sensitivity: THREE.MathUtils.clamp(partial.sensitivity ?? this.settings.sensitivity, 0.4, 2.0),
       smoothness: THREE.MathUtils.clamp(partial.smoothness ?? this.settings.smoothness, 2.0, 14.0),
-      fov: THREE.MathUtils.clamp(partial.fov ?? this.settings.fov, 34, 64),
+      fov: THREE.MathUtils.clamp(partial.fov ?? this.settings.fov, 34, 68),
       reducedEffects: partial.reducedEffects ?? this.settings.reducedEffects,
     };
 
@@ -362,22 +363,31 @@ export class DynamicCameraController {
     return out;
   }
 
+  private getPortraitPullback(): number {
+    const aspect = THREE.MathUtils.clamp(this.camera.aspect || 1, 0.42, 2.5);
+    return aspect < 1.0 ? THREE.MathUtils.clamp(1 / Math.pow(aspect, 0.54), 1.0, 1.56) : 1.0;
+  }
+
   private getTargetFov(): number {
-    const baseFov = this.settings.fov;
+    const aspect = THREE.MathUtils.clamp(this.camera.aspect || 1, 0.42, 2.5);
+    // Widen vertical FOV automatically on portrait/mobile screens so horizontal vision is spacious
+    const portraitFovBoost = aspect < 1.0 ? THREE.MathUtils.clamp((1.0 - aspect) * 20, 0, 11) : 0;
+    const baseFov = THREE.MathUtils.clamp(this.settings.fov + portraitFovBoost, 34, 68);
+
     if (this.settings.reducedEffects || this.settings.mode === 'manual' || this.settings.mode === 'isometric') {
       return baseFov;
     }
     switch (this.cinematicState) {
       case 'SNAKE_EAT':
-        return THREE.MathUtils.clamp(baseFov - 6, 32, 64);
+        return THREE.MathUtils.clamp(baseFov - 4, 34, 68);
       case 'SKILL_ACTION':
-        return THREE.MathUtils.clamp(baseFov - 4, 32, 64);
+        return THREE.MathUtils.clamp(baseFov - 3, 34, 68);
       case 'DICE_ACTION':
-        return THREE.MathUtils.clamp(baseFov - 3, 32, 64);
+        return THREE.MathUtils.clamp(baseFov - 2, 34, 68);
       case 'LADDER_CLIMB':
-        return THREE.MathUtils.clamp(baseFov - 2, 32, 64);
+        return THREE.MathUtils.clamp(baseFov - 1.5, 34, 68);
       case 'VICTORY':
-        return THREE.MathUtils.clamp(baseFov - 5, 32, 64);
+        return THREE.MathUtils.clamp(baseFov - 3, 34, 68);
       default:
         return baseFov;
     }
@@ -385,9 +395,9 @@ export class DynamicCameraController {
 
   private applyControlsAndFov(dt: number, immediate: boolean) {
     const sens = this.settings.sensitivity;
-    this.controls.rotateSpeed = 0.85 * sens;
-    this.controls.zoomSpeed = 0.95 * sens;
-    this.controls.panSpeed = 0.85 * sens;
+    this.controls.rotateSpeed = 0.9 * sens;
+    this.controls.zoomSpeed = 1.0 * sens;
+    this.controls.panSpeed = 0.95 * sens;
 
     const targetFov = this.getTargetFov();
     if (immediate) {
@@ -453,19 +463,20 @@ export class DynamicCameraController {
     }
 
     let lambda = this.settings.smoothness;
+    const pullback = this.getPortraitPullback();
 
     if (this.cinematicState === 'DICE_ACTION' && this.diceObject) {
       this.diceObject.getWorldPosition(_worldPos);
       _desiredTarget.set(_worldPos.x, _worldPos.y + 0.34, _worldPos.z);
-      const diceDist = Math.min(7.6, Math.max(5.2, this.settings.distance * 0.6));
-      const diceHeight = Math.min(6.2, Math.max(3.6, this.settings.height * 0.54));
+      const diceDist = Math.min(10.5, Math.max(5.8, this.settings.distance * 0.62 * pullback));
+      const diceHeight = Math.min(8.5, Math.max(4.0, this.settings.height * 0.56 * pullback));
       _desiredPos.set(_worldPos.x + 2.3, _worldPos.y + diceHeight, _worldPos.z + diceDist);
       lambda = this.settings.smoothness * 1.15;
     } else if (this.cinematicState === 'VICTORY' && this.followObject) {
       this.followObject.getWorldPosition(_worldPos);
       this.victoryOrbitAngle += dt * 0.44;
-      const winDist = Math.min(7.8, Math.max(5.2, this.settings.distance * 0.62));
-      const winHeight = Math.min(5.8, Math.max(3.4, this.settings.height * 0.52));
+      const winDist = Math.min(10.2, Math.max(5.6, this.settings.distance * 0.64 * pullback));
+      const winHeight = Math.min(7.6, Math.max(3.8, this.settings.height * 0.54 * pullback));
       _desiredTarget.set(_worldPos.x, _worldPos.y + 0.72, _worldPos.z);
       _desiredPos.set(
         _worldPos.x + Math.sin(this.victoryOrbitAngle) * winDist,
@@ -484,12 +495,12 @@ export class DynamicCameraController {
       this.updateVelocityEstimate(_worldPos, dt);
 
       const isBiteClose = this.subPhase === 'bite' || this.subPhase === 'approach';
-      const snakeDist = isBiteClose
-        ? Math.min(6.2, Math.max(4.4, this.settings.distance * 0.52))
-        : Math.min(7.8, Math.max(5.4, this.settings.distance * 0.68));
-      const snakeHeight = isBiteClose
-        ? Math.min(4.4, Math.max(2.9, this.settings.height * 0.42))
-        : Math.min(5.8, Math.max(3.8, this.settings.height * 0.58));
+      const snakeDist = (isBiteClose
+        ? Math.min(7.2, Math.max(4.8, this.settings.distance * 0.56))
+        : Math.min(9.2, Math.max(5.8, this.settings.distance * 0.72))) * pullback;
+      const snakeHeight = (isBiteClose
+        ? Math.min(5.2, Math.max(3.2, this.settings.height * 0.46))
+        : Math.min(6.8, Math.max(4.2, this.settings.height * 0.62))) * pullback;
 
       _desiredTarget.set(_worldPos.x, _worldPos.y + 0.42, _worldPos.z);
 
@@ -507,11 +518,11 @@ export class DynamicCameraController {
       this.followObject.getWorldPosition(_worldPos);
       this.updateVelocityEstimate(_worldPos, dt);
 
-      const ladDist = Math.min(8.2, Math.max(5.8, this.settings.distance * 0.78));
+      const ladDist = Math.min(10.4, Math.max(6.2, this.settings.distance * 0.8 * pullback));
       const ladHeight =
-        this.subPhase === 'top'
-          ? Math.min(6.2, Math.max(4.0, this.settings.height * 0.66))
-          : Math.min(5.4, Math.max(3.5, this.settings.height * 0.56));
+        (this.subPhase === 'top'
+          ? Math.min(7.4, Math.max(4.4, this.settings.height * 0.68))
+          : Math.min(6.4, Math.max(3.8, this.settings.height * 0.58))) * pullback;
 
       _desiredTarget.set(_worldPos.x, _worldPos.y + 0.72, _worldPos.z);
 
@@ -534,16 +545,16 @@ export class DynamicCameraController {
           .multiplyScalar(0.5);
         _desiredTarget.y += 0.65;
         const span = _worldPos.distanceTo(_secPos);
-        const skillDist = THREE.MathUtils.clamp(6.4 + span * 0.55, 6.2, 13.5);
-        const skillHeight = THREE.MathUtils.clamp(4.6 + span * 0.35, 4.4, 9.8);
+        const skillDist = THREE.MathUtils.clamp((6.8 + span * 0.55) * pullback, 6.4, 16.5);
+        const skillHeight = THREE.MathUtils.clamp((4.8 + span * 0.35) * pullback, 4.6, 12.0);
         _desiredPos.set(
           _desiredTarget.x - _desiredTarget.x * 0.16,
           _desiredTarget.y + skillHeight,
           _desiredTarget.z + skillDist,
         );
       } else {
-        const skillDist = Math.min(7.2, Math.max(5.0, this.settings.distance * 0.64));
-        const skillHeight = Math.min(5.2, Math.max(3.6, this.settings.height * 0.56));
+        const skillDist = Math.min(9.5, Math.max(5.4, this.settings.distance * 0.68 * pullback));
+        const skillHeight = Math.min(6.8, Math.max(4.0, this.settings.height * 0.6 * pullback));
         _desiredTarget.set(_worldPos.x, _worldPos.y + 0.68, _worldPos.z);
         _desiredPos.set(
           _worldPos.x - _worldPos.x * 0.22,
@@ -595,19 +606,22 @@ export class DynamicCameraController {
   }
 
   private computeOverviewTarget(outPos: THREE.Vector3, outTarget: THREE.Vector3) {
+    const aspect = THREE.MathUtils.clamp(this.camera.aspect || 1, 0.42, 2.5);
+    const portraitPullback = this.getPortraitPullback();
+
     if (this.overviewSnapshot === 'topdown') {
-      outPos.set(0, 26.5, 2.5);
-      outTarget.set(0, 0, 0.2);
+      outPos.set(0, THREE.MathUtils.clamp(28.0 * portraitPullback, 25.5, 42.0), 2.5);
+      outTarget.set(0, 0, aspect < 0.85 ? 0.45 : 0.2);
       return;
     }
-    const distScale = this.settings.distance / DEFAULT_CAMERA_SETTINGS.distance;
-    const heightScale = this.settings.height / DEFAULT_CAMERA_SETTINGS.height;
+    const distScale = (this.settings.distance / DEFAULT_CAMERA_SETTINGS.distance) * portraitPullback;
+    const heightScale = (this.settings.height / DEFAULT_CAMERA_SETTINGS.height) * portraitPullback;
     outPos.set(
       0,
-      THREE.MathUtils.clamp(18.5 * heightScale, 12.5, 28),
-      THREE.MathUtils.clamp(20.5 * distScale, 14.5, 27),
+      THREE.MathUtils.clamp(19.5 * heightScale, 13.0, 41.0),
+      THREE.MathUtils.clamp(21.5 * distScale, 15.0, 40.0),
     );
-    outTarget.set(0, 0, 1.0);
+    outTarget.set(0, 0, aspect < 0.85 ? 0.85 : 0.75);
   }
 
   private computeFollowCameraForWorldPos(
@@ -615,17 +629,21 @@ export class DynamicCameraController {
     outPos: THREE.Vector3,
     outTarget: THREE.Vector3,
   ) {
+    const aspect = THREE.MathUtils.clamp(this.camera.aspect || 1, 0.42, 2.5);
+    const followPullback =
+      aspect < 0.95 ? THREE.MathUtils.clamp(1 / Math.pow(aspect, 0.45), 1.0, 1.42) : 1.0;
+
     outTarget.set(
       worldPos.x + THREE.MathUtils.clamp(this.smoothedVelocity.x * 0.1, -1.1, 1.1),
       worldPos.y + 0.55,
       worldPos.z + THREE.MathUtils.clamp(this.smoothedVelocity.z * 0.1, -1.1, 1.1),
     );
 
-    const dist = this.settings.distance;
-    const baseHeight = this.settings.height;
-    const centerBiasX = -worldPos.x * 0.24;
+    const dist = this.settings.distance * followPullback;
+    const baseHeight = this.settings.height * followPullback;
+    const centerBiasX = -worldPos.x * (aspect < 0.9 ? 0.38 : 0.26);
 
-    outPos.set(worldPos.x + centerBiasX, worldPos.y + baseHeight, worldPos.z + dist * 0.88);
+    outPos.set(worldPos.x + centerBiasX, worldPos.y + baseHeight, worldPos.z + dist * 0.9);
   }
 
   private applyCollisionAvoidance(camPos: THREE.Vector3, targetPos: THREE.Vector3) {
@@ -675,13 +693,13 @@ export class DynamicCameraController {
   }
 
   private clampCameraAndTarget() {
-    this.camera.position.x = THREE.MathUtils.clamp(this.camera.position.x, -24, 24);
-    this.camera.position.y = THREE.MathUtils.clamp(this.camera.position.y, 2.2, 32);
-    this.camera.position.z = THREE.MathUtils.clamp(this.camera.position.z, -22, 27);
+    this.camera.position.x = THREE.MathUtils.clamp(this.camera.position.x, -34, 34);
+    this.camera.position.y = THREE.MathUtils.clamp(this.camera.position.y, 2.0, 46.0);
+    this.camera.position.z = THREE.MathUtils.clamp(this.camera.position.z, -30, 44.0);
 
-    this.controls.target.x = THREE.MathUtils.clamp(this.controls.target.x, -10.8, 10.8);
-    this.controls.target.y = THREE.MathUtils.clamp(this.controls.target.y, -0.2, 6.5);
-    this.controls.target.z = THREE.MathUtils.clamp(this.controls.target.z, -10.8, 12.2);
+    this.controls.target.x = THREE.MathUtils.clamp(this.controls.target.x, -14.0, 14.0);
+    this.controls.target.y = THREE.MathUtils.clamp(this.controls.target.y, -0.4, 7.5);
+    this.controls.target.z = THREE.MathUtils.clamp(this.controls.target.z, -14.0, 15.0);
   }
 
   public dispose() {

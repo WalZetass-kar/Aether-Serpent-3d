@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Home, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { BookOpen, Camera, Compass, Home, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import {
   BOARD_GAME_MODES,
   ONLINE_TURN_TIMEOUT_SEC,
@@ -26,6 +26,8 @@ interface HUDTopBarProps {
   isAnimating: boolean;
   onToggleMute: () => void;
   onOpenTutorial: () => void;
+  onOpenCameraSettings?: () => void;
+  onResetOverview?: () => void;
   onOpenOracleAI?: () => void;
   onReturnToMenu: () => void;
 }
@@ -52,6 +54,8 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   isAnimating,
   onToggleMute,
   onOpenTutorial,
+  onOpenCameraSettings,
+  onResetOverview,
   onOpenOracleAI,
   onReturnToMenu,
 }) => {
@@ -82,23 +86,23 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
 
   return (
     <>
-      <header className="pointer-events-none fixed top-0 left-0 right-0 z-20 px-2.5 sm:px-4 pt-2 sm:pt-3">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2">
-          {/* Left: Precise Brand & Active Match Title */}
-          <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-amber-500/30 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 shadow-lg min-w-0">
-            <SerpentCrestEmblem className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+      <header className="pointer-events-none fixed safe-hud-top z-20 px-2 sm:px-4 pt-1.5 sm:pt-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-1.5 sm:gap-2">
+          {/* Left: Slim Brand & Active Match Title */}
+          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 rounded-xl border border-amber-500/25 bg-slate-950/78 sm:bg-slate-950/90 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 shadow-md min-w-0">
+            <SerpentCrestEmblem className="w-4 h-4 sm:w-6 sm:h-6 shrink-0" />
             <div className="leading-tight min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="font-display text-xs sm:text-sm font-bold text-gold-gradient truncate">
+                <span className="font-display text-[11px] sm:text-sm font-bold text-gold-gradient truncate">
                   Aether Serpent 3D
                 </span>
                 {mode === 'online' && onlineRoomCode && (
-                  <span className="font-mono-num text-[10px] sm:text-[11px] font-semibold text-amber-300 shrink-0">
+                  <span className="font-mono-num text-[9px] sm:text-[11px] font-semibold text-amber-300 shrink-0">
                     #{onlineRoomCode}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400 truncate">
+              <div className="flex items-center gap-1 text-[9px] sm:text-[11px] text-slate-400 truncate">
                 <span className="truncate">{modeLabel}</span>
                 <span>·</span>
                 <span className="truncate">
@@ -120,23 +124,23 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
           </div>
 
           {/* Right: Timers + Desktop Actions / Mobile Sidebar Button */}
-          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="pointer-events-auto flex items-center gap-1 sm:gap-2 shrink-0">
             {showMatchClock && (
               <div
-                className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-2.5 py-1 shadow-lg bg-slate-950/90 backdrop-blur-md ${
+                className={`flex items-center gap-1 sm:gap-2 rounded-xl border px-1.5 sm:px-2.5 py-0.5 sm:py-1 shadow-md bg-slate-950/80 sm:bg-slate-950/90 backdrop-blur-md ${
                   matchUrgent ? 'border-rose-500/60' : 'border-amber-500/35'
                 }`}
                 title="Sisa Waktu Time Attack"
               >
                 <AnimatedProgressRing
                   progress={matchProgress}
-                  size={32}
-                  strokeWidth={3}
+                  size={28}
+                  strokeWidth={2.5}
                   tone="amber"
                   urgent={matchUrgent}
                 >
                   <span
-                    className={`font-mono-num text-[9px] font-bold ${
+                    className={`font-mono-num text-[8px] font-bold ${
                       matchUrgent ? 'text-rose-200' : 'text-amber-200'
                     }`}
                   >
@@ -158,7 +162,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
 
             {showTurnClock && (
               <div
-                className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-2.5 py-1 shadow-lg bg-slate-950/90 backdrop-blur-md ${
+                className={`flex items-center gap-1 sm:gap-2 rounded-xl border px-1.5 sm:px-2.5 py-0.5 sm:py-1 shadow-md bg-slate-950/80 sm:bg-slate-950/90 backdrop-blur-md ${
                   turnUrgent
                     ? 'border-rose-500/70'
                     : isMyOnlineTurn
@@ -169,13 +173,13 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
               >
                 <AnimatedProgressRing
                   progress={turnProgress}
-                  size={32}
-                  strokeWidth={3}
+                  size={28}
+                  strokeWidth={2.5}
                   tone={isMyOnlineTurn ? 'amber' : 'sky'}
                   urgent={turnUrgent}
                 >
                   <span
-                    className={`font-mono-num text-[10px] font-bold ${
+                    className={`font-mono-num text-[9px] font-bold ${
                       turnUrgent
                         ? 'text-rose-200'
                         : isMyOnlineTurn
@@ -245,7 +249,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
               type="button"
               onClick={() => setMobileDrawerOpen(true)}
               aria-label="Menu Arena"
-              className="sm:hidden inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/35 bg-slate-950/90 backdrop-blur-md min-w-[44px] min-h-[44px] px-3 text-xs font-bold text-amber-200 shadow-lg cursor-pointer"
+              className="sm:hidden inline-flex items-center justify-center rounded-xl border border-amber-500/35 bg-slate-950/80 backdrop-blur-md w-9 h-9 text-xs font-bold text-amber-200 shadow-md cursor-pointer"
             >
               <Menu className="w-4 h-4 text-amber-300" />
             </button>
@@ -256,7 +260,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
       {/* Mobile In-Game Sidebar Drawer */}
       {mobileDrawerOpen && (
         <div className="pointer-events-auto fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-xs sm:hidden">
-          <aside className="flex h-full w-72 flex-col border-l border-slate-800 bg-slate-950/98 p-4 space-y-4 shadow-2xl">
+          <aside className="flex h-full w-72 max-w-[85vw] flex-col border-l border-slate-800 bg-slate-950/98 safe-drawer-inset space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <SerpentCrestEmblem className="w-5 h-5" />
@@ -275,6 +279,34 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             </div>
 
             <div className="space-y-2.5">
+              {onResetOverview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileDrawerOpen(false);
+                    onResetOverview();
+                  }}
+                  className="w-full flex items-center gap-2.5 min-h-[44px] px-3.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs font-bold text-emerald-200"
+                >
+                  <Compass className="w-4 h-4 text-emerald-300 shrink-0" />
+                  <span>Reset Pandangan Papan Penuh</span>
+                </button>
+              )}
+
+              {onOpenCameraSettings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileDrawerOpen(false);
+                    onOpenCameraSettings();
+                  }}
+                  className="w-full flex items-center gap-2.5 min-h-[44px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
+                >
+                  <Camera className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>Kamera & Performa Grafis (Ringan)</span>
+                </button>
+              )}
+
               {onOpenOracleAI && (
                 <button
                   type="button"
@@ -282,7 +314,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                     setMobileDrawerOpen(false);
                     onOpenOracleAI();
                   }}
-                  className="w-full flex items-center gap-3 min-h-[46px] px-3.5 rounded-xl border border-amber-400/50 bg-amber-500/15 text-xs font-bold text-amber-200"
+                  className="w-full flex items-center gap-3 min-h-[44px] px-3.5 rounded-xl border border-amber-400/50 bg-amber-500/15 text-xs font-bold text-amber-200"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
                   <span>Oracle Aether AI (Strategi)</span>
@@ -294,7 +326,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                 onClick={() => {
                   onToggleMute();
                 }}
-                className="w-full flex items-center justify-between min-h-[46px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
+                className="w-full flex items-center justify-between min-h-[44px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
               >
                 <span className="inline-flex items-center gap-2.5">
                   {muted ? (
@@ -315,7 +347,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                   setMobileDrawerOpen(false);
                   onOpenTutorial();
                 }}
-                className="w-full flex items-center gap-2.5 min-h-[46px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
+                className="w-full flex items-center gap-2.5 min-h-[44px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
               >
                 <BookOpen className="w-4 h-4 text-amber-300" />
                 <span>Panduan Bermain</span>
@@ -327,7 +359,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                   setMobileDrawerOpen(false);
                   onReturnToMenu();
                 }}
-                className="w-full flex items-center gap-2.5 min-h-[46px] px-3.5 rounded-xl border border-rose-500/35 bg-rose-950/25 text-xs font-semibold text-rose-200"
+                className="w-full flex items-center gap-2.5 min-h-[44px] px-3.5 rounded-xl border border-rose-500/35 bg-rose-950/25 text-xs font-semibold text-rose-200"
               >
                 <Home className="w-4 h-4 text-rose-400" />
                 <span>Kembali ke Menu Utama</span>

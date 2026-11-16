@@ -16,6 +16,7 @@ export interface LocalScoreEntry {
   playerName: string;
   score: number;
   turns: number;
+  durationSec?: number;
   mode: ConnectionMode;
   boardMode?: BoardGameMode;
   difficulty: DifficultyMode;

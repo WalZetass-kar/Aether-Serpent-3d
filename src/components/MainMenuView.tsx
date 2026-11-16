@@ -118,12 +118,12 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
     PLAYER_ARCHETYPES[profile.archetypeIndex % PLAYER_ARCHETYPES.length];
 
   return (
-    <div className="relative z-10 flex flex-col w-full h-full justify-between p-3.5 sm:p-6 lg:px-10 lg:py-7 pointer-events-none overflow-y-auto custom-scroll">
+    <div className="relative z-10 flex flex-col w-full h-full justify-start lg:justify-between safe-page-scroll pointer-events-none overflow-y-auto custom-scroll">
       {/* Top Bar: Mobile shows ONLY precise Brand Title + Sidebar Menu button */}
-      <header className="pointer-events-auto flex items-center justify-between gap-3">
+      <header className="pointer-events-auto flex items-center justify-between gap-2.5 shrink-0">
         {/* Brand Title */}
-        <div className="glass-panel-soft rounded-2xl px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center gap-3 min-w-0">
-          <SerpentCrestEmblem className="w-10 h-10 sm:w-12 sm:h-12 shrink-0" />
+        <div className="glass-panel-soft rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <SerpentCrestEmblem className="w-9 h-9 sm:w-12 sm:h-12 shrink-0" />
           <div className="min-w-0">
             <h1 className="font-display text-sm sm:text-xl font-bold text-gold-gradient leading-tight truncate">
               Aether Serpent 3D
@@ -177,10 +177,10 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
         </div>
       </header>
 
-      {/* Main Content Split: Left open for 3D Dragon & Waterfall, Right Clean Game Menu */}
-      <main className="flex-1 flex flex-col lg:flex-row items-end lg:items-center justify-end gap-6 my-2 sm:my-4">
+      {/* Main Content: Anchored closely below header with elegant breathing room and balanced bottom fill */}
+      <main className="flex-1 min-h-0 flex flex-col lg:flex-row items-stretch justify-start lg:justify-between gap-3 lg:gap-6 mt-1.5 sm:mt-2 mb-1">
         {/* Desktop-only subtle caption leaving 3D dragon unobstructed */}
-        <div className="hidden lg:flex flex-col justify-end self-end mr-auto max-w-sm pb-2 pointer-events-none">
+        <div className="hidden lg:flex flex-col justify-end self-end mr-auto max-w-sm pb-1 pointer-events-none">
           <div className="glass-panel-soft rounded-2xl px-4 py-3 border border-slate-800/80">
             <div className="text-[11px] font-semibold text-amber-300">
               Penjaga Lembah Aether
@@ -191,47 +191,54 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
           </div>
         </div>
 
-        {/* Right Command Hub Card: Focused strictly on Game Menus */}
-        <section className="pointer-events-auto w-full max-w-[440px] glass-panel rounded-3xl p-4 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3 min-w-0">
-              <SerpentCrestEmblem className="w-12 h-12 sm:w-14 sm:h-14 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[11px] font-semibold text-amber-300/90">
-                  Gerbang Petualangan
+        {/* Right Command Hub Card: Tighter top margin right below title header, balanced bottom fill */}
+        <section className="pointer-events-auto flex-1 flex flex-col justify-between w-full max-w-[440px] mx-auto lg:mx-0 glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-5 gap-3.5 overflow-hidden">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <SerpentCrestEmblem className="w-11 h-11 sm:w-13 sm:h-13 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold text-amber-300/90">
+                    Gerbang Petualangan
+                  </div>
+                  <h2 className="font-display text-lg sm:text-2xl font-bold text-white truncate">
+                    Menu Permainan
+                  </h2>
                 </div>
-                <h2 className="font-display text-lg sm:text-2xl font-bold text-white truncate">
-                  Menu Permainan
-                </h2>
               </div>
+              <button
+                type="button"
+                onClick={openSidebar}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-1.5 text-xs text-slate-300 hover:border-amber-400/40 hover:text-amber-200 transition-colors cursor-pointer shrink-0"
+                title="Ubah Nama & Bidak di Sidebar"
+              >
+                <ArchetypeEmblem archetypeIndex={profile.archetypeIndex} className="w-4 h-4 shrink-0" />
+                <span className="font-semibold text-amber-200 truncate max-w-[105px]">
+                  {profile.name}
+                </span>
+              </button>
             </div>
+
+            {/* Primary CTA: Select Game Mode */}
             <button
               type="button"
-              onClick={openSidebar}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-1.5 text-xs text-slate-300 hover:border-amber-400/40 hover:text-amber-200 transition-colors cursor-pointer shrink-0"
-              title="Ubah Nama & Bidak di Sidebar"
+              onClick={onNavigateModeSelection}
+              className="w-full min-h-[50px] inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-5 py-3 text-sm sm:text-base font-bold text-slate-950 shadow-lg hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap"
             >
-              <ArchetypeEmblem archetypeIndex={profile.archetypeIndex} className="w-4 h-4 shrink-0" />
-              <span className="font-semibold text-amber-200 truncate max-w-[105px]">
-                {profile.name}
-              </span>
+              <SlidersHorizontal className="w-4 h-4 sm:w-5 sm:h-5" />
+              Pilih Mode Permainan
             </button>
           </div>
 
-          {/* Primary CTA: Select Game Mode */}
-          <button
-            type="button"
-            onClick={onNavigateModeSelection}
-            className="w-full min-h-[48px] sm:min-h-[52px] inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-5 py-3 text-sm sm:text-base font-bold text-slate-950 shadow-lg hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap"
-          >
-            <SlidersHorizontal className="w-4 h-4 sm:w-5 sm:h-5" />
-            Pilih Mode Permainan
-          </button>
-
-          {/* 4 Quick Game Modes */}
-          <div className="space-y-1.5">
-            <div className="text-xs font-semibold text-slate-300">Mode Cepat</div>
-            <div className="grid grid-cols-2 gap-2">
+          {/* 4 Quick Game Modes: Expands harmoniously to fill card height */}
+          <div className="flex-1 flex flex-col justify-center space-y-2 min-h-0">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+              <span>Mode Cepat</span>
+              <span className="text-[11px] font-mono-num text-amber-300/90">
+                {profile.wins} Menang · Skor {profile.bestScore.toLocaleString('id-ID')}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 flex-1">
               {BOARD_GAME_MODES.map((m) => {
                 const st = MODE_STYLE[m.id];
                 return (
@@ -239,10 +246,10 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                     key={m.id}
                     type="button"
                     onClick={() => onQuickSelectMode(m.id)}
-                    className={`rounded-xl border border-slate-800 bg-slate-900/80 p-2.5 sm:p-3 text-left transition-all hover:bg-slate-800/90 ${st.accent} cursor-pointer group`}
+                    className={`min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 p-3 sm:p-3.5 text-left flex flex-col justify-between transition-all hover:bg-slate-800/90 ${st.accent} cursor-pointer group`}
                   >
-                    <div className="flex items-center justify-between gap-1.5">
-                      <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white group-hover:text-amber-200 truncate">
+                    <div className="flex items-center justify-between gap-1.5 min-w-0">
+                      <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white group-hover:text-amber-200 min-w-0 truncate">
                         {st.icon}
                         <span className="truncate">{m.label.replace(' Mode', '')}</span>
                       </span>
@@ -250,7 +257,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                         {st.badge}
                       </span>
                     </div>
-                    <p className="hidden sm:block text-[11px] text-slate-400 mt-1 line-clamp-1">
+                    <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2 leading-snug">
                       {m.shortDesc}
                     </p>
                   </button>
@@ -259,40 +266,58 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             </div>
           </div>
 
-          {/* Multiplayer Daring & Dunia Papan 3D */}
-          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
-            <button
-              type="button"
-              onClick={() => onOpenMultiplayer('create')}
-              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl border border-amber-500/35 bg-amber-500/10 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <PlusSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span>Buat Room</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenMultiplayer('join')}
-              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl border border-sky-500/35 bg-sky-500/10 text-xs font-bold text-sky-200 hover:bg-sky-500/20 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <DoorOpen className="w-3.5 h-3.5 text-sky-300 shrink-0" />
-              <span>Gabung Room</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenBoardManager('collection')}
-              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Layers className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-              <span>Koleksi Papan</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenBoardManager('creator')}
-              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl border border-cyan-500/35 bg-cyan-500/10 text-xs font-bold text-cyan-200 hover:bg-cyan-500/20 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Wand2 className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
-              <span>Buat Papan 3D</span>
-            </button>
+          <div className="space-y-3 pt-2.5 border-t border-slate-800/80 shrink-0">
+            {/* Multiplayer Daring & Dunia Papan 3D */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => onOpenMultiplayer('create')}
+                className="inline-flex items-center justify-center gap-1.5 min-h-[46px] px-3 py-2.5 rounded-xl border border-amber-500/35 bg-amber-500/10 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <PlusSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span>Buat Room</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenMultiplayer('join')}
+                className="inline-flex items-center justify-center gap-1.5 min-h-[46px] px-3 py-2.5 rounded-xl border border-sky-500/35 bg-sky-500/10 text-xs font-bold text-sky-200 hover:bg-sky-500/20 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <DoorOpen className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                <span>Gabung Room</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenBoardManager('collection')}
+                className="inline-flex items-center justify-center gap-1.5 min-h-[46px] px-3 py-2.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Layers className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                <span>Koleksi Papan</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenBoardManager('creator')}
+                className="inline-flex items-center justify-center gap-1.5 min-h-[46px] px-3 py-2.5 rounded-xl border border-cyan-500/35 bg-cyan-500/10 text-xs font-bold text-cyan-200 hover:bg-cyan-500/20 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                <span>Buat Papan 3D</span>
+              </button>
+            </div>
+
+            {/* Card Footer Credit */}
+            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Aether Serpent 3D</span>
+              <span>
+                Developed By{' '}
+                <a
+                  href="https://portfolionyaihwal.my.id"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-amber-300 hover:text-amber-200 underline underline-offset-2 transition-colors"
+                >
+                  WalZetass
+                </a>
+              </span>
+            </div>
           </div>
         </section>
       </main>
@@ -517,6 +542,18 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                 </button>
               </div>
             </div>
+
+            <footer className="px-5 py-3 border-t border-slate-800/90 bg-slate-950 text-center text-[11px] text-slate-400">
+              Developed By{' '}
+              <a
+                href="https://portfolionyaihwal.my.id"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-amber-300 hover:text-amber-200 underline underline-offset-2 transition-colors"
+              >
+                WalZetass
+              </a>
+            </footer>
           </aside>
         </div>
       )}

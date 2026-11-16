@@ -67,6 +67,7 @@ import {
 } from '../shared/boardThemes';
 import {
   resolveBoardForMatch,
+  saveCustomBoard,
   selectBoard,
 } from './services/boardStorageService';
 import {
@@ -143,6 +144,22 @@ function makePlayer(
   };
 }
 
+interface RoomTurnEventPayload {
+  eventId: number;
+  actorId: string;
+  autoRolled: boolean;
+  resolution: TurnResolution;
+  timestamp: number;
+}
+
+interface RoomChatPayload {
+  id?: number;
+  senderId?: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+}
+
 interface SerializedRoomPayload {
   code: string;
   name?: string;
@@ -159,6 +176,8 @@ interface SerializedRoomPayload {
   winnerId?: string | null;
   winningTeam?: TeamId | null;
   lastEventId: number;
+  turnEvents?: RoomTurnEventPayload[];
+  chatMessages?: RoomChatPayload[];
 }
 
 export default function App() {
@@ -252,14 +271,21 @@ export default function App() {
   const [oracleAiOpen, setOracleAiOpen] = useState(false);
   const [victoryOpen, setVictoryOpen] = useState(false);
 
-  // WebSocket Online Multiplayer State
+  // Dual-Transport Online Multiplayer State (WebSocket + HTTP Serverless Fallback for Vercel)
   const wsRef = useRef<WebSocket | null>(null);
   const wsConnectPromiseRef = useRef<Promise<WebSocket> | null>(null);
+  const mpTransportRef = useRef<'ws' | 'http'>('ws');
+  const roomBackupRef = useRef<SerializedRoomPayload | null>(null);
   const lastProcessedEventIdRef = useRef<number>(0);
+  const lastProcessedChatTsRef = useRef<number>(0);
   const lastPingRttRef = useRef<number | null>(null);
   const [onlineLobby, setOnlineLobby] = useState<OnlineLobbyState>(() => ({
     connected: false,
     connecting: false,
+    transportMode: 'ws',
+    wsReadyState: 'closed',
+    pingMs: null,
+    lastSyncAt: null,
     roomCode: null,
     roomName: 'Arena Aether',
     isPublic: true,
@@ -274,6 +300,8 @@ export default function App() {
     error: null,
     chatMessages: [],
   }));
+  const onlineLobbyRef = useRef<OnlineLobbyState>(onlineLobby);
+  onlineLobbyRef.current = onlineLobby;
 
   // Mutable refs for stable WebGL callbacks & keyboard shortcuts
   const rollActionRef = useRef<() => void>(() => {});
@@ -293,6 +321,7 @@ export default function App() {
   boardModeRef.current = boardMode;
   const timeLimitSecRef = useRef<number>(timeLimitSec);
   timeLimitSecRef.current = timeLimitSec;
+  const matchStartedAtRef = useRef<number>(Date.now());
 
   const showToast = useCallback((title: string, subtitle?: string) => {
     setToast({ title, subtitle });
@@ -311,6 +340,7 @@ export default function App() {
       return;
     }
     window.clearTimeout(loadingTimerRef.current);
+    matchStartedAtRef.current = Date.now();
     setInspectedTile(null);
     setArenaEmote(null);
     setArenaLoadProgress(0.08);
@@ -453,6 +483,7 @@ export default function App() {
           window.clearTimeout(loadingTimerRef.current);
           loadingTimerRef.current = window.setTimeout(() => {
             if (screenRef.current === 'loading_arena') {
+              matchStartedAtRef.current = Date.now();
               if (modeRef.current !== 'online' && boardModeRef.current === 'time_attack') {
                 setTimeEndsAt(Date.now() + timeLimitSecRef.current * 1000);
                 setTimeLeftSec(timeLimitSecRef.current);
@@ -526,11 +557,17 @@ export default function App() {
               ? winningPlayer.id === onlineLobby.myPlayerId
               : true;
 
-      // Save local browser scoreboard
+      const elapsedSec = Math.max(
+        5,
+        Math.round((Date.now() - matchStartedAtRef.current) / 1000),
+      );
+
+      // Save local browser scoreboard & match history
       const updatedScores = appendLocalScore({
         playerName: localHero.name,
         score: localHero.score,
         turns: Math.max(1, localHero.turnsTaken),
+        durationSec: elapsedSec,
         mode: matchMode,
         boardMode: matchBoardMode,
         difficulty: matchDifficulty,
@@ -884,9 +921,394 @@ export default function App() {
   }, [currentTurnIndex, executeLocalTurn, isAnimating, mode, players, screen, winner]);
 
   // ---------------------------------------------------------------------------
-  // WebSocket Online Multiplayer Client + Ping Heartbeat
+  // Dual-Transport Multiplayer Client (WebSocket + Vercel Serverless HTTP Sync)
   // ---------------------------------------------------------------------------
 
+  const processServerTurnEvent = useCallback(
+    (
+      eventId: number,
+      actorId: string,
+      autoRolled: boolean,
+      resolution: TurnResolution,
+      room: SerializedRoomPayload,
+    ) => {
+      if (eventId <= lastProcessedEventIdRef.current) return;
+      lastProcessedEventIdRef.current = eventId;
+      roomBackupRef.current = room;
+
+      const actorPlayer = room.players.find((p) => p.id === actorId);
+
+      setIsAnimating(true);
+      soundEngine.playDiceRoll();
+      if (autoRolled) {
+        showToast(
+          'Waktu Giliran Habis',
+          `Dadu ${actorPlayer?.name ?? 'Pemain'} dilempar otomatis (${resolution.roll}).`,
+        );
+      }
+
+      void (async () => {
+        if (engineRef.current) {
+          await engineRef.current.enqueueTurnAnimation(actorId, resolution, room.players, {
+            eventId,
+            archetypeIndex: actorPlayer?.archetypeIndex,
+            onDiceRolled: (val) => setLastRoll(val),
+            onHopStep: (stepIdx) => soundEngine.playHop(stepIdx),
+            onRungStep: (rungIdx) => soundEngine.playLadderStep(rungIdx),
+            onSnakeBite: () => soundEngine.playSnakeSwallow(),
+            onSkillVfx: (skillType) => {
+              if (skillType === 'shield' || skillType === 'shield_block') {
+                soundEngine.playSkillCast('defensive');
+              } else if (skillType === 'battle_attack' || skillType === 'curse') {
+                soundEngine.playSkillCast('offensive');
+              } else if (skillType === 'boost') {
+                soundEngine.playSkillCast('movement');
+              } else {
+                soundEngine.playSkillCast('support');
+              }
+            },
+            onSpecialTriggered: (sType, shieldBlocked) => {
+              if (shieldBlocked) {
+                soundEngine.playShieldBlock();
+              } else {
+                soundEngine.playSpecial(sType);
+                if (resolution.specialHit) {
+                  showToast(resolution.specialHit.label, resolution.specialHit.description);
+                }
+              }
+            },
+            onJumpTriggered: (jType, shieldBlocked) => {
+              if (jType === 'ladder') soundEngine.playLadder();
+              else if (shieldBlocked) soundEngine.playShieldBlock();
+              else soundEngine.playSnake();
+            },
+            onBattlePush: () => {
+              const bp = resolution.battlePush;
+              if (!bp) return;
+              if (bp.blockedByShield) {
+                soundEngine.playShieldBlock();
+              } else {
+                soundEngine.playClash();
+                showToast(
+                  'Serangan Battle Mode!',
+                  `${actorPlayer?.name ?? 'Pemain'} mendorong ${bp.targetPlayerName} ke petak ${bp.toTile}`,
+                );
+              }
+            },
+            onTeamSynergy: () => {
+              if (resolution.teamSynergy) {
+                soundEngine.playSpecial('extra_roll');
+                showToast(
+                  'Sinergi Tim!',
+                  `+${resolution.teamSynergy.bonusScore} poin kolaborasi tim`,
+                );
+              }
+            },
+          });
+        }
+
+        setPlayers(room.players);
+        setCurrentTurnIndex(room.currentTurnIndex);
+        setTurnDeadlineAt(room.status === 'playing' ? (room.turnDeadlineAt ?? null) : null);
+        setOnlineLobby((prev) => ({
+          ...prev,
+          status: room.status,
+          players: room.players,
+          winningTeam: room.winningTeam ?? null,
+        }));
+
+        const nextTurnPlayer = room.players[room.currentTurnIndex];
+        if (
+          document.hidden &&
+          room.status === 'playing' &&
+          nextTurnPlayer?.id === profile.playerId &&
+          profile.notificationsEnabled
+        ) {
+          void dispatchAppNotification(
+            'Giliran Anda di Aether Serpent 3D!',
+            'Pemain lain baru saja melempar dadu. Ayo lempar dadu Anda!',
+            'online-turn',
+          );
+        }
+
+        if (room.status === 'finished' && room.winnerId) {
+          const winP = room.players.find((p) => p.id === room.winnerId) ?? null;
+          if (winP) {
+            const winTeam = room.winningTeam ?? null;
+            const me = room.players.find((p) => p.id === profile.playerId);
+            const didWin =
+              (room.boardMode === 'team' && winTeam && me?.team === winTeam) ||
+              winP.id === profile.playerId;
+
+            if (didWin) soundEngine.playVictory();
+            else soundEngine.playDefeat();
+
+            setTimeExpired(false);
+            setWinningTeam(winTeam);
+            setWinner(winP);
+            setVictoryOpen(true);
+            void finalizeMatchProgress(
+              winP,
+              room.players,
+              'online',
+              room.boardMode ?? 'classic',
+              'medium',
+              winTeam,
+            );
+          }
+        }
+        setIsAnimating(false);
+      })();
+    },
+    [finalizeMatchProgress, profile.notificationsEnabled, profile.playerId, showToast],
+  );
+
+  const handleMultiplayerServerEvent = useCallback(
+    (msg: Record<string, unknown>) => {
+      const type = String(msg.type || '');
+
+      if (type === 'room:pong') {
+        const sentTs = Number(msg.ts || 0);
+        if (sentTs > 0) {
+          const rtt = Math.max(1, Date.now() - sentTs);
+          lastPingRttRef.current = rtt;
+          setOnlineLobby((prev) => ({
+            ...prev,
+            pingMs: rtt,
+            lastSyncAt: Date.now(),
+            wsReadyState: 'open',
+          }));
+        }
+        return;
+      }
+
+      if (type === 'error' || msg.error) {
+        setOnlineLobby((prev) => ({
+          ...prev,
+          connecting: false,
+          error: String(msg.error || msg.message || 'Terjadi kesalahan jaringan.'),
+        }));
+        return;
+      }
+
+      if (type === 'room:kicked' || msg.kicked) {
+        roomBackupRef.current = null;
+        setTurnDeadlineAt(null);
+        setTurnTimeLeftSec(null);
+        setOnlineLobby((prev) => ({
+          ...prev,
+          roomCode: null,
+          players: [],
+          status: 'lobby',
+          chatMessages: [],
+          error: String(msg.message || 'Anda dikeluarkan dari ruangan.'),
+        }));
+        if (screenRef.current === 'arena' || screenRef.current === 'loading_arena') {
+          setScreen('multiplayer_lobby');
+        }
+        showToast('Dikeluarkan dari Ruangan', String(msg.message || 'Host mengeluarkan Anda.'));
+        return;
+      }
+
+      if (type === 'room:joined' || type === 'room:state' || type === 'room:started') {
+        const room = msg.room as SerializedRoomPayload | undefined;
+        if (!room) return;
+        roomBackupRef.current = room;
+
+        const prevStatus = onlineLobbyRef.current.status;
+        const nextBoardMode = room.boardMode ?? 'classic';
+        const nextTimeLimit = room.timeLimitSec ?? TIME_ATTACK_DEFAULT_SEC;
+
+        // Sync chat history from room payload if newer messages exist
+        if (Array.isArray(room.chatMessages) && room.chatMessages.length > 0) {
+          const latestChat = room.chatMessages[room.chatMessages.length - 1];
+          if (latestChat && latestChat.timestamp > lastProcessedChatTsRef.current) {
+            lastProcessedChatTsRef.current = latestChat.timestamp;
+            if (screenRef.current === 'arena' && latestChat.text) {
+              setArenaEmote({
+                id: latestChat.timestamp,
+                senderName: latestChat.senderName,
+                text: latestChat.text,
+              });
+              window.clearTimeout(emoteTimerRef.current);
+              emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
+            }
+          }
+        }
+
+        setOnlineLobby((prev) => ({
+          ...prev,
+          connected: true,
+          connecting: false,
+          transportMode: mpTransportRef.current,
+          wsReadyState:
+            wsRef.current?.readyState === WebSocket.OPEN ? 'open' : 'closed',
+          pingMs: lastPingRttRef.current ?? prev.pingMs ?? null,
+          lastSyncAt: Date.now(),
+          roomCode: room.code,
+          roomName: room.name || prev.roomName,
+          isPublic: room.isPublic ?? prev.isPublic,
+          boardMode: nextBoardMode,
+          timeLimitSec: nextTimeLimit,
+          endsAt: room.endsAt ?? null,
+          hostId: room.hostId,
+          myPlayerId: msg.playerId ? String(msg.playerId) : prev.myPlayerId,
+          status: room.status,
+          players: room.players,
+          winningTeam: room.winningTeam ?? null,
+          chatMessages: Array.isArray(room.chatMessages)
+            ? room.chatMessages.map((c) => ({
+                senderName: c.senderName,
+                text: c.text,
+                timestamp: c.timestamp,
+              }))
+            : prev.chatMessages,
+          error: null,
+        }));
+
+        if (room.boardConfig) {
+          setActiveBoardConfig(room.boardConfig);
+          activeBoardRef.current = room.boardConfig;
+        }
+
+        const justTransitionedToPlaying =
+          type === 'room:started' || (prevStatus !== 'playing' && room.status === 'playing');
+
+        if (justTransitionedToPlaying) {
+          lastProcessedEventIdRef.current = room.lastEventId || 0;
+          setMode('online');
+          setBoardMode(nextBoardMode);
+          setTimeLimitSec(nextTimeLimit);
+          setTimeEndsAt(room.endsAt ?? null);
+          setTurnDeadlineAt(room.turnDeadlineAt ?? null);
+          if (room.endsAt) {
+            setTimeLeftSec(Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)));
+          } else {
+            setTimeLeftSec(null);
+          }
+          setPlayers(room.players);
+          setCurrentTurnIndex(room.currentTurnIndex);
+          setWinner(null);
+          setWinningTeam(null);
+          setTimeExpired(false);
+          setVictoryOpen(false);
+          setGlobalRank(null);
+          setLastRoll(null);
+          if (screenRef.current !== 'arena') {
+            enterArenaWithTransition();
+          } else {
+            if (room.boardConfig) {
+              engineRef.current?.updateBoardConfig(room.boardConfig);
+            }
+            engineRef.current?.resetCameraPhase();
+          }
+          return;
+        }
+
+        // If already in playing state and HTTP poll discovered a new turn event, play its animation!
+        if (room.status === 'playing' || room.status === 'finished') {
+          const unseenEvents = (room.turnEvents ?? []).filter(
+            (ev) => ev.eventId > lastProcessedEventIdRef.current,
+          );
+          if (unseenEvents.length > 0) {
+            const latestEv = unseenEvents[unseenEvents.length - 1];
+            processServerTurnEvent(
+              latestEv.eventId,
+              latestEv.actorId,
+              latestEv.autoRolled,
+              latestEv.resolution,
+              room,
+            );
+            return;
+          }
+
+          if (room.status === 'playing') {
+            setPlayers(room.players);
+            setCurrentTurnIndex(room.currentTurnIndex);
+            setTurnDeadlineAt(room.turnDeadlineAt ?? null);
+          }
+        } else {
+          setTurnDeadlineAt(null);
+        }
+        return;
+      }
+
+      if (type === 'room:chat_msg') {
+        const senderName = String(msg.senderName || 'Pemain');
+        const text = String(msg.text || '');
+        const timestamp = Number(msg.timestamp || Date.now());
+        lastProcessedChatTsRef.current = Math.max(lastProcessedChatTsRef.current, timestamp);
+        setOnlineLobby((prev) => ({
+          ...prev,
+          chatMessages: [
+            ...prev.chatMessages.slice(-24),
+            {
+              senderName,
+              text,
+              timestamp,
+            },
+          ],
+        }));
+        if (screenRef.current === 'arena' && text) {
+          setArenaEmote({ id: timestamp, senderName, text });
+          window.clearTimeout(emoteTimerRef.current);
+          emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
+        }
+        return;
+      }
+
+      if (type === 'game:time_up') {
+        const room = msg.room as SerializedRoomPayload | undefined;
+        if (!room) return;
+        roomBackupRef.current = room;
+        const winP =
+          room.players.find((p) => p.id === room.winnerId) ?? pickTimeAttackWinner(room.players);
+        setTurnDeadlineAt(null);
+        setTurnTimeLeftSec(null);
+        setPlayers(room.players);
+        setOnlineLobby((prev) => ({
+          ...prev,
+          status: 'finished',
+          players: room.players,
+          winningTeam: room.winningTeam ?? null,
+        }));
+        setTimeLeftSec(0);
+        setTimeExpired(true);
+        if (winP) {
+          const didWin = winP.id === profile.playerId;
+          if (didWin) soundEngine.playVictory();
+          else soundEngine.playDefeat();
+          engineRef.current?.triggerVictoryCamera(winP.id);
+          setWinner(winP);
+          setWinningTeam(room.winningTeam ?? null);
+          setVictoryOpen(true);
+          void finalizeMatchProgress(
+            winP,
+            room.players,
+            'online',
+            room.boardMode ?? 'time_attack',
+            'medium',
+            room.winningTeam ?? null,
+          );
+        }
+        return;
+      }
+
+      if (type === 'game:turn_event') {
+        const eventId = Number(msg.eventId || 0);
+        const actorId = String(msg.actorId || '');
+        const autoRolled = Boolean(msg.autoRolled);
+        const resolution = msg.resolution as TurnResolution;
+        const room = msg.room as SerializedRoomPayload;
+        if (room && resolution) {
+          processServerTurnEvent(eventId, actorId, autoRolled, resolution, room);
+        }
+      }
+    },
+    [enterArenaWithTransition, finalizeMatchProgress, processServerTurnEvent, profile.playerId, showToast],
+  );
+
+  // WebSocket Ping Heartbeat
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -902,40 +1324,146 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
 
+  // HTTP Cloud Sync Polling Loop (Active when running on Vercel Serverless or when WebSocket is unavailable)
+  useEffect(() => {
+    if (!onlineLobby.roomCode) return;
+
+    const pollInterval = window.setInterval(async () => {
+      const wsOpen = wsRef.current && wsRef.current.readyState === WebSocket.OPEN;
+      if (wsOpen && mpTransportRef.current === 'ws') return;
+
+      const t0 = performance.now();
+      try {
+        const res = await fetch('/api/mp/poll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: onlineLobby.roomCode,
+            playerId: profile.playerId,
+            lastRtt: lastPingRttRef.current,
+            roomBackup: roomBackupRef.current,
+          }),
+        });
+        lastPingRttRef.current = Math.max(1, Math.round(performance.now() - t0));
+        if (!res.ok) return;
+        const data = (await res.json()) as Record<string, unknown>;
+        if (data.kicked) {
+          handleMultiplayerServerEvent({ type: 'room:kicked', message: data.message });
+          return;
+        }
+        if (data.room) {
+          const r = data.room as SerializedRoomPayload;
+          if (r.status === 'finished' && r.boardMode === 'time_attack' && !r.turnEvents?.length) {
+            handleMultiplayerServerEvent({ type: 'game:time_up', room: r });
+          } else {
+            handleMultiplayerServerEvent({ type: 'room:state', room: r });
+          }
+        }
+      } catch {
+        // Ignore transient network hiccups during polling
+      }
+    }, 1150);
+
+    return () => window.clearInterval(pollInterval);
+  }, [handleMultiplayerServerEvent, onlineLobby.roomCode, profile.playerId]);
+
   const ensureWebSocket = useCallback((): Promise<WebSocket> => {
+    if (mpTransportRef.current === 'http') {
+      return Promise.reject(new Error('HTTP_FALLBACK_ACTIVE'));
+    }
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       return Promise.resolve(wsRef.current);
     }
-    if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING && wsConnectPromiseRef.current) {
+    if (
+      wsRef.current &&
+      wsRef.current.readyState === WebSocket.CONNECTING &&
+      wsConnectPromiseRef.current
+    ) {
       return wsConnectPromiseRef.current;
     }
 
     const promise = new Promise<WebSocket>((resolve, reject) => {
       setOnlineLobby((prev) => ({ ...prev, connecting: true, error: null }));
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
-      wsRef.current = ws;
+      let settled = false;
+      let ws: WebSocket;
+
+      const fallbackToHttp = () => {
+        if (settled) return;
+        settled = true;
+        wsConnectPromiseRef.current = null;
+        mpTransportRef.current = 'http';
+        try {
+          ws?.close();
+        } catch {
+          // ignore
+        }
+        setOnlineLobby((prev) => ({
+          ...prev,
+          connected: true,
+          connecting: false,
+          transportMode: 'http',
+          error: null,
+        }));
+        reject(new Error('WS_UNAVAILABLE_FALLBACK_HTTP'));
+      };
+
+      const connectTimeout = window.setTimeout(fallbackToHttp, 1750);
+
+      try {
+        ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+        wsRef.current = ws;
+      } catch {
+        window.clearTimeout(connectTimeout);
+        fallbackToHttp();
+        return;
+      }
 
       ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(connectTimeout);
         wsConnectPromiseRef.current = null;
-        setOnlineLobby((prev) => ({ ...prev, connected: true, connecting: false, error: null }));
+        mpTransportRef.current = 'ws';
+        setOnlineLobby((prev) => ({
+          ...prev,
+          connected: true,
+          connecting: false,
+          transportMode: 'ws',
+          wsReadyState: 'open',
+          lastSyncAt: Date.now(),
+          error: null,
+        }));
         resolve(ws);
       };
 
       ws.onerror = () => {
-        wsConnectPromiseRef.current = null;
-        setOnlineLobby((prev) => ({
-          ...prev,
-          connected: false,
-          connecting: false,
-          error: 'Gagal terhubung ke server multiplayer daring.',
-        }));
-        reject(new Error('WebSocket error'));
+        window.clearTimeout(connectTimeout);
+        fallbackToHttp();
       };
 
       ws.onclose = () => {
+        window.clearTimeout(connectTimeout);
         wsConnectPromiseRef.current = null;
-        setOnlineLobby((prev) => ({ ...prev, connected: false, connecting: false }));
+        if (!settled) {
+          fallbackToHttp();
+        } else if (onlineLobbyRef.current.roomCode) {
+          // Automatically switch to HTTP Cloud Sync if WebSocket drops mid-session
+          mpTransportRef.current = 'http';
+          setOnlineLobby((prev) => ({
+            ...prev,
+            connected: true,
+            transportMode: 'http',
+            wsReadyState: 'closed',
+          }));
+        } else {
+          setOnlineLobby((prev) => ({
+            ...prev,
+            connected: false,
+            connecting: false,
+            wsReadyState: 'closed',
+          }));
+        }
       };
 
       ws.onmessage = (evt) => {
@@ -945,300 +1473,86 @@ export default function App() {
         } catch {
           return;
         }
-        const type = String(msg.type || '');
-
-        if (type === 'room:pong') {
-          const sentTs = Number(msg.ts || 0);
-          if (sentTs > 0) {
-            lastPingRttRef.current = Math.max(1, Date.now() - sentTs);
-          }
-          return;
-        }
-
-        if (type === 'error') {
-          setOnlineLobby((prev) => ({ ...prev, error: String(msg.message || 'Terjadi kesalahan') }));
-          return;
-        }
-
-        if (type === 'room:kicked') {
-          setTurnDeadlineAt(null);
-          setTurnTimeLeftSec(null);
-          setOnlineLobby((prev) => ({
-            ...prev,
-            roomCode: null,
-            players: [],
-            status: 'lobby',
-            chatMessages: [],
-            error: String(msg.message || 'Anda dikeluarkan dari ruangan.'),
-          }));
-          if (screenRef.current === 'arena' || screenRef.current === 'loading_arena') {
-            setScreen('multiplayer_lobby');
-          }
-          showToast('Dikeluarkan dari Ruangan', String(msg.message || 'Host mengeluarkan Anda.'));
-          return;
-        }
-
-        if (type === 'room:joined' || type === 'room:state' || type === 'room:started') {
-          const room = msg.room as SerializedRoomPayload | undefined;
-          if (!room) return;
-
-          const nextBoardMode = room.boardMode ?? 'classic';
-          const nextTimeLimit = room.timeLimitSec ?? TIME_ATTACK_DEFAULT_SEC;
-          setOnlineLobby((prev) => ({
-            ...prev,
-            roomCode: room.code,
-            roomName: room.name || prev.roomName,
-            isPublic: room.isPublic ?? prev.isPublic,
-            boardMode: nextBoardMode,
-            timeLimitSec: nextTimeLimit,
-            endsAt: room.endsAt ?? null,
-            hostId: room.hostId,
-            myPlayerId: msg.playerId ? String(msg.playerId) : prev.myPlayerId,
-            status: room.status,
-            players: room.players,
-            winningTeam: room.winningTeam ?? null,
-            error: null,
-          }));
-
-          if (room.boardConfig) {
-            setActiveBoardConfig(room.boardConfig);
-            activeBoardRef.current = room.boardConfig;
-          }
-
-          if (type === 'room:started' || room.status === 'playing') {
-            lastProcessedEventIdRef.current = room.lastEventId || 0;
-            setMode('online');
-            setBoardMode(nextBoardMode);
-            setTimeLimitSec(nextTimeLimit);
-            setTimeEndsAt(room.endsAt ?? null);
-            setTurnDeadlineAt(room.turnDeadlineAt ?? null);
-            if (room.endsAt) {
-              setTimeLeftSec(Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)));
-            } else {
-              setTimeLeftSec(null);
-            }
-            setPlayers(room.players);
-            setCurrentTurnIndex(room.currentTurnIndex);
-            setWinner(null);
-            setWinningTeam(null);
-            setTimeExpired(false);
-            setVictoryOpen(false);
-            setGlobalRank(null);
-            setLastRoll(null);
-            if (type === 'room:started') {
-              if (screenRef.current !== 'arena') {
-                enterArenaWithTransition();
-              } else {
-                if (room.boardConfig) {
-                  engineRef.current?.updateBoardConfig(room.boardConfig);
-                }
-                engineRef.current?.resetCameraPhase();
-              }
-            }
-          } else {
-            setTurnDeadlineAt(null);
-          }
-          return;
-        }
-
-        if (type === 'room:chat_msg') {
-          const senderName = String(msg.senderName || 'Pemain');
-          const text = String(msg.text || '');
-          const timestamp = Number(msg.timestamp || Date.now());
-          setOnlineLobby((prev) => ({
-            ...prev,
-            chatMessages: [
-              ...prev.chatMessages.slice(-24),
-              {
-                senderName,
-                text,
-                timestamp,
-              },
-            ],
-          }));
-          if (screenRef.current === 'arena' && text) {
-            setArenaEmote({ id: timestamp, senderName, text });
-            window.clearTimeout(emoteTimerRef.current);
-            emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
-          }
-          return;
-        }
-
-        if (type === 'game:time_up') {
-          const room = msg.room as SerializedRoomPayload | undefined;
-          if (!room) return;
-          const winP =
-            room.players.find((p) => p.id === room.winnerId) ?? pickTimeAttackWinner(room.players);
-          setTurnDeadlineAt(null);
-          setTurnTimeLeftSec(null);
-          setPlayers(room.players);
-          setOnlineLobby((prev) => ({
-            ...prev,
-            status: 'finished',
-            players: room.players,
-            winningTeam: room.winningTeam ?? null,
-          }));
-          setTimeLeftSec(0);
-          setTimeExpired(true);
-          if (winP) {
-            const didWin = winP.id === profile.playerId;
-            if (didWin) soundEngine.playVictory();
-            else soundEngine.playDefeat();
-            engineRef.current?.triggerVictoryCamera(winP.id);
-            setWinner(winP);
-            setWinningTeam(room.winningTeam ?? null);
-            setVictoryOpen(true);
-            void finalizeMatchProgress(
-              winP,
-              room.players,
-              'online',
-              room.boardMode ?? 'time_attack',
-              'medium',
-              room.winningTeam ?? null,
-            );
-          }
-          return;
-        }
-
-        if (type === 'game:turn_event') {
-          const eventId = Number(msg.eventId || 0);
-          if (eventId <= lastProcessedEventIdRef.current) return;
-          lastProcessedEventIdRef.current = eventId;
-
-          const actorId = String(msg.actorId || '');
-          const autoRolled = Boolean(msg.autoRolled);
-          const resolution = msg.resolution as TurnResolution;
-          const room = msg.room as SerializedRoomPayload;
-          const actorPlayer = room.players.find((p) => p.id === actorId);
-
-          setIsAnimating(true);
-          soundEngine.playDiceRoll();
-          if (autoRolled) {
-            showToast(
-              'Waktu Giliran Habis',
-              `Dadu ${actorPlayer?.name ?? 'Pemain'} dilempar otomatis (${resolution.roll}).`,
-            );
-          }
-
-          void (async () => {
-            if (engineRef.current) {
-              await engineRef.current.enqueueTurnAnimation(actorId, resolution, room.players, {
-                eventId,
-                archetypeIndex: actorPlayer?.archetypeIndex,
-                onDiceRolled: (val) => setLastRoll(val),
-                onHopStep: (stepIdx) => soundEngine.playHop(stepIdx),
-                onRungStep: (rungIdx) => soundEngine.playLadderStep(rungIdx),
-                onSnakeBite: () => soundEngine.playSnakeSwallow(),
-                onSkillVfx: (skillType) => {
-                  if (skillType === 'shield' || skillType === 'shield_block') {
-                    soundEngine.playSkillCast('defensive');
-                  } else if (skillType === 'battle_attack' || skillType === 'curse') {
-                    soundEngine.playSkillCast('offensive');
-                  } else if (skillType === 'boost') {
-                    soundEngine.playSkillCast('movement');
-                  } else {
-                    soundEngine.playSkillCast('support');
-                  }
-                },
-                onSpecialTriggered: (sType, shieldBlocked) => {
-                  if (shieldBlocked) {
-                    soundEngine.playShieldBlock();
-                  } else {
-                    soundEngine.playSpecial(sType);
-                    if (resolution.specialHit) {
-                      showToast(resolution.specialHit.label, resolution.specialHit.description);
-                    }
-                  }
-                },
-                onJumpTriggered: (jType, shieldBlocked) => {
-                  if (jType === 'ladder') soundEngine.playLadder();
-                  else if (shieldBlocked) soundEngine.playShieldBlock();
-                  else soundEngine.playSnake();
-                },
-                onBattlePush: () => {
-                  const bp = resolution.battlePush;
-                  if (!bp) return;
-                  if (bp.blockedByShield) {
-                    soundEngine.playShieldBlock();
-                  } else {
-                    soundEngine.playClash();
-                    showToast(
-                      'Serangan Battle Mode!',
-                      `${actorPlayer?.name ?? 'Pemain'} mendorong ${bp.targetPlayerName} ke petak ${bp.toTile}`,
-                    );
-                  }
-                },
-                onTeamSynergy: () => {
-                  if (resolution.teamSynergy) {
-                    soundEngine.playSpecial('extra_roll');
-                    showToast(
-                      'Sinergi Tim!',
-                      `+${resolution.teamSynergy.bonusScore} poin kolaborasi tim`,
-                    );
-                  }
-                },
-              });
-            }
-
-            setPlayers(room.players);
-            setCurrentTurnIndex(room.currentTurnIndex);
-            setTurnDeadlineAt(room.status === 'playing' ? (room.turnDeadlineAt ?? null) : null);
-            setOnlineLobby((prev) => ({
-              ...prev,
-              status: room.status,
-              players: room.players,
-              winningTeam: room.winningTeam ?? null,
-            }));
-
-            const nextTurnPlayer = room.players[room.currentTurnIndex];
-            if (
-              document.hidden &&
-              room.status === 'playing' &&
-              nextTurnPlayer?.id === profile.playerId &&
-              profile.notificationsEnabled
-            ) {
-              void dispatchAppNotification(
-                'Giliran Anda di Aether Serpent 3D!',
-                'Pemain lain baru saja melempar dadu. Ayo lempar dadu Anda!',
-                'online-turn',
-              );
-            }
-
-            if (room.status === 'finished' && room.winnerId) {
-              const winP = room.players.find((p) => p.id === room.winnerId) ?? null;
-              if (winP) {
-                const winTeam = room.winningTeam ?? null;
-                const me = room.players.find((p) => p.id === profile.playerId);
-                const didWin =
-                  (room.boardMode === 'team' && winTeam && me?.team === winTeam) ||
-                  winP.id === profile.playerId;
-
-                if (didWin) soundEngine.playVictory();
-                else soundEngine.playDefeat();
-
-                setTimeExpired(false);
-                setWinningTeam(winTeam);
-                setWinner(winP);
-                setVictoryOpen(true);
-                void finalizeMatchProgress(
-                  winP,
-                  room.players,
-                  'online',
-                  room.boardMode ?? 'classic',
-                  'medium',
-                  winTeam,
-                );
-              }
-            }
-            setIsAnimating(false);
-          })();
-        }
+        handleMultiplayerServerEvent(msg);
       };
     });
 
     wsConnectPromiseRef.current = promise;
     return promise;
-  }, [enterArenaWithTransition, finalizeMatchProgress, profile.notificationsEnabled, profile.playerId, showToast]);
+  }, [handleMultiplayerServerEvent]);
+
+  const sendMultiplayerAction = useCallback(
+    async (payload: Record<string, unknown>) => {
+      const enrichedPayload = {
+        ...payload,
+        playerId: payload.playerId ?? profile.playerId,
+        code: payload.code ?? onlineLobbyRef.current.roomCode,
+      };
+
+      if (mpTransportRef.current === 'ws') {
+        try {
+          const ws = await ensureWebSocket();
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(enrichedPayload));
+            return;
+          }
+        } catch {
+          // WebSocket unavailable (e.g., Vercel Serverless) — continue seamlessly with HTTP API below
+        }
+      }
+
+      // HTTP Serverless Multiplayer Action Fallback (/api/mp/action)
+      if (payload.type === 'room:create' || payload.type === 'room:join') {
+        setOnlineLobby((prev) => ({ ...prev, connecting: true, error: null }));
+      }
+
+      try {
+        const t0 = performance.now();
+        const res = await fetch('/api/mp/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...enrichedPayload,
+            roomBackup: roomBackupRef.current,
+          }),
+        });
+        const rtt = Math.max(1, Math.round(performance.now() - t0));
+        lastPingRttRef.current = rtt;
+        setOnlineLobby((prev) => ({
+          ...prev,
+          pingMs: rtt,
+          lastSyncAt: Date.now(),
+          transportMode: mpTransportRef.current,
+        }));
+        const data = (await res.json()) as Record<string, unknown>;
+        if (!res.ok || data.error) {
+          setOnlineLobby((prev) => ({
+            ...prev,
+            connecting: false,
+            error: String(data.error || 'Gagal menghubungi server multiplayer.'),
+          }));
+          return;
+        }
+
+        if (data.type === 'game:turn_event') {
+          handleMultiplayerServerEvent(data);
+        } else if (data.room) {
+          handleMultiplayerServerEvent({
+            type: String(data.type || 'room:state'),
+            playerId: data.playerId ?? profile.playerId,
+            room: data.room,
+          });
+        }
+      } catch {
+        setOnlineLobby((prev) => ({
+          ...prev,
+          connecting: false,
+          error: 'Gagal terhubung ke server multiplayer daring. Periksa koneksi internet Anda.',
+        }));
+      }
+    },
+    [ensureWebSocket, handleMultiplayerServerEvent, profile.playerId],
+  );
 
   // Auto-open Multiplayer Lobby screen if URL has ?room=CODE (still never drops into arena directly)
   useEffect(() => {
@@ -1247,21 +1561,13 @@ export default function App() {
     if (roomParam && roomParam.trim().length >= 4) {
       setMultiplayerTabIntent('join');
       setScreen('multiplayer_lobby');
-      void ensureWebSocket()
-        .then((ws) => {
-          ws.send(
-            JSON.stringify({
-              type: 'room:join',
-              code: roomParam.trim().toUpperCase(),
-              playerName: profile.name,
-              playerId: profile.playerId,
-              archetypeIndex: profile.archetypeIndex,
-            }),
-          );
-        })
-        .catch(() => {
-          // Handled in onlineLobby error state
-        });
+      void sendMultiplayerAction({
+        type: 'room:join',
+        code: roomParam.trim().toUpperCase(),
+        playerName: profile.name,
+        playerId: profile.playerId,
+        archetypeIndex: profile.archetypeIndex,
+      });
     }
   }, []);
 
@@ -1273,9 +1579,7 @@ export default function App() {
 
     if (mode === 'online') {
       if (active.id !== onlineLobby.myPlayerId) return;
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'game:roll' }));
-      }
+      void sendMultiplayerAction({ type: 'game:roll' });
       return;
     }
 
@@ -1289,6 +1593,7 @@ export default function App() {
     onlineLobby.myPlayerId,
     players,
     screen,
+    sendMultiplayerAction,
     winner,
   ]);
 
@@ -1327,9 +1632,10 @@ export default function App() {
   }, [achievementsOpen, cameraSettingsOpen, cloudOpen, leaderboardOpen, screen, tutorialOpen, victoryOpen]);
 
   const leaveOnlineRoomIfAny = useCallback(() => {
-    if (onlineLobby.roomCode && wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'room:leave' }));
+    if (onlineLobby.roomCode) {
+      void sendMultiplayerAction({ type: 'room:leave', code: onlineLobby.roomCode });
     }
+    roomBackupRef.current = null;
     setTurnDeadlineAt(null);
     setTurnTimeLeftSec(null);
     setOnlineLobby((prev) => ({
@@ -1340,7 +1646,7 @@ export default function App() {
       chatMessages: [],
       error: null,
     }));
-  }, [onlineLobby.roomCode]);
+  }, [onlineLobby.roomCode, sendMultiplayerAction]);
 
   const handleReturnToMenu = useCallback(() => {
     window.clearTimeout(loadingTimerRef.current);
@@ -1474,9 +1780,9 @@ export default function App() {
 
   const handleRematch = () => {
     if (mode === 'online') {
-      if (wsRef.current?.readyState === WebSocket.OPEN && onlineLobby.hostId === onlineLobby.myPlayerId) {
+      if (onlineLobby.hostId === onlineLobby.myPlayerId) {
         const nextOnlineBoard = resolveBoardForMatch();
-        wsRef.current.send(JSON.stringify({ type: 'room:rematch', boardConfig: nextOnlineBoard }));
+        void sendMultiplayerAction({ type: 'room:rematch', boardConfig: nextOnlineBoard });
       }
       setVictoryOpen(false);
       return;
@@ -1498,6 +1804,7 @@ export default function App() {
     activeBoardRef.current = nextBoard;
     engineRef.current?.updateBoardConfig(nextBoard);
 
+    matchStartedAtRef.current = Date.now();
     setTurnDeadlineAt(null);
     setTurnTimeLeftSec(null);
     setPlayers(reset);
@@ -1538,15 +1845,15 @@ export default function App() {
   );
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950">
+    <div className="relative safe-viewport bg-slate-950">
       {/* 1. Dedicated 3D Fantasy Forest / Waterfall / Serpent Mascot Backdrop (outside Arena, Loading & 3D Board Studio) */}
-      {isMenuBackdropMounted && <div ref={menuCanvasRef} className="fixed inset-0 z-0" />}
+      {isMenuBackdropMounted && <div ref={menuCanvasRef} className="safe-canvas-stage z-0" />}
 
       {/* 2. Dedicated 3D Snakes & Ladders Board Canvas (mounted during Loading & Arena) */}
       {isArenaMounted && (
         <div
           ref={canvasMountRef}
-          className={`w-full h-full transition-opacity duration-300 ${
+          className={`safe-canvas-stage transition-opacity duration-300 ${
             screen === 'arena' ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         />
@@ -1617,9 +1924,12 @@ export default function App() {
           }}
           onPlayWithBoard={(board) => {
             soundEngine.playUiClick();
-            selectBoard(board.id, board.isCustom ? 'custom' : 'manual');
-            setActiveBoardConfig(board);
-            activeBoardRef.current = board;
+            const resolvedBoard = board.id.startsWith('draft_')
+              ? saveCustomBoard(board).saved
+              : board;
+            selectBoard(resolvedBoard.id, resolvedBoard.isCustom ? 'custom' : 'manual');
+            setActiveBoardConfig(resolvedBoard);
+            activeBoardRef.current = resolvedBoard;
             setScreen('game_config');
           }}
         />
@@ -1710,59 +2020,51 @@ export default function App() {
             const chosenBoard = resolveBoardForMatch();
             setActiveBoardConfig(chosenBoard);
             activeBoardRef.current = chosenBoard;
-            void ensureWebSocket().then((ws) => {
-              ws.send(
-                JSON.stringify({
-                  type: 'room:create',
-                  playerName: opts.playerName,
-                  playerId: profile.playerId,
-                  archetypeIndex: opts.archetypeIndex,
-                  roomName: opts.roomName,
-                  isPublic: opts.isPublic,
-                  boardMode: opts.boardMode,
-                  timeLimitSec: opts.timeLimitSec,
-                  boardConfig: chosenBoard,
-                }),
-              );
+            void sendMultiplayerAction({
+              type: 'room:create',
+              playerName: opts.playerName,
+              playerId: profile.playerId,
+              archetypeIndex: opts.archetypeIndex,
+              roomName: opts.roomName,
+              isPublic: opts.isPublic,
+              boardMode: opts.boardMode,
+              timeLimitSec: opts.timeLimitSec,
+              boardConfig: chosenBoard,
             });
           }}
           onOnlineJoinRoom={(code, name, arch) => {
-            void ensureWebSocket().then((ws) => {
-              ws.send(
-                JSON.stringify({
-                  type: 'room:join',
-                  code,
-                  playerName: name,
-                  playerId: profile.playerId,
-                  archetypeIndex: arch,
-                }),
-              );
+            void sendMultiplayerAction({
+              type: 'room:join',
+              code,
+              playerName: name,
+              playerId: profile.playerId,
+              archetypeIndex: arch,
             });
           }}
           onOnlineReady={(ready) => {
-            wsRef.current?.send(JSON.stringify({ type: 'room:ready', ready }));
+            void sendMultiplayerAction({ type: 'room:ready', ready });
           }}
           onOnlineStart={() => {
             const chosenBoard = resolveBoardForMatch();
             setActiveBoardConfig(chosenBoard);
             activeBoardRef.current = chosenBoard;
-            wsRef.current?.send(JSON.stringify({ type: 'room:start', boardConfig: chosenBoard }));
+            void sendMultiplayerAction({ type: 'room:start', boardConfig: chosenBoard });
           }}
           onOnlineLeave={leaveOnlineRoomIfAny}
           onOnlineChat={(text) => {
-            wsRef.current?.send(JSON.stringify({ type: 'room:chat', text }));
+            void sendMultiplayerAction({ type: 'room:chat', text });
           }}
           onOnlineUpdateSettings={(settings) => {
-            wsRef.current?.send(JSON.stringify({ type: 'room:update_settings', ...settings }));
+            void sendMultiplayerAction({ type: 'room:update_settings', ...settings });
           }}
           onOnlineSetTeam={(targetId, team) => {
-            wsRef.current?.send(JSON.stringify({ type: 'room:set_team', targetId, team }));
+            void sendMultiplayerAction({ type: 'room:set_team', targetId, team });
           }}
           onOnlineKick={(targetId) => {
-            wsRef.current?.send(JSON.stringify({ type: 'room:kick', targetId }));
+            void sendMultiplayerAction({ type: 'room:kick', targetId });
           }}
           onOnlineTransferHost={(targetId) => {
-            wsRef.current?.send(JSON.stringify({ type: 'room:transfer_host', targetId }));
+            void sendMultiplayerAction({ type: 'room:transfer_host', targetId });
           }}
         />
       )}
@@ -1817,6 +2119,11 @@ export default function App() {
               setProfile(next);
             }}
             onOpenTutorial={() => setTutorialOpen(true)}
+            onOpenCameraSettings={() => setCameraSettingsOpen(true)}
+            onResetOverview={() => {
+              engineRef.current?.snapCameraOverview('isometric');
+              showToast('Pandangan Papan Penuh', 'Kamera direset ke tampilan seluruh papan 3D');
+            }}
             onOpenOracleAI={() => {
               soundEngine.playUiClick();
               setOracleAiOpen(true);
@@ -1824,7 +2131,32 @@ export default function App() {
             onReturnToMenu={handleReturnToMenu}
           />
 
-          <aside className="pointer-events-none fixed top-16 right-4 z-10 hidden lg:flex flex-col gap-1.5 w-56">
+          {/* Compact Mobile Player Standings Bar (auto-hidden when Mode Pandang Leluasa / dockCollapsed is active) */}
+          {!dockCollapsed && (
+            <div className="pointer-events-none fixed safe-hud-subtop z-10 flex lg:hidden items-center gap-1 overflow-x-auto no-scrollbar">
+              {players.map((p, idx) => {
+                const isTurn = idx === currentTurnIndex && !winner;
+                return (
+                  <div
+                    key={p.id}
+                    className={`flex items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] shrink-0 transition-colors backdrop-blur-xs ${
+                      isTurn
+                        ? 'border-amber-400/75 bg-slate-900/88 text-white shadow-sm'
+                        : 'border-slate-700/60 bg-slate-950/70 text-slate-300'
+                    }`}
+                  >
+                    <ArchetypeEmblem archetypeIndex={p.archetypeIndex} className="w-3 h-3 shrink-0" />
+                    <span className="max-w-[64px] truncate font-medium">{p.name}</span>
+                    <span className="font-mono-num text-[9px] font-bold text-amber-300">
+                      P{p.tile}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <aside className="pointer-events-none fixed safe-hud-aside z-10 hidden lg:flex flex-col gap-1.5 w-56">
             {players.map((p, idx) => {
               const isTurn = idx === currentTurnIndex && !winner;
               return (
@@ -1858,7 +2190,7 @@ export default function App() {
           </aside>
 
           {arenaEmote && (
-            <div className="pointer-events-none fixed top-16 left-2.5 sm:left-4 z-30 animate-emote-pop">
+            <div className="pointer-events-none fixed top-24 lg:top-16 left-2.5 sm:left-4 z-30 animate-emote-pop">
               <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-400/50 bg-slate-950/92 backdrop-blur-md px-3 py-1.5 shadow-xl">
                 <span className="text-xl leading-none">{arenaEmote.text}</span>
                 <span className="text-xs font-semibold text-amber-200 max-w-[140px] truncate">
@@ -1869,7 +2201,7 @@ export default function App() {
           )}
 
           {inspectedTile && (
-            <div className="fixed top-16 left-2.5 right-20 sm:right-auto sm:top-24 sm:left-4 z-20 sm:max-w-xs rounded-xl border border-slate-700 bg-slate-900/95 p-3 shadow-xl">
+            <div className="fixed top-24 left-2.5 right-2.5 sm:right-auto sm:top-24 sm:left-4 z-20 sm:max-w-xs rounded-xl border border-slate-700 bg-slate-900/95 p-3 shadow-xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-xs font-bold text-amber-300">{inspectedTile.title}</div>
@@ -1904,17 +2236,22 @@ export default function App() {
             mode={mode}
             boardMode={boardMode}
             cameraMode={cameraSettings.mode}
-            onChangeCameraMode={(nextMode) =>
-              handleUpdateCameraSettings({ ...cameraSettings, mode: nextMode })
-            }
+            onChangeCameraMode={(nextMode) => {
+              handleUpdateCameraSettings({ ...cameraSettings, mode: nextMode });
+              if (nextMode === 'isometric') {
+                engineRef.current?.snapCameraOverview('isometric');
+              }
+            }}
+            onResetOverview={() => {
+              engineRef.current?.snapCameraOverview('isometric');
+              showToast('Pandangan Papan Penuh', 'Kamera direset ke tampilan seluruh papan 3D');
+            }}
             onOpenCameraSettings={() => setCameraSettingsOpen(true)}
             onRollDice={handleRollDice}
             onSendEmote={
               mode === 'online'
                 ? (emoji) => {
-                    if (wsRef.current?.readyState === WebSocket.OPEN) {
-                      wsRef.current.send(JSON.stringify({ type: 'room:chat', text: emoji }));
-                    }
+                    void sendMultiplayerAction({ type: 'room:chat', text: emoji });
                   }
                 : undefined
             }
