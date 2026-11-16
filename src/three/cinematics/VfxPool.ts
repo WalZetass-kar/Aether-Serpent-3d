@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-type PoolEffectKind = 'dome' | 'ring' | 'projectile' | 'beam' | 'pillar';
+type PoolEffectKind = 'dome' | 'ring' | 'projectile' | 'beam' | 'pillar' | 'trail_ring';
 
 interface PooledEffect {
   kind: PoolEffectKind;
@@ -25,7 +25,7 @@ const _upVec = new THREE.Vector3(0, 1, 0);
 /**
  * Pre-allocated GPU-friendly VFX Pool (zero runtime geometry/material allocations).
  * Supports shield domes, expanding shock/wind rings, homing Battle projectiles,
- * Team Synergy energy beams, and blessing pillars.
+ * Team Synergy energy beams, blessing pillars, and Aether Trail step wakes.
  */
 export class VfxPool {
   private group = new THREE.Group();
@@ -184,6 +184,37 @@ export class VfxPool {
         baseOpacity: 0.42,
       });
     }
+
+    // 6. Aether Trail Footstep / Wake Rings (x12)
+    const trailRingGeo = new THREE.RingGeometry(0.18, 0.34, 20);
+    trailRingGeo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 12; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.Mesh(trailRingGeo, mat);
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.effects.push({
+        kind: 'trail_ring',
+        mesh,
+        mat,
+        active: false,
+        elapsed: 0,
+        duration: 0.48,
+        startPos: new THREE.Vector3(),
+        endPos: new THREE.Vector3(),
+        arcHeight: 0,
+        startScale: 0.45,
+        endScale: 1.65,
+        baseOpacity: 0.72,
+      });
+    }
   }
 
   private acquire(kind: PoolEffectKind): PooledEffect | null {
@@ -193,6 +224,23 @@ export class VfxPool {
       }
     }
     return null;
+  }
+
+  public playAetherStepWake(origin: THREE.Vector3, colorHex: number, reduced: boolean) {
+    const wake = this.acquire('trail_ring');
+    if (wake) {
+      wake.active = true;
+      wake.elapsed = 0;
+      wake.duration = reduced ? 0.36 : 0.52;
+      wake.startPos.set(origin.x, 0.035, origin.z);
+      wake.endPos.set(origin.x, 0.14, origin.z);
+      wake.startScale = 0.42;
+      wake.endScale = reduced ? 1.25 : 1.72;
+      wake.baseOpacity = reduced ? 0.42 : 0.76;
+      wake.mat.color.setHex(colorHex);
+      wake.mesh.position.copy(wake.startPos);
+      wake.mesh.visible = true;
+    }
   }
 
   public playShieldEffect(origin: THREE.Vector3, colorHex: number, blocked: boolean, reduced: boolean) {

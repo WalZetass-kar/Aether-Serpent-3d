@@ -11,6 +11,7 @@ import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import {
   BOARD_SIZE,
   LADDERS,
+  PLAYER_ARCHETYPES,
   SNAKES,
   SPECIAL_TILES,
   SPECIAL_TILE_MAP,
@@ -111,6 +112,7 @@ interface ParticleState {
   active: boolean;
   pos: THREE.Vector3;
   vel: THREE.Vector3;
+  gravity: number;
   life: number;
   maxLife: number;
   size: number;
@@ -127,7 +129,7 @@ const SNAKE_PALETTES = [
   { primary: '#be123c', stripe: '#fda4af', belly: '#ffe4e6', horn: 0xfde68a },
 ];
 
-const PARTICLE_COUNT = 128;
+const PARTICLE_COUNT = 256;
 
 export class FantasyBoardEngine {
   private container: HTMLElement;
@@ -372,6 +374,8 @@ export class FantasyBoardEngine {
       vfxPool: this.vfxPool,
       spawnParticleBurst: (origin, colorHex, count, velocityScale) =>
         this.spawnParticleBurst(origin, colorHex, count, velocityScale),
+      spawnAetherTrail: (origin, primaryColorHex, accentColorHex, reduced) =>
+        this.spawnAetherTrail(origin, primaryColorHex, accentColorHex, reduced),
       getReducedEffects: () =>
         this.cameraController.getSettings().reducedEffects ||
         this.perf.getQualityConfig().tier === 'potato',
@@ -424,6 +428,7 @@ export class FantasyBoardEngine {
         active: false,
         pos: new THREE.Vector3(),
         vel: new THREE.Vector3(),
+        gravity: 6.2,
         life: 0,
         maxLife: 1,
         size: 1,
@@ -1188,10 +1193,67 @@ export class FantasyBoardEngine {
           (2.1 + Math.random() * 2.9) * velocityScale,
           Math.sin(angle) * speed,
         );
+        p.gravity = 6.2;
         p.life = 0;
         p.maxLife = 0.55 + Math.random() * 0.45;
         p.size = 0.72 + Math.random() * 0.68;
         p.color.setHex(colorHex);
+        this.particleMesh.setColorAt(i, p.color);
+        spawned++;
+      }
+    }
+    if (this.particleMesh.instanceColor) {
+      this.particleMesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Emits buoyant, shimmering 'Aether Trail' motes in the wake of a moving pawn.
+   * Unlike burst debris, Aether motes float gently upward (`gravity = -1.15`) with
+   * archetype primary + accent + celestial gold/cyan sparkle hues.
+   */
+  private spawnAetherTrail(
+    origin: THREE.Vector3,
+    primaryColorHex: number,
+    accentColorHex: number,
+    reduced: boolean,
+  ) {
+    if (!this.particleMesh) return;
+    const budgetScale = this.perf.getQualityConfig().particleBudget / 128;
+    const baseCount = reduced ? 2 : 4;
+    const count = Math.max(1, Math.round(baseCount * budgetScale));
+
+    let spawned = 0;
+    for (let i = 0; i < PARTICLE_COUNT && spawned < count; i++) {
+      const p = this.particles[i];
+      if (!p.active) {
+        p.active = true;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 0.08 + Math.random() * 0.24;
+        p.pos.set(
+          origin.x + Math.cos(angle) * radius,
+          origin.y + (Math.random() - 0.35) * 0.28,
+          origin.z + Math.sin(angle) * radius,
+        );
+        const drift = 0.22 + Math.random() * 0.45;
+        p.vel.set(
+          Math.cos(angle + 1.2) * drift,
+          0.55 + Math.random() * 0.85,
+          Math.sin(angle + 1.2) * drift,
+        );
+        p.gravity = -1.15;
+        p.life = 0;
+        p.maxLife = 0.42 + Math.random() * 0.36;
+        p.size = 0.48 + Math.random() * 0.46;
+
+        const pick = spawned % 3;
+        const hex =
+          pick === 0
+            ? accentColorHex
+            : pick === 1
+              ? primaryColorHex
+              : 0xfef08a;
+        p.color.setHex(hex);
         this.particleMesh.setColorAt(i, p.color);
         spawned++;
       }
@@ -1531,8 +1593,19 @@ export class FantasyBoardEngine {
       }
       const target = this.pawnTargets.get(id);
       if (allowSlotDamp && target && handle.group.visible && handle.group.scale.y === 1) {
-        handle.group.position.x = THREE.MathUtils.damp(handle.group.position.x, target.x, 9, dt);
-        handle.group.position.z = THREE.MathUtils.damp(handle.group.position.z, target.z, 9, dt);
+        const prevX = handle.group.position.x;
+        const prevZ = handle.group.position.z;
+        handle.group.position.x = THREE.MathUtils.damp(prevX, target.x, 9, dt);
+        handle.group.position.z = THREE.MathUtils.damp(prevZ, target.z, 9, dt);
+        const moveSq =
+          (handle.group.position.x - prevX) * (handle.group.position.x - prevX) +
+          (handle.group.position.z - prevZ) * (handle.group.position.z - prevZ);
+        if (moveSq > 0.00025 && runSecondary) {
+          const archIdx = this.pawnArchetypes.get(id) ?? 0;
+          const archInfo = PLAYER_ARCHETYPES[archIdx % PLAYER_ARCHETYPES.length];
+          _vec3.set(handle.group.position.x, handle.group.position.y + 0.28, handle.group.position.z);
+          this.spawnAetherTrail(_vec3, archInfo.hexNum, archInfo.accentHexNum, true);
+        }
         // Subtle idle levitation & slow rotational poise while waiting on a tile
         const floatAmp = isActive ? 0.048 : 0.022;
         const floatFreq = isActive ? 2.8 : 1.7;
@@ -1579,7 +1652,7 @@ export class FantasyBoardEngine {
           _mat4.compose(_vec3.set(0, -50, 0), _quat.identity(), _scaleVec);
           this.particleMesh.setMatrixAt(i, _mat4);
         } else {
-          p.vel.y -= 6.2 * dt;
+          p.vel.y -= p.gravity * dt;
           p.pos.addScaledVector(p.vel, dt);
           const remain = 1 - p.life / p.maxLife;
           const s = p.size * remain;

@@ -33,6 +33,12 @@ export interface SequenceHostContext {
     count: number,
     velocityScale?: number,
   ) => void;
+  spawnAetherTrail: (
+    origin: THREE.Vector3,
+    primaryColorHex: number,
+    accentColorHex: number,
+    reduced: boolean,
+  ) => void;
   getReducedEffects: () => boolean;
 }
 
@@ -136,7 +142,7 @@ export class AnimationSequenceController {
     cb.onDiceRolled?.(res.roll);
     await this.sleep(170);
 
-    // 2. TILE-BY-TILE PAWN HOPPING
+    // 2. TILE-BY-TILE PAWN HOPPING WITH AETHER TRAIL
     this.state = 'moving';
     this.host.cameraController.setCinematicState('PLAYER_FOLLOW', {
       followObject: handle.group,
@@ -148,7 +154,16 @@ export class AnimationSequenceController {
       const tile = res.pathTiles[i];
       const world = tileToWorld(tile);
       cb.onHopStep?.(i, tile);
-      await this.animatePawnHop(handle.group, world.x, world.z, 210, true);
+      await this.animatePawnHop(
+        handle.group,
+        world.x,
+        world.z,
+        210,
+        true,
+        archInfo.hexNum,
+        archInfo.accentHexNum,
+        reduced,
+      );
       this.host.pawnTargets.set(playerId, new THREE.Vector3(world.x, 0, world.z));
     }
     handle.playClip('idle', 0.14);
@@ -293,7 +308,16 @@ export class AnimationSequenceController {
     if (res.postSpecialTile !== res.landedTile) {
       const postWorld = tileToWorld(res.postSpecialTile);
       handle.playClip('walk', 0.1);
-      await this.animatePawnHop(handle.group, postWorld.x, postWorld.z, 360, true);
+      await this.animatePawnHop(
+        handle.group,
+        postWorld.x,
+        postWorld.z,
+        360,
+        true,
+        vfxColor,
+        0xfef08a,
+        reduced,
+      );
       this.host.pawnTargets.set(playerId, new THREE.Vector3(postWorld.x, 0, postWorld.z));
       handle.playClip('idle', 0.14);
     } else {
@@ -323,6 +347,8 @@ export class AnimationSequenceController {
     const ladder = this.host.laddersById.get(res.jumpTriggered.id);
     const startWorld = tileToWorld(res.jumpTriggered.from);
     const endWorld = tileToWorld(res.jumpTriggered.to);
+    const archIdx = cb.archetypeIndex ?? this.host.pawnArchetypes.get(playerId) ?? 0;
+    const archInfo = PLAYER_ARCHETYPES[archIdx % PLAYER_ARCHETYPES.length];
 
     this.emit(cb, {
       type: 'LADDER_TRIGGERED',
@@ -376,6 +402,9 @@ export class AnimationSequenceController {
         ladder,
         durationMs,
         (rungIdx, total) => cb.onRungStep?.(rungIdx, total),
+        archInfo.hexNum,
+        archInfo.accentHexNum,
+        reduced,
       );
       handle.playClip('idle', 0.14);
     }
@@ -949,6 +978,9 @@ export class AnimationSequenceController {
     targetZ: number,
     durationMs: number,
     faceDirection: boolean,
+    primaryColorHex = 0x38bdf8,
+    accentColorHex = 0xfef08a,
+    reduced = false,
   ): Promise<void> {
     return new Promise((resolve) => {
       const startX = pawn.position.x;
@@ -960,10 +992,16 @@ export class AnimationSequenceController {
         faceDirection && Math.hypot(dx, dz) > 0.05 ? Math.atan2(dx, dz) : startRotY;
       const rotDelta = Math.atan2(Math.sin(targetRotY - startRotY), Math.cos(targetRotY - startRotY));
       const startTime = performance.now();
+      let lastTrailEmit = -40;
+
+      // Emit glowing Aether Wake ring at takeoff tile
+      _vecB.set(startX, 0.04, startZ);
+      this.host.vfxPool.playAetherStepWake(_vecB, accentColorHex, reduced);
 
       const step = (now: number) => {
         if (this.host.isDisposed()) return resolve();
-        const t = Math.min(1, (now - startTime) / durationMs);
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / durationMs);
         const smooth = t * t * (3 - 2 * t);
         const hopY = Math.sin(t * Math.PI) * 0.65;
 
@@ -976,6 +1014,14 @@ export class AnimationSequenceController {
           pawn.rotation.y = startRotY + rotDelta * Math.min(1, t * 2.5);
         }
 
+        // Stream luminous Aether Trail particles behind the moving pawn
+        const trailInterval = reduced ? 48 : 24;
+        if (elapsed - lastTrailEmit >= trailInterval) {
+          lastTrailEmit = elapsed;
+          _vecC.set(pawn.position.x, pawn.position.y + 0.32, pawn.position.z);
+          this.host.spawnAetherTrail(_vecC, primaryColorHex, accentColorHex, reduced);
+        }
+
         const stretch = 1 + Math.sin(t * Math.PI) * 0.14;
         const squash = 1 / Math.sqrt(stretch);
         pawn.scale.set(squash, stretch, squash);
@@ -985,6 +1031,9 @@ export class AnimationSequenceController {
         } else {
           pawn.position.set(targetX, 0, targetZ);
           pawn.scale.set(1, 1, 1);
+          _vecB.set(targetX, 0.04, targetZ);
+          this.host.vfxPool.playAetherStepWake(_vecB, primaryColorHex, reduced);
+          this.host.spawnAetherTrail(_vecB, primaryColorHex, accentColorHex, reduced);
           resolve();
         }
       };
@@ -1016,15 +1065,20 @@ export class AnimationSequenceController {
     ladder: LadderBuildResult,
     durationMs: number,
     onRungReached: (rungIndex: number, totalRungs: number) => void,
+    primaryColorHex = 0xfbbf24,
+    accentColorHex = 0xfef08a,
+    reduced = false,
   ): Promise<void> {
     return new Promise((resolve) => {
       const totalRungs = Math.max(1, ladder.rungPositions.length);
       let lastRungHit = -1;
+      let lastTrailEmit = -40;
       const startTime = performance.now();
 
       const step = (now: number) => {
         if (this.host.isDisposed()) return resolve();
-        const t = Math.min(1, (now - startTime) / durationMs);
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / durationMs);
         const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
         ladder.curve.getPointAt(ease, _vecA);
@@ -1039,6 +1093,14 @@ export class AnimationSequenceController {
         const stepPulse = Math.abs(Math.sin(rungPhase * Math.PI)) * 0.09;
         pawn.position.set(_vecA.x, _vecA.y + stepPulse, _vecA.z);
 
+        // Emit Aether Trail along ladder ascent
+        const trailInterval = reduced ? 52 : 28;
+        if (elapsed - lastTrailEmit >= trailInterval) {
+          lastTrailEmit = elapsed;
+          _vecC.set(pawn.position.x, pawn.position.y + 0.28, pawn.position.z);
+          this.host.spawnAetherTrail(_vecC, primaryColorHex, accentColorHex, reduced);
+        }
+
         // Keep pawn tilted subtly along the ladder ascent & facing upward direction
         const targetYaw = Math.atan2(ladder.climbForward.x, ladder.climbForward.z);
         pawn.rotation.set(0.18, targetYaw, 0);
@@ -1050,6 +1112,7 @@ export class AnimationSequenceController {
           pawn.position.set(_vecA.x, 0, _vecA.z);
           pawn.rotation.set(0, targetYaw, 0);
           pawn.scale.set(1, 1, 1);
+          this.host.vfxPool.playAetherStepWake(_vecA, accentColorHex, reduced);
           resolve();
         }
       };
