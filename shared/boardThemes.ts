@@ -3,7 +3,7 @@ import {
   SNAKES,
   SPECIAL_TILE_MAP,
   type SnakeOrLadder,
-} from './gameConfig';
+} from './gameConfig.ts';
 
 export type BoardThemeId =
   | 'enchanted_forest'

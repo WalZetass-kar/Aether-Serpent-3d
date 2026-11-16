@@ -18,12 +18,12 @@ import {
   type PlayerState,
   type TeamId,
   type TurnResolution,
-} from './gameConfig';
+} from './gameConfig.ts';
 import {
   DEFAULT_BOARD_CONFIGS,
   cloneBoardConfig,
   type BoardConfig,
-} from './boardThemes';
+} from './boardThemes.ts';
 
 // ---------------------------------------------------------------------------
 // Persistent JSON Store (Serverless-safe: falls back to os.tmpdir() on Vercel)

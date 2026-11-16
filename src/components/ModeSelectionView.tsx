@@ -126,25 +126,26 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
           </p>
         </div>
 
-        {/* 4 Compact Mode Cards Side-by-Side (1 Row of 4 on both Mobile & Desktop) */}
-        <div className="grid grid-cols-4 gap-2 sm:gap-3">
+        {/* 4 Compact Mode Cards Side-by-Side (1 Row of 4 on both Mobile & Desktop, fluid padding & typography) */}
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-3 items-stretch">
           {BOARD_GAME_MODES.map((m) => {
             const detail = MODE_DETAILS[m.id];
             const active = selectedMode === m.id;
             const shortTitle = m.label.replace(' Mode', '');
+            const compactPlayers = m.id === 'team' ? '2v2' : '2–4P';
             return (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => onSelectMode(m.id)}
-                className={`min-w-0 overflow-hidden relative flex flex-col items-center sm:items-start justify-between rounded-xl sm:rounded-2xl border p-2.5 sm:p-4 text-center sm:text-left transition-all cursor-pointer ${
+                className={`h-full min-w-0 overflow-hidden relative flex flex-col items-center sm:items-start justify-between rounded-xl sm:rounded-2xl border p-2 sm:p-3.5 md:p-4 text-center sm:text-left transition-all cursor-pointer ${
                   active
                     ? `${detail.accentBorder} ${detail.accentBg} shadow-lg ring-1 ring-amber-400/40`
                     : 'border-slate-700/80 bg-slate-900/75 hover:bg-slate-800/85 hover:border-slate-500'
                 }`}
               >
-                <div className="w-full flex items-center justify-center sm:justify-between gap-1.5 mb-1.5 sm:mb-2.5">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-slate-700/90 bg-slate-950/85 flex items-center justify-center shrink-0">
+                <div className="w-full flex items-center justify-center sm:justify-between gap-1.5 mb-1.5 sm:mb-2">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl border border-slate-700/90 bg-slate-950/85 flex items-center justify-center shrink-0">
                     {detail.icon}
                   </div>
                   {active && (
@@ -153,17 +154,22 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
                 </div>
 
                 <div className="w-full min-w-0">
-                  <h3 className="font-display text-[11px] sm:text-sm font-bold text-white truncate">
+                  <h3 className="font-display text-[10px] sm:text-sm font-bold text-white truncate">
                     {shortTitle}
                   </h3>
-                  <p className="hidden sm:block text-[11px] text-amber-200/90 font-medium mt-0.5 line-clamp-1">
+                  <p className="hidden md:block text-[11px] text-amber-200/90 font-medium mt-0.5 line-clamp-1">
                     {m.shortDesc}
                   </p>
                 </div>
 
-                <div className="w-full mt-2 pt-1.5 sm:pt-2 border-t border-slate-800/80 flex items-center justify-center sm:justify-between text-[9px] sm:text-[11px] font-semibold text-slate-400 min-w-0">
-                  <span className="hidden sm:inline shrink-0">Pemain</span>
-                  <span className="text-slate-200 truncate">{detail.playersLabel}</span>
+                <div className="w-full mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-slate-800/80 flex items-center justify-center sm:justify-between text-[9px] sm:text-[11px] font-semibold text-slate-400 min-w-0">
+                  <span className="hidden md:inline shrink-0">Pemain</span>
+                  <span className="sm:hidden text-slate-200 font-mono-num truncate">
+                    {compactPlayers}
+                  </span>
+                  <span className="hidden sm:inline text-slate-200 truncate">
+                    {detail.playersLabel}
+                  </span>
                 </div>
               </button>
             );
@@ -171,14 +177,14 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
         </div>
 
         {/* Active Mode Detailed Highlights & Route Buttons */}
-        <div className="rounded-2xl border border-amber-500/25 bg-slate-950/75 p-3.5 sm:p-5 space-y-4 overflow-hidden">
+        <div className="rounded-2xl border border-amber-500/25 bg-slate-950/75 p-3 sm:p-5 space-y-3.5 sm:space-y-4 overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/90 pb-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-center shrink-0">
+            <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-center shrink-0">
                 {activeDetail.icon}
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                   <span className="font-display text-sm sm:text-base font-bold text-amber-300 truncate">
                     {activeModeMeta.label}
                   </span>
@@ -186,7 +192,7 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
                     {activeDetail.playersLabel}
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5 leading-relaxed">
                   {activeModeMeta.rulesDesc}
                 </p>
               </div>
@@ -194,14 +200,14 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
           </div>
 
           {/* 3 Compact Rule Highlights */}
-          <div className="grid sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {activeDetail.highlights.map((item) => (
               <div
                 key={item}
-                className="rounded-xl border border-slate-800/90 bg-slate-900/70 px-3 py-2 text-[11px] text-slate-200 leading-snug flex items-start gap-2"
+                className="min-w-0 rounded-xl border border-slate-800/90 bg-slate-900/70 px-3 py-2 text-[11px] text-slate-200 leading-snug flex items-start gap-2"
               >
-                <span className="text-amber-400 font-bold">•</span>
-                <span>{item}</span>
+                <span className="text-amber-400 font-bold shrink-0">•</span>
+                <span className="min-w-0">{item}</span>
               </div>
             ))}
           </div>
@@ -211,18 +217,18 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
             <button
               type="button"
               onClick={() => onProceedToMultiplayer(selectedMode)}
-              className="inline-flex items-center justify-center gap-2 min-h-[46px] px-4 py-2.5 rounded-xl border border-sky-500/45 bg-sky-500/15 text-xs sm:text-sm font-bold text-sky-200 hover:bg-sky-500/25 hover:border-sky-400 transition-colors cursor-pointer whitespace-nowrap"
+              className="min-w-0 inline-flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px] px-4 py-2.5 rounded-xl border border-sky-500/45 bg-sky-500/15 text-xs sm:text-sm font-bold text-sky-200 hover:bg-sky-500/25 hover:border-sky-400 transition-colors cursor-pointer"
             >
               <Globe className="w-4 h-4 text-sky-300 shrink-0" />
-              <span>Lobi Multiplayer Daring</span>
+              <span className="truncate">Lobi Multiplayer Daring</span>
             </button>
             <button
               type="button"
               onClick={() => onProceedToConfig(selectedMode)}
-              className="inline-flex items-center justify-center gap-2 min-h-[46px] px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 text-xs sm:text-sm font-bold hover:brightness-105 transition-all cursor-pointer whitespace-nowrap shadow-lg"
+              className="min-w-0 inline-flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px] px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 text-xs sm:text-sm font-bold hover:brightness-105 transition-all cursor-pointer shadow-lg"
             >
               <SlidersHorizontal className="w-4 h-4 shrink-0" />
-              <span>Konfigurasi Solo / Lokal</span>
+              <span className="truncate">Konfigurasi Solo / Lokal</span>
               <ArrowRight className="w-4 h-4 shrink-0" />
             </button>
           </div>

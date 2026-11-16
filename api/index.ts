@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import express from 'express';
-import { registerApiRoutes } from '../shared/mpServerCore';
+import { registerApiRoutes } from '../shared/mpServerCore.ts';
 
 dotenv.config();
 

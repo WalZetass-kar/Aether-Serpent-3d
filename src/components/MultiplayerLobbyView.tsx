@@ -230,12 +230,12 @@ const SanctuaryPreviewCard: React.FC<{
       </div>
 
       {/* Crisp Sanctuary Board Stage with SVG Ladders & Serpents */}
-      <div className="relative z-10 flex-1 flex flex-col justify-between rounded-xl border border-amber-500/25 bg-slate-950/85 p-2.5 sm:p-3 shadow-inner overflow-hidden gap-2">
+      <div className="relative z-10 flex-1 flex flex-col justify-between rounded-xl border border-amber-500/25 bg-slate-950/85 p-2 sm:p-3 shadow-inner overflow-hidden gap-2">
         {/* Subtle Sanctuary Horizon Glow */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-amber-400/10 via-sky-400/5 to-transparent" />
 
         {/* Precision 5x5 Sanctuary Board Grid + Crisp Vector Ladders & Snakes */}
-        <div className="relative my-auto mx-auto w-full max-w-[188px] sm:max-w-[204px] aspect-square rounded-xl border-2 border-amber-400/45 bg-slate-900/95 p-1.5 shadow-[0_10px_24px_rgba(2,6,23,0.85)] overflow-hidden shrink-0">
+        <div className="relative my-auto mx-auto w-full max-w-[164px] sm:max-w-[196px] aspect-square rounded-xl border-2 border-amber-400/45 bg-slate-900/95 p-1.5 shadow-[0_10px_24px_rgba(2,6,23,0.85)] overflow-hidden shrink-0">
           <div className="grid grid-cols-5 grid-rows-5 gap-1 w-full h-full">
             {PREVIEW_GRID_TILES.map((cell, idx) => {
               const isAlt = (Math.floor(idx / 5) + (idx % 5)) % 2 === 0;
@@ -526,7 +526,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
         </div>
 
         {/* 4 Compact Mode Cards Side-by-Side (Bounded with min-w-0 & overflow-hidden) */}
-        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2 items-stretch">
           {BOARD_GAME_MODES.map((m) => {
             const isSelected = selected === m.id;
             return (
@@ -535,7 +535,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                 type="button"
                 disabled={disabled}
                 onClick={() => onSelect(m.id)}
-                className={`min-w-0 overflow-hidden p-2 sm:p-2.5 rounded-xl border flex flex-col items-center sm:items-start justify-center gap-1 text-center sm:text-left transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                className={`h-full min-w-0 overflow-hidden p-1.5 sm:p-2.5 rounded-xl border flex flex-col items-center sm:items-start justify-center gap-1 text-center sm:text-left transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   isSelected
                     ? 'border-amber-400 bg-amber-500/15 text-amber-200 shadow-sm'
                     : 'border-slate-700 bg-slate-900/75 text-slate-300 hover:bg-slate-800'
@@ -547,7 +547,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                     {m.label.replace(' Mode', '')}
                   </span>
                 </div>
-                <div className="hidden sm:block w-full text-[10px] text-slate-400 truncate">
+                <div className="hidden md:block w-full text-[10px] text-slate-400 truncate">
                   {m.shortDesc}
                 </div>
               </button>

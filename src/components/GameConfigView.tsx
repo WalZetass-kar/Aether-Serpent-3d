@@ -194,44 +194,46 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
       {/* Configuration Card */}
       <main className="my-auto mx-auto w-full max-w-4xl shrink-0 overflow-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-7 space-y-4 sm:space-y-5">
         {/* Selected Mode Banner */}
-        <div className="rounded-2xl border border-amber-500/25 bg-slate-950/65 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-11 h-11 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-center shrink-0">
+        <div className="rounded-2xl border border-amber-500/25 bg-slate-950/65 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-center shrink-0">
               {MODE_ICON[boardMode]}
             </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-widest font-bold text-amber-300">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] sm:text-[11px] uppercase tracking-widest font-bold text-amber-300 truncate">
                 Tahap 2 dari 2 · {modeMeta.label}
               </div>
-              <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">{modeMeta.rulesDesc}</p>
+              <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5 leading-relaxed">
+                {modeMeta.rulesDesc}
+              </p>
             </div>
           </div>
 
           {/* Play Style Segmented Toggle */}
-          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-700 shrink-0">
+          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-700 w-full sm:w-auto shrink-0">
             <button
               type="button"
               onClick={() => setPlayStyle('solo')}
-              className={`inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 sm:px-3.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                 playStyle === 'solo'
                   ? 'bg-amber-500 text-slate-950'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              <Cpu className="w-3.5 h-3.5" />
-              Solo vs AI
+              <Cpu className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Solo vs AI</span>
             </button>
             <button
               type="button"
               onClick={() => setPlayStyle('local')}
-              className={`inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 sm:px-3.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                 playStyle === 'local'
                   ? 'bg-amber-500 text-slate-950'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              Multiplayer Lokal
+              <Users className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Multiplayer Lokal</span>
             </button>
           </div>
         </div>
@@ -315,13 +317,13 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
               <label className="block text-xs font-semibold text-slate-300 mb-2">
                 Pilih Bidak Pahlawan
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
                 {PLAYER_ARCHETYPES.map((arch) => (
                   <button
                     key={arch.archetypeIndex}
                     type="button"
                     onClick={() => setSoloArchetype(arch.archetypeIndex)}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                    className={`min-w-0 overflow-hidden flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
                       soloArchetype === arch.archetypeIndex
                         ? 'border-amber-400 bg-amber-500/15 text-amber-100'
                         : 'border-slate-700 bg-slate-900/70 text-slate-300 hover:bg-slate-800'
@@ -335,13 +337,13 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
                 <label className="text-xs font-semibold text-slate-300">Tingkat Kesulitan AI</label>
-                <span className="text-xs font-semibold text-amber-300">
+                <span className="text-[11px] sm:text-xs font-semibold text-amber-300">
                   Tier Adaptif Saat Ini: {adaptiveTier}
                 </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
                 {(
                   [
                     { id: 'adaptive', label: 'Adaptif', desc: 'Mengikuti performa Anda' },
@@ -354,14 +356,16 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                     key={d.id}
                     type="button"
                     onClick={() => setDifficulty(d.id)}
-                    className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                    className={`min-w-0 overflow-hidden p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
                       difficulty === d.id
                         ? 'border-amber-400 bg-amber-500/15 text-amber-200'
                         : 'border-slate-700 bg-slate-900/70 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="text-xs font-bold">{d.label}</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">{d.desc}</div>
+                    <div className="text-xs font-bold truncate">{d.label}</div>
+                    <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                      {d.desc}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -503,7 +507,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto pr-1 custom-scroll">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-44 overflow-y-auto pr-1 custom-scroll">
             {availableBoards.map((b) => {
               const isSelected =
                 boardCollection.selectionMode !== 'random' &&
@@ -513,17 +517,17 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   key={b.id}
                   type="button"
                   onClick={() => handleQuickSelectBoard(b)}
-                  className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
+                  className={`min-w-0 overflow-hidden rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
                     isSelected
                       ? 'border-amber-400 bg-amber-500/15 text-white shadow'
                       : 'border-slate-800 bg-slate-900/75 text-slate-300 hover:border-slate-700'
                   }`}
                 >
-                  <div className="flex items-center gap-1 mb-1">
+                  <div className="flex items-center gap-1 mb-1 min-w-0">
                     {b.previewSwatches.slice(0, 3).map((hex, i) => (
                       <span
                         key={`${b.id}_c_${i}`}
-                        className="w-2.5 h-2.5 rounded-full border border-white/20"
+                        className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
                         style={{ backgroundColor: hex }}
                       />
                     ))}
@@ -533,7 +537,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   </div>
                   <div className="text-xs font-bold truncate">{b.name}</div>
                   <div className="text-[10px] text-slate-400 truncate">{b.subtitle}</div>
-                  <div className="text-[9px] text-amber-300/90 truncate mt-0.5">
+                  <div className="text-[9px] text-amber-300/90 truncate mt-0.5 font-mono-num">
                     ↑{b.ladders[0]?.from}→{b.ladders[0]?.to} · ↓{b.snakes[0]?.from}→{b.snakes[0]?.to}
                   </div>
                 </button>
@@ -544,16 +548,16 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
 
         {/* Custom 3D Dice Skin Selection Strip */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
             <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               Pilih Skin Dadu 3D
             </label>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[10px] sm:text-[11px] text-slate-400">
               Buka skin baru melalui menu Pencapaian
             </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             {DICE_SKINS.map((skin) => {
               const unlocked = isDiceSkinUnlocked(skin.id, unlockedAchievements);
               const selected = selectedDiceSkinId === skin.id;
@@ -570,7 +574,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                       ? `${skin.name} — ${skin.description}`
                       : `Terkunci — Syarat Pencapaian: ${skin.requiredAchievementTitle}`
                   }
-                  className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                  className={`min-w-0 overflow-hidden flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
                     selected
                       ? 'border-amber-400 bg-amber-500/15 text-amber-100 shadow-md'
                       : unlocked
