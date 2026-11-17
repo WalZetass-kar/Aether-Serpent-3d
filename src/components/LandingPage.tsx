@@ -81,7 +81,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     <div className="relative z-10 w-full h-full overflow-y-auto overflow-x-hidden custom-scroll bg-[#060913] text-slate-100 select-text">
       {/* 3-Zone Top Navigation Bar */}
       <header className="sticky top-0 z-40 border-b border-amber-500/15 bg-[#060913]/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 sm:gap-4 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3">
           {/* Left: Clean Brand Wordmark Only */}
           <a
             href="#hero"
@@ -89,46 +89,46 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               e.preventDefault();
               scrollToSection('hero');
             }}
-            className="flex items-center gap-2.5 min-w-0 shrink-0"
+            className="flex items-center gap-2 min-w-0 flex-1 lg:flex-initial"
           >
-            <SerpentCrestEmblem className="w-8 h-8 sm:w-9 sm:h-9 shrink-0" />
-            <span className="font-display text-sm sm:text-lg font-bold tracking-tight text-gold-gradient truncate">
+            <SerpentCrestEmblem className="w-7 h-7 sm:w-9 sm:h-9 shrink-0" />
+            <span className="font-display text-xs sm:text-base lg:text-lg font-bold tracking-tight text-gold-gradient truncate">
               Naga Tangga Nih Bos
             </span>
           </a>
 
-          {/* Center: Single-Row Navigation Links */}
-          <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-300">
+          {/* Center: Single-Row Navigation Links (lg+ to prevent tablet crowding) */}
+          <nav className="hidden lg:flex items-center gap-5 xl:gap-6 text-xs font-semibold text-slate-300 shrink-0">
             <button
               type="button"
               onClick={() => scrollToSection('fitur')}
-              className="hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap"
+              className="hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               Keunggulan
             </button>
             <button
               type="button"
               onClick={() => scrollToSection('mode')}
-              className="hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap"
+              className="hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               Mode Arena
             </button>
             <button
               type="button"
               onClick={() => scrollToSection('peringkat')}
-              className="hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap"
+              className="hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               Peringkat & Akun
             </button>
           </nav>
 
           {/* Right: Auth + Enter Game CTA */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {user ? (
               <button
                 type="button"
                 onClick={() => onOpenAuth('login')}
-                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20 transition-colors cursor-pointer max-w-[140px] sm:max-w-[190px]"
+                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20 transition-colors cursor-pointer max-w-[110px] sm:max-w-[175px]"
               >
                 <UserCheck className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                 <span className="truncate">{user.displayName || profile.name}</span>
@@ -137,7 +137,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenAuth('login')}
-                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <LogIn className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                 <span>Masuk / Daftar</span>
@@ -147,11 +147,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <button
               type="button"
               onClick={onEnterGame}
-              className="inline-flex items-center gap-1.5 min-h-[40px] rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold text-slate-950 shadow-lg hover:brightness-105 transition-all cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1 sm:gap-1.5 min-h-[40px] rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-2.5 sm:px-4 py-2 text-[11px] sm:text-sm font-bold text-slate-950 shadow-lg hover:brightness-105 transition-all cursor-pointer whitespace-nowrap shrink-0"
             >
               {!user && <Lock className="w-3.5 h-3.5 shrink-0" />}
-              <span>{user ? 'Masuk Game' : 'Masuk untuk Main'}</span>
-              <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+              <span className="sm:hidden">{user ? 'Main' : 'Masuk Main'}</span>
+              <span className="hidden sm:inline">{user ? 'Masuk Game' : 'Masuk untuk Main'}</span>
+              <ArrowRight className="hidden sm:block w-3.5 h-3.5 shrink-0" />
             </button>
           </div>
         </div>

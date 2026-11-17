@@ -97,7 +97,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
 
   return (
     <>
-      <header className="pointer-events-none fixed safe-hud-top z-20 px-2 sm:px-4 pt-1.5 sm:pt-3">
+      <header className="pointer-events-none fixed safe-hud-top z-20 px-2 sm:px-4 pt-1.5 sm:pt-3 animate-hud-slide-in">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-1.5 sm:gap-2">
           {/* Left: Slim Brand & Active Match Title */}
           <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 rounded-xl border border-amber-500/25 bg-slate-950/82 sm:bg-slate-950/90 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 shadow-md min-w-0">

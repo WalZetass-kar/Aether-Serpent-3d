@@ -198,6 +198,22 @@
   animation: emotePop 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+@keyframes hudTopSlideIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -18px, 0) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.animate-hud-slide-in {
+  animation: hudTopSlideIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
 @keyframes aetherDustFloat {
   0% {
     opacity: 0;
@@ -293,6 +309,7 @@
   .animate-ring-glow,
   .animate-ring-urgent,
   .animate-emote-pop,
+  .animate-hud-slide-in,
   .animate-aether-dust,
   .animate-progress-pulse,
   .animate-astrolabe-cw,
