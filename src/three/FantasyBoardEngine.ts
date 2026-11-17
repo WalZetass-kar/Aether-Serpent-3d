@@ -270,6 +270,9 @@ export class FantasyBoardEngine {
   private rimLight!: THREE.DirectionalLight;
   private boardConfig: BoardConfig;
   private boardGroup: THREE.Group | null = null;
+  private boardShakeRemaining = 0;
+  private boardShakeDuration = 0.52;
+  private boardShakeIntensity = 0;
   private diceSkinId: DiceSkinId;
   private diceGroup: THREE.Group | null = null;
   private diceBasePos = new THREE.Vector3(0, 0.9, 10.75);
@@ -503,6 +506,8 @@ export class FantasyBoardEngine {
         this.spawnParticleBurst(origin, colorHex, count, velocityScale),
       spawnAetherTrail: (origin, primaryColorHex, accentColorHex, reduced) =>
         this.spawnAetherTrail(origin, primaryColorHex, accentColorHex, reduced),
+      triggerBoardShake: (intensity, durationSec) =>
+        this.triggerBoardShake(intensity, durationSec),
       getReducedEffects: () =>
         this.cameraController.getSettings().reducedEffects ||
         this.perf.getQualityConfig().tier === 'potato',
@@ -1208,6 +1213,7 @@ export class FantasyBoardEngine {
       this.boardGroup = boardGroup;
       this.boardCollider = boardCollider;
       this.tileHighlightMesh = tileHighlight;
+      this.boardShakeRemaining = 0;
       this.scene.add(boardGroup);
     }
 
@@ -1479,6 +1485,15 @@ export class FantasyBoardEngine {
     this.cameraController.setCinematicState('OVERVIEW');
   }
 
+  public triggerBoardShake(intensity = 1.0, durationSec = 0.52) {
+    if (this.disposed) return;
+    const clampedDuration = Math.max(0.18, Math.min(1.2, durationSec));
+    const clampedIntensity = Math.max(0.15, Math.min(1.5, intensity));
+    this.boardShakeDuration = clampedDuration;
+    this.boardShakeRemaining = Math.max(this.boardShakeRemaining, clampedDuration);
+    this.boardShakeIntensity = Math.max(this.boardShakeIntensity, clampedIntensity);
+  }
+
   public highlightTile(tile: number | null) {
     if (!this.tileHighlightMesh) {
       this.pendingHighlightTile = tile;
@@ -1726,6 +1741,42 @@ export class FantasyBoardEngine {
     if (this.renderer.shadowMap.enabled) {
       if (seqState !== 'idle' || (this.frameCounter & 3) === 0) {
         this.renderer.shadowMap.needsUpdate = true;
+      }
+    }
+
+    // Lightweight damped 3D board tremor on critical snake landings (zero allocations)
+    if (this.boardGroup) {
+      if (this.boardShakeRemaining > 0) {
+        this.boardShakeRemaining = Math.max(0, this.boardShakeRemaining - dt);
+        const progress =
+          1 - this.boardShakeRemaining / Math.max(0.001, this.boardShakeDuration);
+        const decay = (1 - progress) * (1 - progress);
+        const amp = this.boardShakeIntensity * decay * (reduced ? 0.55 : 1.0);
+        const phase = elapsed * 44;
+        this.boardGroup.position.set(
+          Math.sin(phase * 1.37) * 0.095 * amp,
+          -Math.abs(Math.cos(phase * 1.91)) * 0.045 * amp,
+          Math.cos(phase * 1.13) * 0.095 * amp,
+        );
+        this.boardGroup.rotation.set(
+          Math.sin(phase * 1.67) * 0.0075 * amp,
+          0,
+          Math.cos(phase * 1.43) * 0.0075 * amp,
+        );
+        if (this.boardShakeRemaining === 0) {
+          this.boardShakeIntensity = 0;
+          this.boardGroup.position.set(0, 0, 0);
+          this.boardGroup.rotation.set(0, 0, 0);
+        }
+      } else if (
+        this.boardGroup.position.x !== 0 ||
+        this.boardGroup.position.y !== 0 ||
+        this.boardGroup.position.z !== 0 ||
+        this.boardGroup.rotation.x !== 0 ||
+        this.boardGroup.rotation.z !== 0
+      ) {
+        this.boardGroup.position.set(0, 0, 0);
+        this.boardGroup.rotation.set(0, 0, 0);
       }
     }
 

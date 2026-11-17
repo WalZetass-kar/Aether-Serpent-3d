@@ -39,6 +39,7 @@ export interface SequenceHostContext {
     accentColorHex: number,
     reduced: boolean,
   ) => void;
+  triggerBoardShake?: (intensity?: number, durationSec?: number) => void;
   getReducedEffects: () => boolean;
 }
 
@@ -458,6 +459,7 @@ export class AnimationSequenceController {
     handle.playClip('cast', 0.1);
     cb.onJumpTriggered?.('snake', true);
     cb.onSkillVfx?.('shield_block', true);
+    this.host.triggerBoardShake?.(0.5, 0.34);
     this.host.vfxPool.playShieldEffect(new THREE.Vector3(pos.x, 0.2, pos.z), 0x60a5fa, true, reduced);
     this.host.spawnParticleBurst(new THREE.Vector3(pos.x, 0.85, pos.z), 0x60a5fa, reduced ? 14 : 28);
     await this.sleep(480);
@@ -495,6 +497,7 @@ export class AnimationSequenceController {
       eventId: cb.eventId,
     });
     cb.onJumpTriggered?.('snake', false);
+    this.host.triggerBoardShake?.(0.95, 0.54);
 
     if (!snake) {
       await this.sleep(450);
@@ -568,6 +571,7 @@ export class AnimationSequenceController {
       eventId: cb.eventId,
     });
     cb.onSnakeBite?.();
+    this.host.triggerBoardShake?.(0.72, 0.38);
 
     // Step 2: Serpent strikes forward & draws pawn smoothly inside dark oral gullet cavity (zero skin clipping!)
     this.host.cameraController.setCinematicState('SNAKE_EAT', {

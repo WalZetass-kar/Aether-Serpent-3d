@@ -278,6 +278,44 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Privileged admin role record verified by Firestore rules to grant Admin Portal read/moderation capabilities.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the admin user.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email address of the admin user.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "grantedBy": {
+          "type": "string",
+          "description": "UID or email of the administrator who granted the role.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "grantedBy",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -298,6 +336,12 @@
         "$ref": "#/entities/PublicProfile"
       },
       "description": "PII-free public player profiles queried for global hall-of-fame standings."
+    },
+    "/admins/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AdminRole"
+      },
+      "description": "Authoritative admin role directory managed strictly by the bootstrapped administrator."
     }
   }
 }

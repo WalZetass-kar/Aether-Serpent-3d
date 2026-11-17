@@ -53,6 +53,127 @@ export interface StoreData {
 
 const IS_SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
+const ADMIN_EMAILS = new Set(['ihwalmaulana09@gmail.com']);
+
+function resolveFirebaseProjectId(): string {
+  if (process.env.FIREBASE_PROJECT_ID) return process.env.FIREBASE_PROJECT_ID;
+  try {
+    const cfgPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(cfgPath)) {
+      const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as { projectId?: string };
+      if (parsed.projectId) return parsed.projectId;
+    }
+  } catch {
+    // fallback below
+  }
+  return 'online-quanta-zw1rw';
+}
+
+const FIREBASE_PROJECT_ID = resolveFirebaseProjectId();
+
+interface GoogleJwkCache {
+  keys: Map<string, crypto.JsonWebKey>;
+  expiresAt: number;
+}
+
+let jwkCache: GoogleJwkCache = { keys: new Map(), expiresAt: 0 };
+
+async function getGoogleSecureTokenJwk(kid: string): Promise<crypto.JsonWebKey | null> {
+  const now = Date.now();
+  if (now < jwkCache.expiresAt && jwkCache.keys.has(kid)) {
+    return jwkCache.keys.get(kid) ?? null;
+  }
+  try {
+    const res = await fetch(
+      'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com',
+    );
+    if (!res.ok) return jwkCache.keys.get(kid) ?? null;
+    const data = (await res.json()) as { keys?: Array<crypto.JsonWebKey & { kid?: string }> };
+    const nextMap = new Map<string, crypto.JsonWebKey>();
+    for (const k of data.keys || []) {
+      if (k.kid) nextMap.set(k.kid, k);
+    }
+    const cc = res.headers.get('cache-control') || '';
+    const maxAgeMatch = cc.match(/max-age=(\d+)/i);
+    const ttlMs = maxAgeMatch ? Math.min(3600, Number(maxAgeMatch[1])) * 1000 : 15 * 60 * 1000;
+    jwkCache = { keys: nextMap, expiresAt: now + Math.max(60_000, ttlMs) };
+    return nextMap.get(kid) ?? null;
+  } catch {
+    return jwkCache.keys.get(kid) ?? null;
+  }
+}
+
+async function verifyAdminBearerToken(
+  req: Request,
+): Promise<{ ok: true; uid: string; email: string } | { ok: false; status: number; error: string }> {
+  const authHeader = String(req.headers.authorization || '');
+  if (!authHeader.startsWith('Bearer ')) {
+    return { ok: false, status: 401, error: 'Token otorisasi admin diperlukan.' };
+  }
+  const token = authHeader.slice(7).trim();
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return { ok: false, status: 401, error: 'Format token Firebase tidak valid.' };
+  }
+
+  try {
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8')) as {
+      alg?: string;
+      kid?: string;
+    };
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
+      aud?: string;
+      iss?: string;
+      sub?: string;
+      exp?: number;
+      iat?: number;
+      email?: string;
+      email_verified?: boolean;
+    };
+
+    if (header.alg !== 'RS256' || !header.kid) {
+      return { ok: false, status: 401, error: 'Algoritma atau KID token tidak valid.' };
+    }
+    const jwk = await getGoogleSecureTokenJwk(header.kid);
+    if (!jwk) {
+      return { ok: false, status: 401, error: 'Kunci publik verifikasi token tidak ditemukan.' };
+    }
+
+    const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+    const verified = crypto.verify(
+      'RSA-SHA256',
+      Buffer.from(`${parts[0]}.${parts[1]}`),
+      publicKey,
+      Buffer.from(parts[2], 'base64url'),
+    );
+    if (!verified) {
+      return { ok: false, status: 401, error: 'Tanda tangan token Firebase tidak valid.' };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expectedIss = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
+    if (
+      payload.aud !== FIREBASE_PROJECT_ID ||
+      payload.iss !== expectedIss ||
+      !payload.sub ||
+      !payload.exp ||
+      payload.exp <= nowSec ||
+      (payload.iat && payload.iat > nowSec + 120)
+    ) {
+      return { ok: false, status: 401, error: 'Token Firebase kedaluwarsa atau bukan untuk proyek ini.' };
+    }
+
+    const email = String(payload.email || '').toLowerCase();
+    if (!payload.email_verified || !ADMIN_EMAILS.has(email)) {
+      return { ok: false, status: 403, error: 'Akses ditolak: akun bukan Administrator terverifikasi.' };
+    }
+
+    return { ok: true, uid: payload.sub, email };
+  } catch {
+    return { ok: false, status: 401, error: 'Gagal memverifikasi token administrator.' };
+  }
+}
+
 function resolveWritableDataDir(): string {
   if (IS_SERVERLESS) {
     return path.join(os.tmpdir(), 'aether-serpent-data');
@@ -798,6 +919,115 @@ export function registerApiRoutes(app: Express): void {
   app.get('/api/rooms', (_req: Request, res: Response) => {
     tickRoomsMaintenance();
     res.json({ rooms: getPublicRoomSummaries() });
+  });
+
+  // -------------------------------------------------------------------------
+  // Protected Admin Portal API (/api/admin/*)
+  // -------------------------------------------------------------------------
+  app.get('/api/admin/overview', async (req: Request, res: Response) => {
+    const authCheck = await verifyAdminBearerToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+
+    tickRoomsMaintenance();
+    loadRoomsFromTmpCache();
+
+    const detailedRooms = Array.from(rooms.values())
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((room) => {
+        const host = room.players.find((p) => p.id === room.hostId) ?? room.players[0];
+        return {
+          code: room.code,
+          name: room.name,
+          isPublic: room.isPublic,
+          boardMode: room.boardMode,
+          boardName: room.boardConfig?.name || 'Papan Standar',
+          themeId: room.boardConfig?.themeId || 'enchanted_forest',
+          status: room.status,
+          hostId: room.hostId,
+          hostName: host?.name || 'Host',
+          playerCount: room.players.length,
+          maxPlayers: 4,
+          turnCount: room.turnCount,
+          chatCount: room.chatMessages.length,
+          createdAt: room.createdAt,
+          updatedAt: room.updatedAt,
+          players: room.players.map((p) => ({
+            id: p.id,
+            name: p.name,
+            tile: p.tile,
+            score: p.score,
+            shields: p.shields,
+            connected: p.connected,
+            ready: p.ready,
+            pingMs: p.pingMs,
+            team: p.team,
+          })),
+        };
+      });
+
+    const cloudSyncProfiles = Object.values(store.cloudProfiles)
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+      .map((item) => ({
+        syncCode: item.syncCode,
+        playerName:
+          typeof item.profile?.name === 'string' ? item.profile.name : 'Pemain Cloud',
+        bestScore:
+          typeof item.profile?.bestScore === 'number' ? item.profile.bestScore : 0,
+        wins: typeof item.profile?.wins === 'number' ? item.profile.wins : 0,
+        updatedAt: item.updatedAt,
+      }));
+
+    res.json({
+      ok: true,
+      serverTime: Date.now(),
+      serverless: IS_SERVERLESS,
+      rooms: detailedRooms,
+      leaderboard: store.leaderboard.slice(0, 100),
+      cloudSyncCount: cloudSyncProfiles.length,
+      cloudSyncProfiles,
+    });
+  });
+
+  app.delete('/api/admin/rooms/:code', async (req: Request, res: Response) => {
+    const authCheck = await verifyAdminBearerToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+    const code = String(req.params.code || '').trim().toUpperCase();
+    const room = rooms.get(code);
+    if (!room) {
+      res.status(404).json({ error: `Room "${code}" tidak ditemukan.` });
+      return;
+    }
+
+    broadcastRoom(room, {
+      type: 'room:kicked',
+      message: 'Ruangan telah ditutup oleh Administrator.',
+    });
+    rooms.delete(code);
+    saveRoomsToTmpCache();
+    res.json({ ok: true, closedCode: code });
+  });
+
+  app.delete('/api/admin/leaderboard/:id', async (req: Request, res: Response) => {
+    const authCheck = await verifyAdminBearerToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+    const id = String(req.params.id || '').trim();
+    const before = store.leaderboard.length;
+    store.leaderboard = store.leaderboard.filter((entry) => entry.id !== id);
+    if (store.leaderboard.length === before) {
+      res.status(404).json({ error: 'Entri leaderboard tidak ditemukan.' });
+      return;
+    }
+    saveStore(store);
+    res.json({ ok: true, deletedId: id });
   });
 
   // HTTP Multiplayer Poll Endpoint (Vercel Serverless & Fallback Transport)

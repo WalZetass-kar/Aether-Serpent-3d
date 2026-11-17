@@ -35,6 +35,15 @@ service cloud.firestore {
       return isEmailVerified() && request.auth.uid == userId;
     }
 
+    function isBootstrappedAdmin() {
+      return isEmailVerified() && request.auth.token.email == 'ihwalmaulana09@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin()
+        || (isEmailVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
     // -------------------------------------------------------------------------
     // Entity Validation Blueprints
     // -------------------------------------------------------------------------
@@ -115,7 +124,7 @@ service cloud.firestore {
           'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
           'createdAt', 'updatedAt'
         ])
-        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
         && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 3
         && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
@@ -128,12 +137,21 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidAdminRole(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.uid is string && data.uid == userId && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
     // -------------------------------------------------------------------------
-    // /users/{userId} — Private PII & Account State (Owner Only)
+    // /users/{userId} — Private PII & Account State (Owner + Verified Admin Read)
     // -------------------------------------------------------------------------
     match /users/{userId} {
-      allow get: if isValidId(userId) && isOwner(userId);
-      allow list: if false;
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
 
       allow create: if isValidId(userId)
         && isOwner(userId)
@@ -167,10 +185,12 @@ service cloud.firestore {
 
       // /users/{userId}/boards/{boardId} — Custom 3D Boards (Master Gate -> parent /users/{userId})
       match /boards/{boardId} {
-        allow get: if isValidId(userId) && isValidId(boardId) && isOwner(userId)
+        allow get: if isValidId(userId) && isValidId(boardId) && (isOwner(userId) || isAdmin())
           && exists(/databases/$(database)/documents/users/$(userId));
-        allow list: if isValidId(userId) && isOwner(userId)
-          && resource.data.ownerUid == request.auth.uid;
+        allow list: if isValidId(userId) && (
+          (isOwner(userId) && resource.data.ownerUid == request.auth.uid)
+          || isBootstrappedAdmin()
+        );
 
         allow create: if isValidId(userId)
           && isValidId(boardId)
@@ -205,8 +225,8 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /publicProfiles/{userId} {
       allow get: if isValidId(userId)
-        && (isOwner(userId) || (resource != null && resource.data.isPublic == true));
-      allow list: if resource.data.isPublic == true;
+        && (isOwner(userId) || isAdmin() || (resource != null && resource.data.isPublic == true));
+      allow list: if resource.data.isPublic == true || isBootstrappedAdmin();
 
       allow create: if isValidId(userId)
         && isOwner(userId)
@@ -215,17 +235,39 @@ service cloud.firestore {
         && incoming().updatedAt == request.time;
 
       allow update: if isValidId(userId)
-        && isOwner(userId)
         && isValidPublicProfile(incoming(), userId)
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly([
-          'displayName', 'archetypeIndex', 'diceSkinId',
-          'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic', 'updatedAt'
-        ]);
+        && (
+          (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'archetypeIndex', 'diceSkinId',
+            'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic', 'updatedAt'
+          ]))
+          ||
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'isPublic', 'updatedAt'
+          ]))
+        );
 
-      allow delete: if isValidId(userId) && isOwner(userId);
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
+    // -------------------------------------------------------------------------
+    // /admins/{userId} — Admin Role Directory (Bootstrapped Admin Managed)
+    // -------------------------------------------------------------------------
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isBootstrappedAdmin());
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isValidId(userId)
+        && isBootstrappedAdmin()
+        && isValidAdminRole(incoming(), userId)
+        && incoming().createdAt == request.time;
+
+      allow update: if false;
+
+      allow delete: if isValidId(userId) && isBootstrappedAdmin();
     }
   }
 }

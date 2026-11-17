@@ -24,6 +24,7 @@ import {
 } from '../shared/gameConfig';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementsDailyModal } from './components/AchievementsDailyModal';
+import { AdminPortalView } from './components/AdminPortalView';
 import { AetherOracleChatDrawer } from './components/AetherOracleChatDrawer';
 import { ArenaChatDrawer, type ArenaChatMessage } from './components/ArenaChatDrawer';
 import { AuthModal } from './components/AuthModal';
@@ -53,6 +54,7 @@ import {
   syncCustomBoardToFirebase,
   syncProfileToFirebase,
 } from './services/firebaseAccountService';
+import { isAdminAccount } from './services/adminService';
 import {
   checkAndTriggerDailyReminder,
   dispatchAppNotification,
@@ -110,6 +112,7 @@ type AppScreen =
   | 'game_config'
   | 'multiplayer_lobby'
   | 'board_manager'
+  | 'admin'
   | 'loading_arena'
   | 'arena';
 
@@ -198,6 +201,7 @@ export default function App() {
   const engineRef = useRef<FantasyBoardEngine | null>(null);
 
   const { user, loading: authLoading, logoutAccount } = useAuth();
+  const isAdminUser = isAdminAccount(user);
   const isOnline = useOnlineStatus();
   const [profile, setProfile] = useState<PlayerProfile>(() => loadProfile());
   const [localScores, setLocalScores] = useState<LocalScoreEntry[]>(() => loadLocalScores());
@@ -400,13 +404,17 @@ export default function App() {
     });
   }, [profile.notificationsEnabled, profile.notificationHour]);
 
-  // Hard Authentication Route Guard: block all game screens when not signed in
+  // Hard Authentication & Admin Route Guard
   useEffect(() => {
     if (authLoading) return;
     if (!user && screen !== 'landing') {
       setScreen('landing');
+      return;
     }
-  }, [authLoading, screen, user]);
+    if (screen === 'admin' && !isAdminUser) {
+      setScreen(user ? 'main_menu' : 'landing');
+    }
+  }, [authLoading, isAdminUser, screen, user]);
 
   // Handle deep-linked ?room=XXXX safely behind login gate
   useEffect(() => {
@@ -570,7 +578,10 @@ export default function App() {
 
   const isArenaMounted = screen === 'loading_arena' || screen === 'arena';
   const isMenuBackdropMounted =
-    !isArenaMounted && screen !== 'board_manager' && screen !== 'landing';
+    !isArenaMounted &&
+    screen !== 'board_manager' &&
+    screen !== 'landing' &&
+    screen !== 'admin';
 
   // 1. Mount MainMenuEngine ONLY when outside the 3D Arena, Loading Screen & 3D Board Manager
   useEffect(() => {
@@ -2230,6 +2241,22 @@ export default function App() {
             soundEngine.playUiClick();
             setOracleAiOpen(true);
           }}
+          isAdmin={isAdminUser}
+          onOpenAdmin={() => {
+            soundEngine.playUiClick();
+            setScreen('admin');
+          }}
+        />
+      )}
+
+      {screen === 'admin' && user && isAdminUser && (
+        <AdminPortalView
+          user={user}
+          onBackToMenu={() => {
+            soundEngine.playUiClick();
+            setScreen('main_menu');
+          }}
+          onNotify={showToast}
         />
       )}
 

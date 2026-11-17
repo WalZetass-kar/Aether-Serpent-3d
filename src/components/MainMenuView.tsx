@@ -14,6 +14,7 @@ import {
   PlusSquare,
   Settings,
   Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Swords,
@@ -54,6 +55,8 @@ interface MainMenuViewProps {
   onOpenCloud: () => void;
   onOpenBoardManager: (tab?: 'collection' | 'creator') => void;
   onOpenOracleAI?: () => void;
+  isAdmin?: boolean;
+  onOpenAdmin?: () => void;
 }
 
 const MODE_STYLE: Record<
@@ -101,6 +104,8 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
   onOpenCloud,
   onOpenBoardManager,
   onOpenOracleAI,
+  isAdmin = false,
+  onOpenAdmin,
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editName, setEditName] = useState(profile.name);
@@ -179,6 +184,18 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             >
               <Sparkles className="w-4 h-4 text-amber-300" />
               <span>Oracle AI</span>
+            </button>
+          )}
+
+          {/* Admin Portal shortcut (Admin Only) */}
+          {isAdmin && onOpenAdmin && (
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="hidden sm:inline-flex glass-panel-soft items-center justify-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border border-emerald-400/45 bg-emerald-500/15 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+              <span>Panel Admin</span>
             </button>
           )}
 
@@ -636,6 +653,23 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                   </span>
                   <span className="text-sky-300">Buka</span>
                 </button>
+
+                {isAdmin && onOpenAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSidebarOpen(false);
+                      onOpenAdmin();
+                    }}
+                    className="w-full flex items-center justify-between min-h-[44px] px-3.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20 cursor-pointer"
+                  >
+                    <span className="inline-flex items-center gap-2.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      Ruang Admin Khusus
+                    </span>
+                    <span className="text-emerald-300">Kelola</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
