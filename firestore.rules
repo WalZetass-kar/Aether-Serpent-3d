@@ -1,0 +1,231 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny everything not explicitly matched
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isEmailVerified() && request.auth.uid == userId;
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
+          'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
+          'onlineWins', 'unlockedAchievements', 'dailyStreak',
+          'loginStreak', 'lastLoginDate',
+          'tutorialCompleted', 'muted', 'selectedBoardId',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
+          'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
+          'onlineWins', 'unlockedAchievements', 'dailyStreak',
+          'loginStreak', 'lastLoginDate',
+          'tutorialCompleted', 'muted', 'selectedBoardId',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && (request.auth.token.email == null || data.email == request.auth.token.email)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
+        && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 3
+        && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
+        && data.totalGames is int && data.totalGames >= 0 && data.totalGames <= 1000000
+        && data.wins is int && data.wins >= 0 && data.wins <= 1000000
+        && data.losses is int && data.losses >= 0 && data.losses <= 1000000
+        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 10000000
+        && data.fastestWinTurns is int && data.fastestWinTurns >= 0 && data.fastestWinTurns <= 10000
+        && data.laddersClimbed is int && data.laddersClimbed >= 0 && data.laddersClimbed <= 1000000
+        && data.snakesBitten is int && data.snakesBitten >= 0 && data.snakesBitten <= 1000000
+        && data.shieldsUsed is int && data.shieldsUsed >= 0 && data.shieldsUsed <= 1000000
+        && data.specialTilesHit is int && data.specialTilesHit >= 0 && data.specialTilesHit <= 1000000
+        && data.onlineWins is int && data.onlineWins >= 0 && data.onlineWins <= 1000000
+        && data.unlockedAchievements is list && data.unlockedAchievements.size() <= 24
+        && (data.unlockedAchievements.size() == 0 || (data.unlockedAchievements[0] is string && data.unlockedAchievements[0].size() <= 64))
+        && data.dailyStreak is int && data.dailyStreak >= 0 && data.dailyStreak <= 10000
+        && data.loginStreak is int && data.loginStreak >= 1 && data.loginStreak <= 100000
+        && data.lastLoginDate is string && data.lastLoginDate.size() >= 1 && data.lastLoginDate.size() <= 16
+        && data.tutorialCompleted is bool
+        && data.muted is bool
+        && data.selectedBoardId is string && data.selectedBoardId.size() >= 1 && data.selectedBoardId.size() <= 80
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCustomBoard(data, userId, boardId) {
+      return data.keys().hasAll([
+          'id', 'ownerUid', 'name', 'themeId', 'ladders', 'snakes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerUid', 'name', 'themeId', 'ladders', 'snakes', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == boardId && data.id.size() >= 1 && data.id.size() <= 80
+        && data.ownerUid is string && data.ownerUid == userId && data.ownerUid == request.auth.uid && data.ownerUid.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 60
+        && data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 40
+        && data.ladders is list && data.ladders.size() <= 20
+        && (data.ladders.size() == 0 || data.ladders[0] is map)
+        && data.snakes is list && data.snakes.size() <= 20
+        && (data.snakes.size() == 0 || data.snakes[0] is map)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPublicProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
+        && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 3
+        && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
+        && data.wins is int && data.wins >= 0 && data.wins <= 1000000
+        && data.totalGames is int && data.totalGames >= 0 && data.totalGames <= 1000000
+        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 10000000
+        && data.onlineWins is int && data.onlineWins >= 0 && data.onlineWins <= 1000000
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // /users/{userId} — Private PII & Account State (Owner Only)
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'archetypeIndex', 'diceSkinId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'updatedAt'
+          ])
+          ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'archetypeIndex', 'diceSkinId',
+            'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
+            'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
+            'onlineWins', 'unlockedAchievements', 'dailyStreak',
+            'loginStreak', 'lastLoginDate',
+            'tutorialCompleted', 'muted', 'selectedBoardId', 'updatedAt'
+          ])
+        );
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // /users/{userId}/boards/{boardId} — Custom 3D Boards (Master Gate -> parent /users/{userId})
+      match /boards/{boardId} {
+        allow get: if isValidId(userId) && isValidId(boardId) && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow list: if isValidId(userId) && isOwner(userId)
+          && resource.data.ownerUid == request.auth.uid;
+
+        allow create: if isValidId(userId)
+          && isValidId(boardId)
+          && isOwner(userId)
+          && isValidCustomBoard(incoming(), userId, boardId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isValidId(userId)
+          && isValidId(boardId)
+          && isOwner(userId)
+          && isValidCustomBoard(incoming(), userId, boardId)
+          && incoming().id == existing().id
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'themeId', 'ladders', 'snakes', 'updatedAt'
+          ])
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow delete: if isValidId(userId)
+          && isValidId(boardId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // /publicProfiles/{userId} — PII-Free Public Leaderboard Projection
+    // -------------------------------------------------------------------------
+    match /publicProfiles/{userId} {
+      allow get: if isValidId(userId)
+        && (isOwner(userId) || (resource != null && resource.data.isPublic == true));
+      allow list: if resource.data.isPublic == true;
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidPublicProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidPublicProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'archetypeIndex', 'diceSkinId',
+          'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic', 'updatedAt'
+        ]);
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+    }
+  }
+}

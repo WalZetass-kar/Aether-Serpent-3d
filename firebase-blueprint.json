@@ -1,0 +1,303 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private authenticated player account, PII, stats, achievements, and preferences owned exclusively by the user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID matching the document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified player email address (PII, owner-only access).",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Player display name shown in game.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "archetypeIndex": {
+          "type": "integer",
+          "description": "Selected pawn archetype index (0-3)."
+        },
+        "diceSkinId": {
+          "type": "string",
+          "description": "Selected 3D dice skin identifier.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "totalGames": {
+          "type": "integer",
+          "description": "Total matches played."
+        },
+        "wins": {
+          "type": "integer",
+          "description": "Total matches won."
+        },
+        "losses": {
+          "type": "integer",
+          "description": "Total matches lost."
+        },
+        "bestScore": {
+          "type": "integer",
+          "description": "Highest single-match score."
+        },
+        "fastestWinTurns": {
+          "type": "integer",
+          "description": "Fewest turns to win (0 if no wins recorded yet)."
+        },
+        "laddersClimbed": {
+          "type": "integer",
+          "description": "Lifetime ladders climbed."
+        },
+        "snakesBitten": {
+          "type": "integer",
+          "description": "Lifetime snakes encountered."
+        },
+        "shieldsUsed": {
+          "type": "integer",
+          "description": "Lifetime shields activated."
+        },
+        "specialTilesHit": {
+          "type": "integer",
+          "description": "Lifetime special tiles triggered."
+        },
+        "onlineWins": {
+          "type": "integer",
+          "description": "Online multiplayer wins."
+        },
+        "unlockedAchievements": {
+          "type": "array",
+          "description": "Bounded list of unlocked achievement IDs (max 24)."
+        },
+        "dailyStreak": {
+          "type": "integer",
+          "description": "Current daily challenge streak."
+        },
+        "loginStreak": {
+          "type": "integer",
+          "description": "Consecutive calendar login days streak."
+        },
+        "lastLoginDate": {
+          "type": "string",
+          "description": "Last local login date (YYYY-MM-DD).",
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "tutorialCompleted": {
+          "type": "boolean",
+          "description": "Whether interactive tutorial has been completed."
+        },
+        "muted": {
+          "type": "boolean",
+          "description": "Audio mute preference."
+        },
+        "selectedBoardId": {
+          "type": "string",
+          "description": "Active selected board ID.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "displayName",
+        "archetypeIndex",
+        "diceSkinId",
+        "totalGames",
+        "wins",
+        "losses",
+        "bestScore",
+        "fastestWinTurns",
+        "laddersClimbed",
+        "snakesBitten",
+        "shieldsUsed",
+        "specialTilesHit",
+        "onlineWins",
+        "unlockedAchievements",
+        "dailyStreak",
+        "loginStreak",
+        "lastLoginDate",
+        "tutorialCompleted",
+        "muted",
+        "selectedBoardId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CustomBoard": {
+      "title": "CustomBoard",
+      "description": "User-created 3D fantasy board configuration stored as a subcollection under the owning user.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Board document ID matching path boardId.",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID matching parent userId.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Custom board title.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "themeId": {
+          "type": "string",
+          "description": "3D arena visual theme ID.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "ladders": {
+          "type": "array",
+          "description": "Bounded list of ladder definitions (max 20)."
+        },
+        "snakes": {
+          "type": "array",
+          "description": "Bounded list of snake definitions (max 20)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "name",
+        "themeId",
+        "ladders",
+        "snakes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Sanitized public player card for leaderboard and multiplayer display without any PII.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Player UID matching document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public player display name.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "archetypeIndex": {
+          "type": "integer",
+          "description": "Selected pawn archetype index (0-3)."
+        },
+        "diceSkinId": {
+          "type": "string",
+          "description": "Equipped 3D dice skin ID.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "wins": {
+          "type": "integer",
+          "description": "Total wins."
+        },
+        "totalGames": {
+          "type": "integer",
+          "description": "Total games played."
+        },
+        "bestScore": {
+          "type": "integer",
+          "description": "Highest recorded score."
+        },
+        "onlineWins": {
+          "type": "integer",
+          "description": "Total online wins."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Explicit opt-in flag required for public leaderboard queries."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "archetypeIndex",
+        "diceSkinId",
+        "wins",
+        "totalGames",
+        "bestScore",
+        "onlineWins",
+        "isPublic",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Owner-isolated player account document storing email (PII), game progression, achievements, and preferences."
+    },
+    "/users/{userId}/boards/{boardId}": {
+      "schema": {
+        "$ref": "#/entities/CustomBoard"
+      },
+      "description": "Owner-only subcollection of custom 3D boards created by the user."
+    },
+    "/publicProfiles/{userId}": {
+      "schema": {
+        "$ref": "#/entities/PublicProfile"
+      },
+      "description": "PII-free public player profiles queried for global hall-of-fame standings."
+    }
+  }
+}

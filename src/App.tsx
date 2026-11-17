@@ -25,6 +25,8 @@ import {
 import { soundEngine } from './audio/soundEngine';
 import { AchievementsDailyModal } from './components/AchievementsDailyModal';
 import { AetherOracleChatDrawer } from './components/AetherOracleChatDrawer';
+import { ArenaChatDrawer, type ArenaChatMessage } from './components/ArenaChatDrawer';
+import { AuthModal } from './components/AuthModal';
 import { BoardManagerView } from './components/BoardManagerView';
 import { BottomControlDock } from './components/BottomControlDock';
 import { CameraSettingsModal } from './components/CameraSettingsModal';
@@ -33,6 +35,7 @@ import { ArchetypeEmblem } from './components/FantasyIcons';
 import { GameConfigView } from './components/GameConfigView';
 import { HUDTopBar } from './components/HUDTopBar';
 import { InteractiveTutorialModal } from './components/InteractiveTutorialModal';
+import { LandingPage } from './components/LandingPage';
 import { LeaderboardModal } from './components/LeaderboardModal';
 import { LoadingArenaScreen } from './components/LoadingArenaScreen';
 import { MainMenuView } from './components/MainMenuView';
@@ -43,7 +46,13 @@ import {
 } from './components/MultiplayerLobbyView';
 import { PerfOverlay } from './components/PerfOverlay';
 import { VictoryModal } from './components/VictoryModal';
+import { useAuth } from './contexts/AuthContext';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import {
+  loadProfileFromFirebase,
+  syncCustomBoardToFirebase,
+  syncProfileToFirebase,
+} from './services/firebaseAccountService';
 import {
   checkAndTriggerDailyReminder,
   dispatchAppNotification,
@@ -54,6 +63,7 @@ import {
   flushPendingLeaderboard,
   loadLocalScores,
   loadProfile,
+  mergeLoginStreaks,
   queuePendingLeaderboard,
   resetProfileSession,
   saveProfile,
@@ -94,6 +104,7 @@ import {
 const CAMERA_SETTINGS_KEY = 'aether_serpent_camera_v1';
 
 type AppScreen =
+  | 'landing'
   | 'main_menu'
   | 'mode_selection'
   | 'game_config'
@@ -186,21 +197,22 @@ export default function App() {
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<FantasyBoardEngine | null>(null);
 
+  const { user, loading: authLoading, logoutAccount } = useAuth();
   const isOnline = useOnlineStatus();
   const [profile, setProfile] = useState<PlayerProfile>(() => loadProfile());
   const [localScores, setLocalScores] = useState<LocalScoreEntry[]>(() => loadLocalScores());
 
-  // Structured Multi-Stage Screen Navigation (Entry -> Main Menu -> Mode -> Config/Lobby -> Loading -> Arena)
+  // Structured Multi-Stage Screen Navigation (Landing -> Main Menu -> Mode -> Config/Lobby -> Loading -> Arena)
   const initialRoomCode =
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('room')?.trim() ?? ''
       : '';
   const hasInitialRoom = initialRoomCode.length >= 4;
-  const [screen, setScreen] = useState<AppScreen>(
-    hasInitialRoom ? 'multiplayer_lobby' : 'main_menu',
-  );
+  const [screen, setScreen] = useState<AppScreen>('landing');
   const screenRef = useRef<AppScreen>(screen);
   screenRef.current = screen;
+  const pendingPostAuthActionRef = useRef<(() => void) | null>(null);
+  const handledInitialRoomRef = useRef(false);
   const [selectedBoardMode, setSelectedBoardMode] = useState<BoardGameMode>('classic');
   const [multiplayerTabIntent, setMultiplayerTabIntent] = useState<'create' | 'join'>(
     hasInitialRoom ? 'join' : 'create',
@@ -269,7 +281,14 @@ export default function App() {
   const [cloudOpen, setCloudOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [oracleAiOpen, setOracleAiOpen] = useState(false);
+  const [arenaChatOpen, setArenaChatOpen] = useState(false);
+  const arenaChatOpenRef = useRef(false);
+  arenaChatOpenRef.current = arenaChatOpen;
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [arenaLocalChatMessages, setArenaLocalChatMessages] = useState<ArenaChatMessage[]>([]);
   const [victoryOpen, setVictoryOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
 
   // Dual-Transport Online Multiplayer State (WebSocket + HTTP Serverless Fallback for Vercel)
   const wsRef = useRef<WebSocket | null>(null);
@@ -343,6 +362,9 @@ export default function App() {
     matchStartedAtRef.current = Date.now();
     setInspectedTile(null);
     setArenaEmote(null);
+    setArenaChatOpen(false);
+    setUnreadChatCount(0);
+    setArenaLocalChatMessages([]);
     setArenaLoadProgress(0.08);
     setArenaLoadStage('Menginisialisasi konteks WebGL2 Arena...');
     setScreen('loading_arena');
@@ -378,6 +400,127 @@ export default function App() {
     });
   }, [profile.notificationsEnabled, profile.notificationHour]);
 
+  // Hard Authentication Route Guard: block all game screens when not signed in
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user && screen !== 'landing') {
+      setScreen('landing');
+    }
+  }, [authLoading, screen, user]);
+
+  // Handle deep-linked ?room=XXXX safely behind login gate
+  useEffect(() => {
+    if (authLoading || !hasInitialRoom || handledInitialRoomRef.current) return;
+    handledInitialRoomRef.current = true;
+    if (user) {
+      setMultiplayerTabIntent('join');
+      setScreen('multiplayer_lobby');
+    } else {
+      pendingPostAuthActionRef.current = () => {
+        setMultiplayerTabIntent('join');
+        setScreen('multiplayer_lobby');
+      };
+      setAuthModalTab('login');
+      setAuthModalOpen(true);
+      showToast('Login Diperlukan', 'Masuk terlebih dahulu untuk bergabung ke room.');
+    }
+  }, [authLoading, hasInitialRoom, showToast, user]);
+
+  const requireAuth = useCallback(
+    (action: () => void, reason = 'Silakan masuk atau daftar akun terlebih dahulu.') => {
+      if (user) {
+        action();
+        return;
+      }
+      pendingPostAuthActionRef.current = action;
+      setAuthModalTab('login');
+      setAuthModalOpen(true);
+      showToast('Login Diperlukan', reason);
+    },
+    [showToast, user],
+  );
+
+  // Synchronize Firebase Authenticated Account <-> Local Profile
+  const syncedUidRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user) {
+      syncedUidRef.current = null;
+      return;
+    }
+
+    if (!user.emailVerified) {
+      if (user.displayName) {
+        setProfile((prev) => {
+          const next = { ...prev, name: user.displayName || prev.name };
+          saveProfile(next);
+          return next;
+        });
+      }
+      return;
+    }
+
+    const syncKey = `${user.uid}:verified`;
+    if (syncedUidRef.current === syncKey) return;
+    syncedUidRef.current = syncKey;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const remote = await loadProfileFromFirebase(user);
+        if (cancelled) return;
+
+        const prev = loadProfile();
+        const mergedAchievements = Array.from(
+          new Set([
+            ...(prev.unlockedAchievements || []),
+            ...(remote?.unlockedAchievements || []),
+          ]),
+        ).slice(0, 24);
+        const mergedStreak = mergeLoginStreaks(prev, remote);
+        const mergedProfile: PlayerProfile = {
+          ...prev,
+          playerId: user.uid,
+          name: remote?.name || user.displayName || prev.name,
+          archetypeIndex: remote?.archetypeIndex ?? prev.archetypeIndex,
+          diceSkinId: remote?.diceSkinId ?? prev.diceSkinId,
+          totalGames: Math.max(prev.totalGames, remote?.totalGames ?? 0),
+          wins: Math.max(prev.wins, remote?.wins ?? 0),
+          losses: Math.max(prev.losses, remote?.losses ?? 0),
+          bestScore: Math.max(prev.bestScore, remote?.bestScore ?? 0),
+          fastestWinTurns:
+            prev.fastestWinTurns && remote?.fastestWinTurns
+              ? Math.min(prev.fastestWinTurns, remote.fastestWinTurns)
+              : prev.fastestWinTurns ?? remote?.fastestWinTurns ?? null,
+          laddersClimbed: Math.max(prev.laddersClimbed, remote?.laddersClimbed ?? 0),
+          snakesBitten: Math.max(prev.snakesBitten, remote?.snakesBitten ?? 0),
+          shieldsUsed: Math.max(prev.shieldsUsed, remote?.shieldsUsed ?? 0),
+          specialTilesHit: Math.max(prev.specialTilesHit, remote?.specialTilesHit ?? 0),
+          onlineWins: Math.max(prev.onlineWins, remote?.onlineWins ?? 0),
+          unlockedAchievements: mergedAchievements,
+          dailyStreak: Math.max(prev.dailyStreak, remote?.dailyStreak ?? 0),
+          loginStreak: mergedStreak.loginStreak,
+          lastLoginDate: mergedStreak.lastLoginDate,
+          tutorialCompleted: prev.tutorialCompleted || Boolean(remote?.tutorialCompleted),
+        };
+        saveProfile(mergedProfile);
+        setProfile(mergedProfile);
+
+        setOnlineLobby((prevLobby) => ({
+          ...prevLobby,
+          myPlayerId: user.uid,
+        }));
+
+        await syncProfileToFirebase(user, mergedProfile, activeBoardRef.current.id);
+      } catch (err) {
+        console.warn('Firebase account sync deferred:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, user?.emailVerified]);
+
   const handleUpdateCameraSettings = useCallback((next: CameraSettings) => {
     setCameraSettings(next);
     try {
@@ -407,25 +550,27 @@ export default function App() {
   const handleSelectDiceSkin = useCallback(
     (skinId: DiceSkinId) => {
       soundEngine.playUiClick();
-      setProfile((prev) => {
-        if (!isDiceSkinUnlocked(skinId, prev.unlockedAchievements)) {
-          return prev;
-        }
-        const next: PlayerProfile = { ...prev, diceSkinId: skinId };
+      const current = loadProfile();
+      if (isDiceSkinUnlocked(skinId, current.unlockedAchievements)) {
+        const next: PlayerProfile = { ...current, diceSkinId: skinId };
         saveProfile(next);
-        return next;
-      });
+        setProfile(next);
+        if (user?.emailVerified) {
+          void syncProfileToFirebase(user, next, activeBoardRef.current.id);
+        }
+      }
       engineRef.current?.setDiceSkin(skinId);
       const skinMeta = DICE_SKINS.find((s) => s.id === skinId);
       if (skinMeta) {
         showToast(`Skin Dadu 3D Aktif: ${skinMeta.name}`, skinMeta.subtitle);
       }
     },
-    [showToast],
+    [showToast, user],
   );
 
   const isArenaMounted = screen === 'loading_arena' || screen === 'arena';
-  const isMenuBackdropMounted = !isArenaMounted && screen !== 'board_manager';
+  const isMenuBackdropMounted =
+    !isArenaMounted && screen !== 'board_manager' && screen !== 'landing';
 
   // 1. Mount MainMenuEngine ONLY when outside the 3D Arena, Loading Screen & 3D Board Manager
   useEffect(() => {
@@ -671,6 +816,10 @@ export default function App() {
           queuePendingLeaderboard(lbPayload);
         }
 
+        if (user?.emailVerified) {
+          void syncProfileToFirebase(user, nextProfile, activeBoardRef.current.id);
+        }
+
         if (nextProfile.syncCode && nextProfile.syncPin) {
           try {
             const syncRes = await fetch('/api/cloud-sync/save', {
@@ -699,7 +848,7 @@ export default function App() {
         queuePendingLeaderboard(lbPayload);
       }
     },
-    [onlineLobby.myPlayerId, showToast],
+    [onlineLobby.myPlayerId, showToast, user],
   );
 
   // Time Attack Countdown Loop (only active inside Arena)
@@ -1127,8 +1276,11 @@ export default function App() {
 
         // Sync chat history from room payload if newer messages exist
         if (Array.isArray(room.chatMessages) && room.chatMessages.length > 0) {
-          const latestChat = room.chatMessages[room.chatMessages.length - 1];
-          if (latestChat && latestChat.timestamp > lastProcessedChatTsRef.current) {
+          const unseenChats = room.chatMessages.filter(
+            (c) => c.timestamp > lastProcessedChatTsRef.current,
+          );
+          if (unseenChats.length > 0) {
+            const latestChat = unseenChats[unseenChats.length - 1];
             lastProcessedChatTsRef.current = latestChat.timestamp;
             if (screenRef.current === 'arena' && latestChat.text) {
               setArenaEmote({
@@ -1138,6 +1290,14 @@ export default function App() {
               });
               window.clearTimeout(emoteTimerRef.current);
               emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
+              if (!arenaChatOpenRef.current) {
+                const incomingOthers = unseenChats.filter(
+                  (c) => c.senderId !== onlineLobbyRef.current.myPlayerId,
+                ).length;
+                if (incomingOthers > 0) {
+                  setUnreadChatCount((n) => n + incomingOthers);
+                }
+              }
             }
           }
         }
@@ -1164,6 +1324,7 @@ export default function App() {
           winningTeam: room.winningTeam ?? null,
           chatMessages: Array.isArray(room.chatMessages)
             ? room.chatMessages.map((c) => ({
+                senderId: c.senderId,
                 senderName: c.senderName,
                 text: c.text,
                 timestamp: c.timestamp,
@@ -1240,6 +1401,7 @@ export default function App() {
       }
 
       if (type === 'room:chat_msg') {
+        const senderId = msg.senderId ? String(msg.senderId) : undefined;
         const senderName = String(msg.senderName || 'Pemain');
         const text = String(msg.text || '');
         const timestamp = Number(msg.timestamp || Date.now());
@@ -1249,6 +1411,7 @@ export default function App() {
           chatMessages: [
             ...prev.chatMessages.slice(-24),
             {
+              senderId,
               senderName,
               text,
               timestamp,
@@ -1259,6 +1422,9 @@ export default function App() {
           setArenaEmote({ id: timestamp, senderName, text });
           window.clearTimeout(emoteTimerRef.current);
           emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
+          if (!arenaChatOpenRef.current && senderId !== onlineLobbyRef.current.myPlayerId) {
+            setUnreadChatCount((n) => n + 1);
+          }
         }
         return;
       }
@@ -1669,7 +1835,8 @@ export default function App() {
         !achievementsOpen &&
         !cloudOpen &&
         !tutorialOpen &&
-        !victoryOpen
+        !victoryOpen &&
+        !arenaChatOpen
       ) {
         e.preventDefault();
         rollActionRef.current();
@@ -1679,7 +1846,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [achievementsOpen, cameraSettingsOpen, cloudOpen, leaderboardOpen, screen, tutorialOpen, victoryOpen]);
+  }, [achievementsOpen, arenaChatOpen, cameraSettingsOpen, cloudOpen, leaderboardOpen, screen, tutorialOpen, victoryOpen]);
 
   const leaveOnlineRoomIfAny = useCallback(() => {
     if (onlineLobby.roomCode) {
@@ -1708,20 +1875,73 @@ export default function App() {
     setTimeEndsAt(null);
     setTimeLeftSec(null);
     setInspectedTile(null);
+    setArenaChatOpen(false);
+    setUnreadChatCount(0);
+    setArenaLocalChatMessages([]);
     setIsAnimating(false);
     setScreen('main_menu');
   }, [leaveOnlineRoomIfAny]);
 
   const handleLogout = useCallback(() => {
+    window.clearTimeout(loadingTimerRef.current);
     leaveOnlineRoomIfAny();
+    setAuthModalOpen(false);
+    setCloudOpen(false);
+    setAchievementsOpen(false);
+    setLeaderboardOpen(false);
+    setOracleAiOpen(false);
+    setCameraSettingsOpen(false);
+    setTutorialOpen(false);
+    setVictoryOpen(false);
+    setArenaChatOpen(false);
+    setUnreadChatCount(0);
+    setArenaLocalChatMessages([]);
+    if (user) {
+      void logoutAccount();
+    }
     const fresh = resetProfileSession();
     setProfile(fresh);
     setOnlineLobby((prev) => ({
       ...prev,
       myPlayerId: fresh.playerId,
     }));
-    showToast('Sesi Direset', `Selamat datang kembali, ${fresh.name}`);
-  }, [leaveOnlineRoomIfAny, showToast]);
+    setScreen('landing');
+    showToast('Berhasil Keluar Akun', 'Kembali ke halaman utama.');
+  }, [leaveOnlineRoomIfAny, logoutAccount, showToast, user]);
+
+  const handleSendArenaChat = useCallback(
+    (rawText: string) => {
+      const text = rawText.trim().slice(0, 80);
+      if (!text) return;
+      if (modeRef.current === 'online') {
+        void sendMultiplayerAction({ type: 'room:chat', text });
+        return;
+      }
+      const activeP = playersRef.current[currentTurnIndexRef.current];
+      const sender =
+        activeP && !activeP.isAI
+          ? activeP
+          : playersRef.current.find((p) => !p.isAI) ?? {
+              id: profile.playerId,
+              name: profile.name,
+            };
+      const ts = Date.now();
+      setArenaLocalChatMessages((prev) => [
+        ...prev.slice(-24),
+        {
+          id: ts,
+          senderId: sender.id,
+          senderName: sender.name,
+          text,
+          timestamp: ts,
+        },
+      ]);
+      setArenaEmote({ id: ts, senderName: sender.name, text });
+      window.clearTimeout(emoteTimerRef.current);
+      emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
+    },
+    [profile.name, profile.playerId, sendMultiplayerAction],
+  );
 
   // Mode Starters (GameConfigView -> LoadingArenaScreen -> Arena)
   const handleStartSolo = (
@@ -1910,14 +2130,59 @@ export default function App() {
       )}
 
       {/* 3. Pre-Arena Screens */}
+      {(screen === 'landing' || !user) && (
+        <LandingPage
+          profile={profile}
+          onEnterGame={() => {
+            soundEngine.playUiClick();
+            requireAuth(
+              () => setScreen('main_menu'),
+              'Masuk atau daftar akun terlebih dahulu untuk masuk ke menu game.',
+            );
+          }}
+          onOpenBoardStudio={() => {
+            soundEngine.playUiClick();
+            requireAuth(() => {
+              setBoardManagerTab('collection');
+              setBoardManagerReturnScreen('main_menu');
+              setScreen('board_manager');
+            }, 'Masuk atau daftar akun terlebih dahulu untuk membuka Studio Papan 3D.');
+          }}
+          onQuickStartMode={(chosen) => {
+            soundEngine.playUiClick();
+            requireAuth(() => {
+              setSelectedBoardMode(chosen);
+              setScreen('game_config');
+            }, 'Masuk atau daftar akun terlebih dahulu untuk memilih mode permainan.');
+          }}
+          onOpenAuth={(tab) => {
+            soundEngine.playUiClick();
+            pendingPostAuthActionRef.current = null;
+            setAuthModalTab(tab);
+            setAuthModalOpen(true);
+          }}
+          onOpenOnlineLobby={() => {
+            soundEngine.playUiClick();
+            requireAuth(() => {
+              setMultiplayerTabIntent('create');
+              setScreen('multiplayer_lobby');
+            }, 'Masuk atau daftar akun terlebih dahulu untuk membuka Room Daring.');
+          }}
+        />
+      )}
+
       {screen === 'main_menu' && (
         <MainMenuView
           profile={profile}
+          user={user}
           isOnline={isOnline}
           onUpdateProfile={(name, archetypeIndex) => {
             const next = { ...profile, name, archetypeIndex };
             saveProfile(next);
             setProfile(next);
+            if (user?.emailVerified) {
+              void syncProfileToFirebase(user, next, activeBoardRef.current.id);
+            }
             showToast('Profil Disimpan', name);
           }}
           onToggleMute={() => {
@@ -1927,6 +2192,15 @@ export default function App() {
             setProfile(next);
           }}
           onOpenCameraSettings={() => setCameraSettingsOpen(true)}
+          onOpenAuth={(tab) => {
+            soundEngine.playUiClick();
+            setAuthModalTab(tab);
+            setAuthModalOpen(true);
+          }}
+          onBackToLanding={() => {
+            soundEngine.playUiClick();
+            setScreen('landing');
+          }}
           onLogout={handleLogout}
           onNavigateModeSelection={() => {
             soundEngine.playUiClick();
@@ -1980,6 +2254,9 @@ export default function App() {
             selectBoard(resolvedBoard.id, resolvedBoard.isCustom ? 'custom' : 'manual');
             setActiveBoardConfig(resolvedBoard);
             activeBoardRef.current = resolvedBoard;
+            if (user?.emailVerified && resolvedBoard.isCustom) {
+              void syncCustomBoardToFirebase(user, resolvedBoard);
+            }
             setScreen('game_config');
           }}
         />
@@ -2171,6 +2448,15 @@ export default function App() {
             isMyOnlineTurn={isMyOnlineTurn}
             isAnimating={isAnimating}
             graphicsPreset={graphicsPrefs.preset}
+            unreadChatCount={unreadChatCount}
+            onOpenChat={() => {
+              soundEngine.playUiClick();
+              setArenaChatOpen((prevOpen) => {
+                const next = !prevOpen;
+                if (next) setUnreadChatCount(0);
+                return next;
+              });
+            }}
             onQuickToggleLightweight={() => {
               soundEngine.playUiClick();
               const isCurrentlyLight =
@@ -2279,10 +2565,12 @@ export default function App() {
 
           {arenaEmote && (
             <div className="pointer-events-none fixed top-24 lg:top-16 left-2.5 sm:left-4 z-30 animate-emote-pop">
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-400/50 bg-slate-950/92 backdrop-blur-md px-3 py-1.5 shadow-xl">
-                <span className="text-xl leading-none">{arenaEmote.text}</span>
-                <span className="text-xs font-semibold text-amber-200 max-w-[140px] truncate">
-                  {arenaEmote.senderName}
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-400/50 bg-slate-950/92 backdrop-blur-md px-3 py-1.5 shadow-xl max-w-[85vw]">
+                <span className="text-sm sm:text-base font-bold text-white leading-tight truncate">
+                  {arenaEmote.text}
+                </span>
+                <span className="text-[11px] sm:text-xs font-semibold text-amber-300 max-w-[120px] truncate shrink-0">
+                  · {arenaEmote.senderName}
                 </span>
               </div>
             </div>
@@ -2336,16 +2624,24 @@ export default function App() {
             }}
             onOpenCameraSettings={() => setCameraSettingsOpen(true)}
             onRollDice={handleRollDice}
-            onSendEmote={
-              mode === 'online'
-                ? (emoji) => {
-                    void sendMultiplayerAction({ type: 'room:chat', text: emoji });
-                  }
-                : undefined
-            }
+            onSendEmote={(emoji) => handleSendArenaChat(emoji)}
             onOpenLeaderboard={() => setLeaderboardOpen(true)}
             onOpenAchievements={() => setAchievementsOpen(true)}
             onOpenCloud={() => setCloudOpen(true)}
+          />
+
+          <ArenaChatDrawer
+            open={arenaChatOpen}
+            onClose={() => setArenaChatOpen(false)}
+            messages={mode === 'online' ? onlineLobby.chatMessages : arenaLocalChatMessages}
+            currentPlayerId={
+              mode === 'online'
+                ? onlineLobby.myPlayerId
+                : (players.find((p) => !p.isAI)?.id ?? profile.playerId)
+            }
+            mode={mode}
+            roomCode={mode === 'online' ? onlineLobby.roomCode : null}
+            onSendMessage={handleSendArenaChat}
           />
         </>
       )}
@@ -2464,6 +2760,26 @@ export default function App() {
         difficulty={difficulty}
         players={players}
         currentTurnIndex={currentTurnIndex}
+      />
+
+      <AuthModal
+        open={authModalOpen}
+        initialTab={authModalTab}
+        onClose={() => {
+          pendingPostAuthActionRef.current = null;
+          setAuthModalOpen(false);
+        }}
+        onSuccess={() => {
+          showToast('Akun Aktif', 'Progres & profil Anda siap disinkronkan.');
+          const pending = pendingPostAuthActionRef.current;
+          pendingPostAuthActionRef.current = null;
+          if (pending) {
+            pending();
+          } else if (screenRef.current === 'landing') {
+            setScreen('main_menu');
+          }
+        }}
+        onLogout={handleLogout}
       />
     </div>
   );

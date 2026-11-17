@@ -95,6 +95,116 @@ export interface ArenaEngineOptions {
   onBuildReady?: () => void;
 }
 
+export type TimeOfDayPhase = 'dawn' | 'noon' | 'dusk' | 'night';
+
+export interface TimeOfDayAtmosphereSpec {
+  phase: TimeOfDayPhase;
+  label: string;
+  bgColor: number;
+  fogColor: number;
+  hemiSky: number;
+  hemiGround: number;
+  keyColor: number;
+  rimColor: number;
+  sunAzimuth: number;
+  sunElevation: number;
+  keyMult: number;
+  hemiMult: number;
+  rimMult: number;
+  fogDensityMult: number;
+  bloomBoost: number;
+  colorBlend: number;
+}
+
+export function getLocalTimeOfDaySpec(now: Date = new Date()): TimeOfDayAtmosphereSpec {
+  const hour = now.getHours() + now.getMinutes() / 60;
+
+  if (hour >= 5 && hour < 8.5) {
+    const t = (hour - 5) / 3.5;
+    return {
+      phase: 'dawn',
+      label: 'Fajar',
+      bgColor: 0x2c2246,
+      fogColor: 0x7a5165,
+      hemiSky: 0xfdba74,
+      hemiGround: 0x3b2640,
+      keyColor: 0xffd7a8,
+      rimColor: 0xf472b6,
+      sunAzimuth: -1.05 + t * 0.45,
+      sunElevation: 0.18 + t * 0.2,
+      keyMult: 0.94,
+      hemiMult: 0.96,
+      rimMult: 1.08,
+      fogDensityMult: 1.08,
+      bloomBoost: 0.04,
+      colorBlend: 0.36,
+    };
+  }
+
+  if (hour >= 8.5 && hour < 16) {
+    const t = (hour - 8.5) / 7.5;
+    return {
+      phase: 'noon',
+      label: 'Siang',
+      bgColor: 0x58ace6,
+      fogColor: 0x9bd3f2,
+      hemiSky: 0xe0f2fe,
+      hemiGround: 0x35594c,
+      keyColor: 0xfffdf2,
+      rimColor: 0x93c5fd,
+      sunAzimuth: -0.35 + t * 0.75,
+      sunElevation: 0.62,
+      keyMult: 1.06,
+      hemiMult: 1.08,
+      rimMult: 0.88,
+      fogDensityMult: 0.9,
+      bloomBoost: 0,
+      colorBlend: 0.22,
+    };
+  }
+
+  if (hour >= 16 && hour < 19) {
+    const t = (hour - 16) / 3;
+    return {
+      phase: 'dusk',
+      label: 'Senja',
+      bgColor: 0x24132b,
+      fogColor: 0x622f43,
+      hemiSky: 0xfb923c,
+      hemiGround: 0x3b1837,
+      keyColor: 0xffc078,
+      rimColor: 0xf43f5e,
+      sunAzimuth: 0.65 + t * 0.45,
+      sunElevation: Math.max(0.16, 0.36 - t * 0.2),
+      keyMult: 0.95,
+      hemiMult: 0.94,
+      rimMult: 1.18,
+      fogDensityMult: 1.12,
+      bloomBoost: 0.06,
+      colorBlend: 0.42,
+    };
+  }
+
+  return {
+    phase: 'night',
+    label: 'Malam',
+    bgColor: 0x050b1c,
+    fogColor: 0x0e1c38,
+    hemiSky: 0x93c5fd,
+    hemiGround: 0x0f172a,
+    keyColor: 0xc7d2fe,
+    rimColor: 0x6366f1,
+    sunAzimuth: -0.45,
+    sunElevation: 0.54,
+    keyMult: 0.84,
+    hemiMult: 0.86,
+    rimMult: 1.16,
+    fogDensityMult: 1.16,
+    bloomBoost: 0.09,
+    colorBlend: 0.46,
+  };
+}
+
 // Pre-allocated scratch helpers (zero GC in render loop)
 const _vec3 = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
@@ -103,6 +213,8 @@ const _euler = new THREE.Euler();
 const _mat4 = new THREE.Matrix4();
 const _scaleVec = new THREE.Vector3();
 const _color = new THREE.Color();
+const _todColorA = new THREE.Color();
+const _todColorB = new THREE.Color();
 const _pointer = new THREE.Vector2();
 const _raycaster = new THREE.Raycaster();
 const _frustum = new THREE.Frustum();
@@ -149,6 +261,8 @@ export class FantasyBoardEngine {
   private disposed = false;
   private paused = false;
   private ready = false;
+  private activeTimeOfDayPhase: TimeOfDayPhase | null = null;
+  private lastTimeCheckAt = 0;
 
   private envMap: THREE.Texture | null = null;
   private hemiLight!: THREE.HemisphereLight;
@@ -637,12 +751,38 @@ export class FantasyBoardEngine {
     }
   }
 
+  private blendHexColor(baseHex: number, targetHex: number, alpha: number): number {
+    _todColorA.setHex(baseHex);
+    _todColorB.setHex(targetHex);
+    return _todColorA.lerp(_todColorB, THREE.MathUtils.clamp(alpha, 0, 1)).getHex();
+  }
+
+  public getTimeOfDaySpec(): TimeOfDayAtmosphereSpec {
+    return getLocalTimeOfDaySpec();
+  }
+
+  public refreshTimeOfDayAtmosphere() {
+    if (this.disposed || !this.ready) return;
+    this.applyBoardAtmosphere(this.perf.getQualityConfig());
+  }
+
   private applyBoardAtmosphere(cfg: QualityConfig) {
     const lCols = this.getLightingPresetColors();
     const skySpec = getSkyThemeSpec(
       this.boardConfig.environmentConfig.skyPreset,
       this.boardConfig.themeId,
     );
+    const tod = getLocalTimeOfDaySpec();
+    this.activeTimeOfDayPhase = tod.phase;
+    this.lastTimeCheckAt = Date.now();
+
+    const bgHex = this.blendHexColor(lCols.bgColor, tod.bgColor, tod.colorBlend);
+    const fogHex = this.blendHexColor(lCols.fogColor, tod.fogColor, tod.colorBlend);
+    const hemiSkyHex = this.blendHexColor(lCols.hemiSky, tod.hemiSky, tod.colorBlend * 0.9);
+    const hemiGroundHex = this.blendHexColor(lCols.hemiGround, tod.hemiGround, tod.colorBlend * 0.85);
+    const keyHex = this.blendHexColor(lCols.keyColor, tod.keyColor, tod.colorBlend * 0.95);
+    const rimHex = this.blendHexColor(lCols.rimColor, tod.rimColor, tod.colorBlend * 0.9);
+
     const ambMult = THREE.MathUtils.clamp(
       this.boardConfig.visualEffects.ambientIntensity ?? 0.9,
       0.35,
@@ -657,34 +797,37 @@ export class FantasyBoardEngine {
     const shadows = cfg.shadowsEnabled && userShadows && !this.isSoftwareGl;
 
     if (this.scene.background instanceof THREE.Color) {
-      this.scene.background.setHex(lCols.bgColor);
+      this.scene.background.setHex(bgHex);
     } else {
-      this.scene.background = new THREE.Color(lCols.bgColor);
+      this.scene.background = new THREE.Color(bgHex);
     }
 
-    const fogDensity =
+    const baseFogDensity =
       skySpec.mode === 'day'
         ? 0.0008 + fogMult * 0.0038
         : 0.0014 + fogMult * 0.0062;
+    const fogDensity = baseFogDensity * tod.fogDensityMult;
     if (this.scene.fog instanceof THREE.FogExp2) {
-      this.scene.fog.color.setHex(lCols.fogColor);
+      this.scene.fog.color.setHex(fogHex);
       this.scene.fog.density = fogDensity;
     } else {
-      this.scene.fog = new THREE.FogExp2(lCols.fogColor, fogDensity);
+      this.scene.fog = new THREE.FogExp2(fogHex, fogDensity);
     }
 
     if (this.hemiLight) {
-      this.hemiLight.color.setHex(lCols.hemiSky);
-      this.hemiLight.groundColor.setHex(lCols.hemiGround);
-      this.hemiLight.intensity = lCols.baseHemiIntensity * ambMult;
+      this.hemiLight.color.setHex(hemiSkyHex);
+      this.hemiLight.groundColor.setHex(hemiGroundHex);
+      this.hemiLight.intensity = lCols.baseHemiIntensity * ambMult * tod.hemiMult;
     }
     if (this.keyLight) {
-      this.keyLight.color.setHex(lCols.keyColor);
-      this.keyLight.intensity = lCols.baseKeyIntensity * ambMult;
+      this.keyLight.color.setHex(keyHex);
+      this.keyLight.intensity = lCols.baseKeyIntensity * ambMult * tod.keyMult;
       this.keyLight.castShadow = shadows;
-      // Align sun/moon key light gently with celestial body azimuth
-      const az = skySpec.mode === 'night' ? skySpec.moonAzimuth : skySpec.sunAzimuth;
-      const el = skySpec.mode === 'night' ? skySpec.moonElevation : skySpec.sunElevation;
+      // Blend celestial preset angle with local time-of-day sun/moon azimuth & elevation
+      const skyAz = skySpec.mode === 'night' ? skySpec.moonAzimuth : skySpec.sunAzimuth;
+      const skyEl = skySpec.mode === 'night' ? skySpec.moonElevation : skySpec.sunElevation;
+      const az = THREE.MathUtils.lerp(skyAz, tod.sunAzimuth, 0.55);
+      const el = THREE.MathUtils.lerp(skyEl, tod.sunElevation, 0.55);
       this.keyLight.position.set(
         Math.sin(az) * 24 + 8,
         16 + el * 18,
@@ -692,14 +835,15 @@ export class FantasyBoardEngine {
       );
     }
     if (this.rimLight) {
-      this.rimLight.color.setHex(lCols.rimColor);
-      this.rimLight.intensity = (skySpec.mode === 'day' ? 0.68 : 0.88) * ambMult;
+      this.rimLight.color.setHex(rimHex);
+      this.rimLight.intensity = (skySpec.mode === 'day' ? 0.68 : 0.88) * ambMult * tod.rimMult;
     }
     this.renderer.shadowMap.enabled = shadows;
     this.renderer.shadowMap.needsUpdate = shadows;
     if (this.bloomPass) {
       this.bloomPass.strength =
         (skySpec.mode === 'day' ? 0.1 : 0.15) +
+        tod.bloomBoost +
         THREE.MathUtils.clamp(this.boardConfig.visualEffects.glowIntensity ?? 0.55, 0, 1) * 0.26;
     }
   }
@@ -1567,6 +1711,16 @@ export class FantasyBoardEngine {
     const isLightTier = cfg.tier === 'potato' || cfg.tier === 'low';
     const reduced = this.cameraController.getSettings().reducedEffects || isLightTier;
     const seqState = this.sequenceController?.getState() ?? 'idle';
+
+    // Periodically synchronize time-of-day atmosphere (every 30s, zero allocations)
+    const nowMs = Date.now();
+    if (nowMs - this.lastTimeCheckAt >= 30000) {
+      this.lastTimeCheckAt = nowMs;
+      const nextTod = getLocalTimeOfDaySpec();
+      if (nextTod.phase !== this.activeTimeOfDayPhase) {
+        this.applyBoardAtmosphere(cfg);
+      }
+    }
 
     // Throttle shadowMap updates: update every frame during active turn animations, or every 4th frame when idle
     if (this.renderer.shadowMap.enabled) {

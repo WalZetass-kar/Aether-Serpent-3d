@@ -52,6 +52,8 @@ export interface PlayerProfile {
   recentResults: boolean[]; // recent solo/online wins/losses for adaptive AI
   dailyStreak: number;
   lastDailyCompletedDate: string | null;
+  loginStreak: number;
+  lastLoginDate: string | null;
   dailyActiveDate: string;
   dailyProgress: {
     games_played: number;
@@ -83,6 +85,96 @@ const GENERIC_DEFAULT_NAMES = new Set([
   'player 1',
 ]);
 
+function getYesterdayDateString(now: Date = new Date()): string {
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return getTodayDateString(yesterday);
+}
+
+export function evaluateLoginStreak(
+  profile: PlayerProfile,
+  now: Date = new Date(),
+): { profile: PlayerProfile; changed: boolean } {
+  const today = getTodayDateString(now);
+  const yesterday = getYesterdayDateString(now);
+  const currentStreak =
+    typeof profile.loginStreak === 'number' && Number.isFinite(profile.loginStreak)
+      ? Math.max(1, Math.floor(profile.loginStreak))
+      : 1;
+
+  if (!profile.lastLoginDate) {
+    return {
+      profile: {
+        ...profile,
+        loginStreak: currentStreak,
+        lastLoginDate: today,
+      },
+      changed: true,
+    };
+  }
+
+  if (profile.lastLoginDate === today) {
+    if (profile.loginStreak !== currentStreak) {
+      return {
+        profile: { ...profile, loginStreak: currentStreak },
+        changed: true,
+      };
+    }
+    return { profile, changed: false };
+  }
+
+  if (profile.lastLoginDate === yesterday) {
+    return {
+      profile: {
+        ...profile,
+        loginStreak: currentStreak + 1,
+        lastLoginDate: today,
+      },
+      changed: true,
+    };
+  }
+
+  return {
+    profile: {
+      ...profile,
+      loginStreak: 1,
+      lastLoginDate: today,
+    },
+    changed: true,
+  };
+}
+
+export function mergeLoginStreaks(
+  local: PlayerProfile,
+  remote?: Partial<PlayerProfile> | null,
+  now: Date = new Date(),
+): { loginStreak: number; lastLoginDate: string } {
+  const today = getTodayDateString(now);
+  const yesterday = getYesterdayDateString(now);
+
+  const localStreak =
+    local.lastLoginDate === today
+      ? Math.max(1, local.loginStreak || 1)
+      : local.lastLoginDate === yesterday
+        ? Math.max(1, local.loginStreak || 1) + 1
+        : 1;
+
+  let remoteStreak = 1;
+  if (remote && typeof remote.loginStreak === 'number') {
+    const rawRemote = Math.max(1, Math.floor(remote.loginStreak));
+    if (remote.lastLoginDate === today) {
+      remoteStreak = rawRemote;
+    } else if (remote.lastLoginDate === yesterday) {
+      remoteStreak = rawRemote + 1;
+    }
+  }
+
+  return {
+    loginStreak: Math.max(localStreak, remoteStreak),
+    lastLoginDate: today,
+  };
+}
+
 function createDefaultProfile(): PlayerProfile {
   const today = getTodayDateString();
   const id =
@@ -110,6 +202,8 @@ function createDefaultProfile(): PlayerProfile {
     recentResults: [],
     dailyStreak: 0,
     lastDailyCompletedDate: null,
+    loginStreak: 1,
+    lastLoginDate: today,
     dailyActiveDate: today,
     dailyProgress: {
       games_played: 0,
@@ -164,6 +258,11 @@ export function loadProfile(): PlayerProfile {
       playerId: resolvedPlayerId,
       name: resolvedName,
       diceSkinId: resolvedSkin,
+      loginStreak:
+        typeof parsed.loginStreak === 'number' && Number.isFinite(parsed.loginStreak)
+          ? Math.max(1, Math.floor(parsed.loginStreak))
+          : 1,
+      lastLoginDate: typeof parsed.lastLoginDate === 'string' ? parsed.lastLoginDate : null,
       dailyProgress: {
         ...base.dailyProgress,
         ...(parsed.dailyProgress || {}),
@@ -172,15 +271,18 @@ export function loadProfile(): PlayerProfile {
       recentResults: Array.isArray(parsed.recentResults) ? parsed.recentResults : [],
     };
     const today = getTodayDateString();
+    let dirty = isGenericName;
     if (merged.dailyActiveDate !== today) {
       merged.dailyActiveDate = today;
       merged.dailyProgress = { games_played: 0, ladders_climbed: 0, wins: 0, special_tiles: 0 };
       merged.dailyRewardClaimed = false;
-      saveProfile(merged);
-    } else if (isGenericName) {
-      saveProfile(merged);
+      dirty = true;
     }
-    return merged;
+    const streakEval = evaluateLoginStreak(merged);
+    if (streakEval.changed || dirty) {
+      saveProfile(streakEval.profile);
+    }
+    return streakEval.profile;
   } catch {
     return createDefaultProfile();
   }

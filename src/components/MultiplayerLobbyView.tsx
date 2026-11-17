@@ -57,7 +57,7 @@ export interface OnlineLobbyState {
   players: PlayerState[];
   winningTeam: TeamId | null;
   error: string | null;
-  chatMessages: Array<{ senderName: string; text: string; timestamp: number }>;
+  chatMessages: Array<{ senderId?: string; senderName: string; text: string; timestamp: number }>;
 }
 
 interface PublicRoomSummary {

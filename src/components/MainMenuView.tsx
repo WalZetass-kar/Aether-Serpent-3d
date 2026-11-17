@@ -6,6 +6,7 @@ import {
   Clock,
   Cloud,
   DoorOpen,
+  Flame,
   Globe,
   Layers,
   LogOut,
@@ -25,6 +26,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
+import type { User } from 'firebase/auth';
 import {
   BOARD_GAME_MODES,
   PLAYER_ARCHETYPES,
@@ -35,10 +37,13 @@ import { ArchetypeEmblem, SerpentCrestEmblem } from './FantasyIcons';
 
 interface MainMenuViewProps {
   profile: PlayerProfile;
+  user: User | null;
   isOnline: boolean;
   onUpdateProfile: (name: string, archetypeIndex: number) => void;
   onToggleMute: () => void;
   onOpenCameraSettings: () => void;
+  onOpenAuth: (tab: 'login' | 'register') => void;
+  onBackToLanding: () => void;
   onLogout: () => void;
   onNavigateModeSelection: () => void;
   onQuickSelectMode: (mode: BoardGameMode) => void;
@@ -79,10 +84,13 @@ const MODE_STYLE: Record<
 
 export const MainMenuView: React.FC<MainMenuViewProps> = ({
   profile,
+  user,
   isOnline,
   onUpdateProfile,
   onToggleMute,
   onOpenCameraSettings,
+  onOpenAuth,
+  onBackToLanding,
   onLogout,
   onNavigateModeSelection,
   onQuickSelectMode,
@@ -134,8 +142,18 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
           </div>
         </div>
 
-        {/* Right Controls: Clean single Menu button on mobile; quick actions + Sidebar trigger on desktop */}
+        {/* Right Controls: Account + Menu */}
         <div className="flex items-center gap-2 shrink-0">
+          {!user && (
+            <button
+              type="button"
+              onClick={() => onOpenAuth('login')}
+              className="hidden sm:inline-flex glass-panel-soft items-center justify-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border border-amber-400/40 bg-amber-500/10 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <span>Masuk / Daftar</span>
+            </button>
+          )}
+
           {/* Desktop-only quick profile summary */}
           <button
             type="button"
@@ -147,7 +165,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             <div className="text-xs">
               <div className="font-bold text-white truncate max-w-[140px]">{profile.name}</div>
               <div className="text-[11px] font-mono-num text-amber-300/90">
-                {profile.wins} Menang · {profile.bestScore.toLocaleString('id-ID')}
+                {user ? (user.emailVerified ? 'Akun Cloud Aktif' : 'Perlu Verifikasi') : `${profile.wins} Menang · ${profile.bestScore.toLocaleString('id-ID')}`}
               </div>
             </div>
           </button>
@@ -218,6 +236,21 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                 </span>
               </button>
             </div>
+
+            {profile.loginStreak >= 2 && (
+              <div
+                className="flex items-center justify-between gap-2 rounded-xl border border-amber-400/40 bg-amber-500/12 px-3 py-1.5 text-xs text-amber-200"
+                title={`Anda telah login ${profile.loginStreak} hari berturut-turut`}
+              >
+                <span className="inline-flex items-center gap-1.5 font-bold">
+                  <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Daily Streak</span>
+                </span>
+                <span className="font-mono-num font-bold text-amber-300">
+                  {profile.loginStreak} Hari Beruntun
+                </span>
+              </div>
+            )}
 
             {/* Primary CTA: Select Game Mode */}
             <button
@@ -357,6 +390,69 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             </div>
 
             <div className="p-5 space-y-6 flex-1">
+              {/* 0. Akun Firebase Login / Daftar */}
+              <div className="rounded-2xl border border-amber-500/25 bg-slate-900/80 p-3.5 space-y-2.5">
+                {user ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white truncate">
+                          {user.displayName || profile.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">{user.email}</div>
+                      </div>
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-bold shrink-0 ${
+                          user.emailVerified
+                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                        }`}
+                      >
+                        {user.emailVerified ? 'Cloud Aktif' : 'Belum Verifikasi'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSidebarOpen(false);
+                        onOpenAuth('login');
+                      }}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-800/90 py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 cursor-pointer"
+                    >
+                      Kelola Akun & Verifikasi
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xs text-slate-300 leading-relaxed">
+                      Masuk dengan <span className="font-semibold text-amber-200">Google / Email</span> untuk menyimpan progres di semua perangkat.
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSidebarOpen(false);
+                          onOpenAuth('login');
+                        }}
+                        className="rounded-xl bg-amber-400 py-2 text-xs font-bold text-slate-950 hover:bg-amber-300 cursor-pointer"
+                      >
+                        Masuk
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSidebarOpen(false);
+                          onOpenAuth('register');
+                        }}
+                        className="rounded-xl border border-amber-400/40 bg-amber-500/10 py-2 text-xs font-bold text-amber-200 hover:bg-amber-500/20 cursor-pointer"
+                      >
+                        Daftar Baru
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
               {/* 1. Pengaturan Nama & Bidak Pemain */}
               <form onSubmit={handleSaveProfileInline} className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -530,13 +626,28 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                   type="button"
                   onClick={() => {
                     setSidebarOpen(false);
+                    onBackToLanding();
+                  }}
+                  className="w-full flex items-center justify-between min-h-[44px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200 hover:border-amber-400/40 cursor-pointer"
+                >
+                  <span className="inline-flex items-center gap-2.5">
+                    <Globe className="w-4 h-4 text-sky-400" />
+                    Halaman Utama (Landing Page)
+                  </span>
+                  <span className="text-sky-300">Buka</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSidebarOpen(false);
                     onLogout();
                   }}
                   className="w-full flex items-center justify-between min-h-[44px] px-3.5 rounded-xl border border-rose-500/25 bg-rose-950/20 text-xs font-semibold text-rose-200 hover:border-rose-400/50 cursor-pointer"
                 >
                   <span className="inline-flex items-center gap-2.5">
                     <LogOut className="w-4 h-4 text-rose-400" />
-                    Reset / Ganti Sesi Profil
+                    {user ? 'Keluar Akun & Reset Sesi' : 'Reset / Ganti Sesi Profil'}
                   </span>
                   <span className="text-rose-300">Keluar</span>
                 </button>

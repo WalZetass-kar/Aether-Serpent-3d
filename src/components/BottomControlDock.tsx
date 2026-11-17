@@ -28,6 +28,22 @@ export interface QuickEmoteItem {
   label: string;
 }
 
+export interface FantasyEmoteItem {
+  id: string;
+  icon: string;
+  label: string;
+  message: string;
+}
+
+export const FANTASY_EMOTES: FantasyEmoteItem[] = [
+  { id: 'victory', icon: '👑', label: 'Victory!', message: '👑 Victory!' },
+  { id: 'well_played', icon: '⚔️', label: 'Well Played!', message: '⚔️ Well Played!' },
+  { id: 'oh_no', icon: '😱', label: 'Oh No!', message: '😱 Oh No!' },
+  { id: 'for_aether', icon: '✨', label: 'For Aether!', message: '✨ For Aether!' },
+  { id: 'ascend', icon: '🪜', label: 'Ascend!', message: '🪜 Ascend!' },
+  { id: 'dragon_wrath', icon: '🐉', label: 'Dragon Wrath!', message: '🐉 Dragon Wrath!' },
+];
+
 export const QUICK_EMOTES: QuickEmoteItem[] = [
   { emoji: '😄', label: 'Senang' },
   { emoji: '🔥', label: 'Mantap' },
@@ -86,9 +102,11 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
 }) => {
   const [emoteMenuOpen, setEmoteMenuOpen] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [recentEmoteId, setRecentEmoteId] = useState<string | null>(null);
   const emoteRootDesktopRef = useRef<HTMLDivElement | null>(null);
   const emoteRootMobileRef = useRef<HTMLDivElement | null>(null);
   const mobileToolsRef = useRef<HTMLDivElement | null>(null);
+  const emoteFeedbackTimerRef = useRef<number>(0);
 
   const active = players[currentTurnIndex] ?? players[0];
   const rollDisabled =
@@ -172,13 +190,53 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
     };
   }, [emoteMenuOpen, mobileToolsOpen]);
 
-  const handleSelectEmote = (emoji: string) => {
-    onSendEmote?.(emoji);
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(emoteFeedbackTimerRef.current);
+    };
+  }, []);
+
+  const handleSelectEmote = (payload: string, emoteId?: string) => {
+    onSendEmote?.(payload);
     setEmoteMenuOpen(false);
+    if (emoteId) {
+      setRecentEmoteId(emoteId);
+      window.clearTimeout(emoteFeedbackTimerRef.current);
+      emoteFeedbackTimerRef.current = window.setTimeout(() => setRecentEmoteId(null), 900);
+    }
   };
 
   return (
     <>
+      {/* Mobile Dedicated Fantasy Emote Row (bottom-left beside right thumb rail) */}
+      {!collapsed && showEmoteButton && (
+        <div
+          role="toolbar"
+          aria-label="Emote Fantasi Cepat"
+          className="md:hidden fixed left-2 right-[5.25rem] z-20 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5"
+          style={{ bottom: 'max(0.5rem, calc(var(--safe-bottom) + 0.375rem))' }}
+        >
+          {FANTASY_EMOTES.map((item) => {
+            const isSent = recentEmoteId === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSelectEmote(item.message, item.id)}
+                className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-2 text-[11px] font-semibold whitespace-nowrap shrink-0 backdrop-blur-md shadow-md transition-all active:scale-95 cursor-pointer ${
+                  isSent
+                    ? 'border-amber-400 bg-amber-500/25 text-amber-100'
+                    : 'border-amber-500/25 bg-slate-950/82 text-slate-100 hover:border-amber-400/60'
+                }`}
+                aria-label={`Kirim emote ${item.label}`}
+              >
+                <span className="leading-none">{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {/* ===================================================================== */}
       {/* 1. MOBILE RIGHT-SIDE CONTROL RAIL (< md) — unobstructed center board   */}
       {/* ===================================================================== */}
@@ -505,7 +563,40 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
           </button>
         </div>
       ) : (
-        <div className="hidden md:block pointer-events-none fixed safe-dock-desktop left-1/2 -translate-x-1/2 z-20 w-[94vw] max-w-4xl">
+        <div className="hidden md:flex flex-col gap-1.5 pointer-events-none fixed safe-dock-desktop left-1/2 -translate-x-1/2 z-20 w-[94vw] max-w-4xl">
+          {/* Dedicated Fantasy Emote Button Row (Multiplayer Online) */}
+          {showEmoteButton && (
+            <div
+              role="toolbar"
+              aria-label="Emote Fantasi Cepat"
+              className="pointer-events-auto mx-auto flex max-w-full items-center gap-1.5 overflow-x-auto no-scrollbar rounded-xl border border-amber-500/25 bg-slate-950/85 backdrop-blur-md px-2.5 py-1.5 shadow-lg"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300/90 px-1 shrink-0">
+                Emote
+              </span>
+              {FANTASY_EMOTES.map((item) => {
+                const isSent = recentEmoteId === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectEmote(item.message, item.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 transition-all active:scale-95 cursor-pointer ${
+                      isSent
+                        ? 'border-amber-400 bg-amber-400 text-slate-950'
+                        : 'border-slate-700/80 bg-slate-900/90 text-slate-100 hover:border-amber-400/60 hover:text-amber-200'
+                    }`}
+                    title={`Kirim "${item.label}" ke Room`}
+                    aria-label={`Kirim emote ${item.label}`}
+                  >
+                    <span className="leading-none">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="pointer-events-auto glass-panel rounded-2xl px-4 py-2.5 shadow-2xl flex items-center justify-between gap-3">
             {/* Active Turn Info */}
             <div className="flex items-center gap-2.5 min-w-0">

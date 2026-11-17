@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Camera, Compass, Home, Menu, Sparkles, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { BookOpen, Camera, Compass, Home, Menu, MessageSquare, Sparkles, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import {
   BOARD_GAME_MODES,
   ONLINE_TURN_TIMEOUT_SEC,
@@ -26,7 +26,9 @@ interface HUDTopBarProps {
   isMyOnlineTurn: boolean;
   isAnimating: boolean;
   graphicsPreset?: QualityPresetId;
+  unreadChatCount?: number;
   onQuickToggleLightweight?: () => void;
+  onOpenChat?: () => void;
   onToggleMute: () => void;
   onOpenTutorial: () => void;
   onOpenCameraSettings?: () => void;
@@ -56,7 +58,9 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   isMyOnlineTurn,
   isAnimating,
   graphicsPreset = 'auto',
+  unreadChatCount = 0,
   onQuickToggleLightweight,
+  onOpenChat,
   onToggleMute,
   onOpenTutorial,
   onOpenCameraSettings,
@@ -232,6 +236,24 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             )}
 
             {/* Tablet & Desktop Action Buttons */}
+            {onOpenChat && (
+              <button
+                type="button"
+                onClick={onOpenChat}
+                className="hidden sm:inline-flex relative items-center justify-center gap-1.5 rounded-xl border border-sky-400/45 bg-sky-500/15 backdrop-blur-md min-h-[38px] px-2.5 md:px-3 text-xs font-bold text-sky-200 hover:border-sky-300 hover:text-sky-100 shadow-lg transition-all cursor-pointer"
+                title="Obrolan Sesama Pemain"
+                aria-label="Buka Obrolan Pemain"
+              >
+                <MessageSquare className="w-4 h-4 text-sky-300 shrink-0" />
+                <span className="hidden md:inline">Chat</span>
+                {unreadChatCount > 0 && (
+                  <span className="font-mono-num inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-md bg-amber-400 text-[10px] font-extrabold text-slate-950">
+                    {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {onOpenOracleAI && (
               <button
                 type="button"
@@ -273,6 +295,23 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
               <Home className="w-4 h-4 shrink-0" />
               <span className="hidden md:inline">Menu</span>
             </button>
+
+            {/* Mobile Quick Chat Button */}
+            {onOpenChat && (
+              <button
+                type="button"
+                onClick={onOpenChat}
+                aria-label="Buka Obrolan Pemain"
+                className="sm:hidden relative inline-flex items-center justify-center rounded-xl border border-sky-400/45 bg-slate-950/85 backdrop-blur-md w-9 h-9 text-sky-200 shadow-md cursor-pointer"
+              >
+                <MessageSquare className="w-4 h-4 text-sky-300" />
+                {unreadChatCount > 0 && (
+                  <span className="font-mono-num absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-md bg-amber-400 text-[9px] font-extrabold text-slate-950">
+                    {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Mobile Single Menu Sidebar Button */}
             <button
@@ -356,6 +395,27 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                 >
                   <Camera className="w-4 h-4 text-amber-300 shrink-0" />
                   <span>Kamera & Detail Grafis</span>
+                </button>
+              )}
+
+              {onOpenChat && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileDrawerOpen(false);
+                    onOpenChat();
+                  }}
+                  className="w-full flex items-center justify-between min-h-[44px] px-3.5 rounded-xl border border-sky-400/45 bg-sky-500/15 text-xs font-bold text-sky-200"
+                >
+                  <span className="inline-flex items-center gap-3">
+                    <MessageSquare className="w-4 h-4 text-sky-300 shrink-0" />
+                    <span>Obrolan Sesama Pemain</span>
+                  </span>
+                  {unreadChatCount > 0 && (
+                    <span className="font-mono-num px-1.5 py-0.5 rounded bg-amber-400 text-[10px] font-extrabold text-slate-950">
+                      {unreadChatCount}
+                    </span>
+                  )}
                 </button>
               )}
 
