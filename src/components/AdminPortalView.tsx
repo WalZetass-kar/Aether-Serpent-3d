@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth';
 import {
   ArrowLeft,
   Cloud,
+  Crown,
   DoorOpen,
   Eye,
   EyeOff,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import {
   adminCloseRoom,
+  adminDeclareRoomWinner,
   adminDeleteLeaderboardEntry,
   fetchAdminMembers,
   fetchAdminServerOverview,
@@ -27,6 +29,7 @@ import {
   setMemberPublicVisibility,
   type AdminMemberBoardSummary,
   type AdminMemberRecord,
+  type AdminRoomPlayer,
   type AdminRoomRecord,
   type AdminServerOverview,
 } from '../services/adminService';
@@ -93,6 +96,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [roomFilter, setRoomFilter] = useState<RoomFilterKey>('all');
   const [confirmCloseCode, setConfirmCloseCode] = useState<string | null>(null);
   const [closingRoomCode, setClosingRoomCode] = useState<string | null>(null);
+  const [winnerCandidate, setWinnerCandidate] = useState<{
+    roomCode: string;
+    player: AdminRoomPlayer;
+  } | null>(null);
+  const [declaringWinnerKey, setDeclaringWinnerKey] = useState<string | null>(null);
 
   const [confirmDeleteLbId, setConfirmDeleteLbId] = useState<string | null>(null);
   const [deletingLbId, setDeletingLbId] = useState<string | null>(null);
@@ -195,6 +203,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     try {
       await adminCloseRoom(user, code);
       setConfirmCloseCode(null);
+      if (winnerCandidate?.roomCode === code) {
+        setWinnerCandidate(null);
+      }
       onNotify('Room Ditutup', `Ruangan ${code} telah dihentikan oleh Admin.`);
       await loadServerOverview();
     } catch (err) {
@@ -204,6 +215,27 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       );
     } finally {
       setClosingRoomCode(null);
+    }
+  };
+
+  const handleConfirmDeclareWinner = async (roomCode: string, player: AdminRoomPlayer) => {
+    const key = `${roomCode}:${player.id}`;
+    setDeclaringWinnerKey(key);
+    try {
+      const res = await adminDeclareRoomWinner(user, roomCode, player.id);
+      setWinnerCandidate(null);
+      onNotify(
+        'Pemenang Ditetapkan!',
+        `${res.winnerName} resmi ditunjuk sebagai pemenang Room #${res.roomCode}.`,
+      );
+      await loadServerOverview();
+    } catch (err) {
+      onNotify(
+        'Gagal Menetapkan Pemenang',
+        err instanceof Error ? err.message : 'Terjadi kesalahan pada server.',
+      );
+    } finally {
+      setDeclaringWinnerKey(null);
     }
   };
 
@@ -598,7 +630,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     Daftar Room Multiplayer Aktif
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Pantau room lobby, pertandingan berjalan, daftar pemain, dan tutup room bermasalah.
+                    Klik profil pemain di dalam room untuk menunjuknya sebagai pemenang secara langsung, atau kelola room aktif.
                   </p>
                 </div>
 
@@ -761,29 +793,139 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Players in Room */}
-                        <div className="pt-2.5 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                          {room.players.map((p) => (
-                            <div
-                              key={p.id}
-                              className="flex items-center justify-between gap-2 rounded-lg border border-slate-800/90 bg-slate-950/60 px-3 py-2 text-xs"
-                            >
-                              <div className="min-w-0">
-                                <div className="font-semibold text-slate-100 truncate">
-                                  {p.name}
-                                  {p.id === room.hostId ? ' (Host)' : ''}
-                                </div>
-                                <div className="font-mono-num text-[10px] text-slate-400">
-                                  {p.connected ? `Online · ${p.pingMs}ms` : 'Terputus'}
-                                  {room.boardMode === 'team' && p.team ? ` · Tim ${p.team}` : ''}
-                                </div>
+                        {/* Players in Room (Clickable Profiles to Designate Winner) */}
+                        <div className="pt-2.5 border-t border-slate-800/80 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                            <span>
+                              Klik profil pemain untuk menunjuk pemenang room ini:
+                            </span>
+                            {room.winnerId && (
+                              <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
+                                <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                Pemenang:{' '}
+                                {room.players.find((pl) => pl.id === room.winnerId)?.name ||
+                                  'Ditetapkan'}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                            {room.players.map((p) => {
+                              const isCurrentWinner =
+                                room.status === 'finished' && room.winnerId === p.id;
+                              const isSelectedCandidate =
+                                winnerCandidate?.roomCode === room.code &&
+                                winnerCandidate.player.id === p.id;
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  disabled={isCurrentWinner || declaringWinnerKey !== null}
+                                  onClick={() => {
+                                    setConfirmCloseCode(null);
+                                    setWinnerCandidate(
+                                      isSelectedCandidate
+                                        ? null
+                                        : { roomCode: room.code, player: p },
+                                    );
+                                  }}
+                                  className={`group text-left flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-xs transition-colors ${
+                                    isCurrentWinner
+                                      ? 'border-amber-400/70 bg-amber-500/15 cursor-default'
+                                      : isSelectedCandidate
+                                        ? 'border-amber-400 bg-amber-500/20 ring-1 ring-amber-400/50 cursor-pointer'
+                                        : 'border-slate-800/90 bg-slate-950/60 hover:border-amber-400/50 hover:bg-slate-900 cursor-pointer'
+                                  }`}
+                                  title={
+                                    isCurrentWinner
+                                      ? `${p.name} adalah pemenang room ini`
+                                      : `Klik untuk menetapkan ${p.name} sebagai pemenang`
+                                  }
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <ArchetypeEmblem
+                                      archetypeIndex={p.archetypeIndex ?? 0}
+                                      className="w-5 h-5 shrink-0"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-slate-100 truncate flex items-center gap-1">
+                                        <span className="truncate">
+                                          {p.name}
+                                          {p.id === room.hostId ? ' (Host)' : ''}
+                                        </span>
+                                      </div>
+                                      <div className="font-mono-num text-[10px] text-slate-400">
+                                        {p.connected ? `Online · ${p.pingMs}ms` : 'Terputus'}
+                                        {room.boardMode === 'team' && p.team
+                                          ? ` · Tim ${p.team}`
+                                          : ''}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="text-right font-mono-num shrink-0">
+                                    {isCurrentWinner ? (
+                                      <span className="inline-flex items-center gap-1 font-bold text-amber-300">
+                                        <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                        Menang
+                                      </span>
+                                    ) : (
+                                      <div className="font-bold text-amber-300">P{p.tile}</div>
+                                    )}
+                                    <div className="text-[10px] text-slate-400">{p.score} pts</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Inline 2-Step Confirmation Bar to Declare Selected Player as Winner */}
+                          {winnerCandidate?.roomCode === room.code && (
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-amber-400/45 bg-amber-500/10 px-3.5 py-2.5 text-xs">
+                              <div className="flex items-center gap-2 text-amber-100 min-w-0">
+                                <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span className="truncate">
+                                  Tetapkan{' '}
+                                  <strong className="text-white">
+                                    {winnerCandidate.player.name}
+                                  </strong>{' '}
+                                  sebagai pemenang Room #{room.code}?
+                                </span>
                               </div>
-                              <div className="text-right font-mono-num shrink-0">
-                                <div className="font-bold text-amber-300">P{p.tile}</div>
-                                <div className="text-[10px] text-slate-400">{p.score} pts</div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    declaringWinnerKey ===
+                                    `${room.code}:${winnerCandidate.player.id}`
+                                  }
+                                  onClick={() =>
+                                    void handleConfirmDeclareWinner(
+                                      room.code,
+                                      winnerCandidate.player,
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50 cursor-pointer"
+                                >
+                                  <Crown className="w-3.5 h-3.5" />
+                                  <span>
+                                    {declaringWinnerKey ===
+                                    `${room.code}:${winnerCandidate.player.id}`
+                                      ? 'Memproses...'
+                                      : 'Tunjuk Menang'}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={declaringWinnerKey !== null}
+                                  onClick={() => setWinnerCandidate(null)}
+                                  className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:text-white cursor-pointer"
+                                >
+                                  Batal
+                                </button>
                               </div>
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
                     );

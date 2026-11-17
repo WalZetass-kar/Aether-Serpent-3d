@@ -1404,9 +1404,116 @@ export default function App() {
             setPlayers(room.players);
             setCurrentTurnIndex(room.currentTurnIndex);
             setTurnDeadlineAt(room.turnDeadlineAt ?? null);
+          } else if (room.status === 'finished' && room.winnerId && !winnerRef.current) {
+            const winP = room.players.find((p) => p.id === room.winnerId) ?? null;
+            if (winP) {
+              const winTeam = room.winningTeam ?? null;
+              const me = room.players.find((p) => p.id === profile.playerId);
+              const didWin =
+                (room.boardMode === 'team' && winTeam && me?.team === winTeam) ||
+                winP.id === profile.playerId;
+
+              setMode('online');
+              setBoardMode(nextBoardMode);
+              setTurnDeadlineAt(null);
+              setTurnTimeLeftSec(null);
+              setPlayers(room.players);
+              setCurrentTurnIndex(room.currentTurnIndex);
+              if (screenRef.current !== 'arena') {
+                setScreen('arena');
+              }
+
+              if (didWin) soundEngine.playVictory();
+              else soundEngine.playDefeat();
+              engineRef.current?.triggerVictoryCamera(winP.id);
+
+              setTimeExpired(false);
+              setWinningTeam(winTeam);
+              setWinner(winP);
+              setVictoryOpen(true);
+              showToast(
+                'Pemenang Room Ditetapkan!',
+                `${winP.name} memenangkan pertandingan Room #${room.code}.`,
+              );
+              void finalizeMatchProgress(
+                winP,
+                room.players,
+                'online',
+                nextBoardMode,
+                'medium',
+                winTeam,
+              );
+            }
           }
         } else {
           setTurnDeadlineAt(null);
+        }
+        return;
+      }
+
+      if (type === 'game:admin_victory') {
+        const room = msg.room as SerializedRoomPayload | undefined;
+        if (!room) return;
+        roomBackupRef.current = room;
+        const winP = room.players.find((p) => p.id === (msg.winnerId || room.winnerId)) ?? null;
+        const nextBoardMode = room.boardMode ?? 'classic';
+
+        setTurnDeadlineAt(null);
+        setTurnTimeLeftSec(null);
+        setPlayers(room.players);
+        setCurrentTurnIndex(room.currentTurnIndex);
+        setOnlineLobby((prev) => ({
+          ...prev,
+          status: 'finished',
+          players: room.players,
+          winningTeam: room.winningTeam ?? null,
+          chatMessages: Array.isArray(room.chatMessages)
+            ? room.chatMessages.map((c) => ({
+                senderId: c.senderId,
+                senderName: c.senderName,
+                text: c.text,
+                timestamp: c.timestamp,
+              }))
+            : prev.chatMessages,
+        }));
+
+        if (winP && (!winnerRef.current || winnerRef.current.id !== winP.id)) {
+          const winTeam = room.winningTeam ?? null;
+          const me = room.players.find((p) => p.id === profile.playerId);
+          const didWin =
+            (nextBoardMode === 'team' && winTeam && me?.team === winTeam) ||
+            winP.id === profile.playerId;
+
+          setMode('online');
+          setBoardMode(nextBoardMode);
+          if (room.boardConfig) {
+            setActiveBoardConfig(room.boardConfig);
+            activeBoardRef.current = room.boardConfig;
+          }
+          if (screenRef.current !== 'arena') {
+            setScreen('arena');
+          }
+
+          if (didWin) soundEngine.playVictory();
+          else soundEngine.playDefeat();
+          engineRef.current?.triggerVictoryCamera(winP.id);
+
+          setTimeExpired(false);
+          setWinningTeam(winTeam);
+          setWinner(winP);
+          setVictoryOpen(true);
+          showToast(
+            'Kemenangan Ditetapkan Admin!',
+            `${winP.name} ditunjuk sebagai pemenang Room #${room.code}.`,
+          );
+          void finalizeMatchProgress(
+            winP,
+            room.players,
+            'online',
+            nextBoardMode,
+            'medium',
+            winTeam,
+          );
         }
         return;
       }

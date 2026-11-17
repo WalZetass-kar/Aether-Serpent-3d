@@ -63,6 +63,7 @@ export interface AdminMemberBoardSummary {
 export interface AdminRoomPlayer {
   id: string;
   name: string;
+  archetypeIndex?: number;
   tile: number;
   score: number;
   shields: number;
@@ -80,6 +81,8 @@ export interface AdminRoomRecord {
   boardName: string;
   themeId: string;
   status: 'lobby' | 'playing' | 'finished';
+  winnerId?: string | null;
+  winningTeam?: 'A' | 'B' | null;
   hostId: string;
   hostName: string;
   playerCount: number;
@@ -281,6 +284,42 @@ export async function adminCloseRoom(user: User, roomCode: string): Promise<void
   if (!res.ok) {
     throw new Error(payload.error || 'Gagal menutup room.');
   }
+}
+
+export async function adminDeclareRoomWinner(
+  user: User,
+  roomCode: string,
+  playerId: string,
+): Promise<{ roomCode: string; winnerId: string; winnerName: string }> {
+  if (!isAdminAccount(user)) {
+    throw new Error('Akses admin diperlukan.');
+  }
+  const token = await user.getIdToken();
+  const res = await fetch(
+    `/api/admin/rooms/${encodeURIComponent(roomCode)}/declare-winner`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ playerId }),
+    },
+  );
+  const payload = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    roomCode?: string;
+    winnerId?: string;
+    winnerName?: string;
+  };
+  if (!res.ok) {
+    throw new Error(payload.error || 'Gagal menetapkan pemenang room.');
+  }
+  return {
+    roomCode: payload.roomCode || roomCode,
+    winnerId: payload.winnerId || playerId,
+    winnerName: payload.winnerName || 'Pemain',
+  };
 }
 
 export async function adminDeleteLeaderboardEntry(user: User, entryId: string): Promise<void> {

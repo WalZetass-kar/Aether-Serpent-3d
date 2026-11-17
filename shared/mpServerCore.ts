@@ -10,6 +10,7 @@ import {
   TIME_ATTACK_DEFAULT_SEC,
   applyTurnEffectsToPlayers,
   buildJumpMap,
+  calculateVictoryBonus,
   disambiguatePlayerName,
   pickTimeAttackWinner,
   resolveTurnMove,
@@ -946,6 +947,8 @@ export function registerApiRoutes(app: Express): void {
           boardName: room.boardConfig?.name || 'Papan Standar',
           themeId: room.boardConfig?.themeId || 'enchanted_forest',
           status: room.status,
+          winnerId: room.winnerId,
+          winningTeam: room.winningTeam,
           hostId: room.hostId,
           hostName: host?.name || 'Host',
           playerCount: room.players.length,
@@ -957,6 +960,7 @@ export function registerApiRoutes(app: Express): void {
           players: room.players.map((p) => ({
             id: p.id,
             name: p.name,
+            archetypeIndex: p.archetypeIndex,
             tile: p.tile,
             score: p.score,
             shields: p.shields,
@@ -1011,6 +1015,89 @@ export function registerApiRoutes(app: Express): void {
     rooms.delete(code);
     saveRoomsToTmpCache();
     res.json({ ok: true, closedCode: code });
+  });
+
+  app.post('/api/admin/rooms/:code/declare-winner', async (req: Request, res: Response) => {
+    const authCheck = await verifyAdminBearerToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+
+    loadRoomsFromTmpCache();
+    const code = String(req.params.code || '').trim().toUpperCase();
+    const playerId = String(req.body?.playerId || '').trim();
+    const room = rooms.get(code);
+    if (!room) {
+      res.status(404).json({ error: `Room "${code}" tidak ditemukan.` });
+      return;
+    }
+    if (!playerId) {
+      res.status(400).json({ error: 'ID pemain target wajib dipilih.' });
+      return;
+    }
+
+    const targetIdx = room.players.findIndex((p) => p.id === playerId);
+    if (targetIdx === -1) {
+      res.status(404).json({ error: 'Pemain tidak ditemukan di dalam room tersebut.' });
+      return;
+    }
+
+    if (room.status === 'finished' && room.winnerId === playerId) {
+      res.status(400).json({ error: 'Pemain ini sudah ditetapkan sebagai pemenang room.' });
+      return;
+    }
+
+    const wasAlreadyFinished = room.status === 'finished';
+    const targetBefore = room.players[targetIdx];
+    const effectiveTurns = Math.max(1, targetBefore.turnsTaken);
+    const bonus = wasAlreadyFinished ? 0 : calculateVictoryBonus(effectiveTurns, 'medium');
+
+    room.players = room.players.map((p) =>
+      p.id === playerId
+        ? {
+            ...p,
+            tile: 100,
+            turnsTaken: effectiveTurns,
+            score: Math.max(0, p.score + bonus),
+          }
+        : p,
+    );
+
+    const updatedWinner = room.players[targetIdx];
+    room.status = 'finished';
+    room.winnerId = updatedWinner.id;
+    room.winningTeam = room.boardMode === 'team' ? updatedWinner.team ?? 'A' : null;
+    room.turnDeadlineAt = null;
+    room.updatedAt = Date.now();
+    room.lastEventId += 1;
+
+    room.chatMessages = [
+      ...room.chatMessages.slice(-24),
+      {
+        id: room.lastEventId,
+        senderId: 'admin-system',
+        senderName: 'Administrator',
+        text: `🏆 ${updatedWinner.name} ditetapkan sebagai pemenang oleh Admin!`,
+        timestamp: Date.now(),
+      },
+    ];
+
+    saveRoomsToTmpCache();
+    broadcastRoom(room, {
+      type: 'game:admin_victory',
+      winnerId: updatedWinner.id,
+      winnerName: updatedWinner.name,
+      room: serializeRoom(room),
+    });
+
+    res.json({
+      ok: true,
+      roomCode: code,
+      winnerId: updatedWinner.id,
+      winnerName: updatedWinner.name,
+      status: room.status,
+    });
   });
 
   app.delete('/api/admin/leaderboard/:id', async (req: Request, res: Response) => {
