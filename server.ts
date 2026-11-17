@@ -21,6 +21,7 @@ import {
   broadcastRoom,
   createRoomInstance,
   detachPlayerFromRoom,
+  evictPlayerFromOtherRooms,
   executeRoomTurnRoll,
   registerApiRoutes,
   rehydrateRoomFromSnapshotIfNeeded,
@@ -93,9 +94,9 @@ async function startServer() {
     let attachedRoomCode: string | null = null;
     let attachedPlayerId: string | null = null;
 
-    const detachFromCurrentRoom = () => {
+    const detachFromCurrentRoom = (explicitLeave = false) => {
       if (!attachedRoomCode || !attachedPlayerId) return;
-      detachPlayerFromRoom(attachedRoomCode, attachedPlayerId);
+      detachPlayerFromRoom(attachedRoomCode, attachedPlayerId, explicitLeave);
       attachedRoomCode = null;
       attachedPlayerId = null;
     };
@@ -159,6 +160,7 @@ async function startServer() {
           return;
         }
 
+        evictPlayerFromOtherRooms(playerId, code);
         room.kickedPlayerIds = room.kickedPlayerIds.filter((id) => id !== playerId);
         const existingPlayer = room.players.find((p) => p.id === playerId);
         if (existingPlayer) {
@@ -180,7 +182,7 @@ async function startServer() {
           return;
         }
 
-        detachFromCurrentRoom();
+        detachFromCurrentRoom(false);
         const playerName = disambiguatePlayerName(
           String(msg.playerName || ''),
           room.players.map((p) => p.name),
@@ -394,6 +396,7 @@ async function startServer() {
         room.currentTurnIndex = 0;
         room.winnerId = null;
         room.winningTeam = null;
+        room.designatedWinnerId = null;
         room.turnCount = 0;
         room.endsAt = room.boardMode === 'time_attack' ? Date.now() + room.timeLimitSec * 1000 : null;
         room.turnDeadlineAt = Date.now() + ONLINE_TURN_TIMEOUT_SEC * 1000 + 4000;
@@ -437,12 +440,12 @@ async function startServer() {
       }
 
       if (type === 'room:leave') {
-        detachFromCurrentRoom();
+        detachFromCurrentRoom(true);
       }
     });
 
     ws.on('close', () => {
-      detachFromCurrentRoom();
+      detachFromCurrentRoom(false);
     });
   });
 

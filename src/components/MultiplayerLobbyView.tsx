@@ -37,6 +37,7 @@ import {
 } from '../../shared/gameConfig';
 import { AnimatedProgressRing } from './AnimatedProgressRing';
 import { ArchetypeEmblem, SerpentCrestEmblem } from './FantasyIcons';
+import { fetchPublicActiveRoomsFromFirebase } from '../services/firebaseAccountService';
 
 export interface OnlineLobbyState {
   connected: boolean;
@@ -425,11 +426,27 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
     if (!isOnlineNetwork) return;
     setLoadingRooms(true);
     try {
-      const res = await fetch('/api/rooms');
-      if (res.ok) {
-        const data = (await res.json()) as { rooms?: PublicRoomSummary[] };
-        setPublicRooms(Array.isArray(data.rooms) ? data.rooms : []);
+      const [apiRes, fbRooms] = await Promise.all([
+        fetch('/api/rooms').catch(() => null),
+        fetchPublicActiveRoomsFromFirebase().catch(() => []),
+      ]);
+      const byCode = new Map<string, PublicRoomSummary>();
+      if (apiRes && apiRes.ok) {
+        const data = (await apiRes.json()) as { rooms?: PublicRoomSummary[] };
+        for (const r of Array.isArray(data.rooms) ? data.rooms : []) {
+          if (r && r.code && r.status !== 'finished') {
+            byCode.set(r.code.toUpperCase(), r);
+          }
+        }
       }
+      for (const fr of fbRooms) {
+        if (!fr || !fr.code || fr.status === 'finished') continue;
+        const codeKey = fr.code.toUpperCase();
+        if (!byCode.has(codeKey)) {
+          byCode.set(codeKey, fr);
+        }
+      }
+      setPublicRooms(Array.from(byCode.values()));
     } catch {
       // ignore transient room list error
     } finally {

@@ -50,7 +50,9 @@ import { VictoryModal } from './components/VictoryModal';
 import { useAuth } from './contexts/AuthContext';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import {
+  deleteActiveRoomFromFirebase,
   loadProfileFromFirebase,
+  syncActiveRoomToFirebase,
   syncCustomBoardToFirebase,
   syncProfileToFirebase,
 } from './services/firebaseAccountService';
@@ -456,14 +458,18 @@ export default function App() {
       return;
     }
 
+    setProfile((prev) => {
+      const nextName = !user.emailVerified && user.displayName ? user.displayName : prev.name;
+      if (prev.playerId === user.uid && prev.name === nextName) return prev;
+      const next = { ...prev, playerId: user.uid, name: nextName };
+      saveProfile(next);
+      return next;
+    });
+    setOnlineLobby((prev) =>
+      prev.myPlayerId === user.uid ? prev : { ...prev, myPlayerId: user.uid },
+    );
+
     if (!user.emailVerified) {
-      if (user.displayName) {
-        setProfile((prev) => {
-          const next = { ...prev, name: user.displayName || prev.name };
-          saveProfile(next);
-          return next;
-        });
-      }
       return;
     }
 
@@ -1261,18 +1267,23 @@ export default function App() {
         roomBackupRef.current = null;
         setTurnDeadlineAt(null);
         setTurnTimeLeftSec(null);
+        setVictoryOpen(false);
+        setWinner(null);
+        setWinningTeam(null);
+        setTimeExpired(false);
+        setIsAnimating(false);
         setOnlineLobby((prev) => ({
           ...prev,
           roomCode: null,
           players: [],
           status: 'lobby',
           chatMessages: [],
-          error: String(msg.message || 'Anda dikeluarkan dari ruangan.'),
+          error: String(msg.message || 'Ruangan telah ditutup.'),
         }));
         if (screenRef.current === 'arena' || screenRef.current === 'loading_arena') {
           setScreen('multiplayer_lobby');
         }
-        showToast('Dikeluarkan dari Ruangan', String(msg.message || 'Host mengeluarkan Anda.'));
+        showToast('Ruangan Ditutup', String(msg.message || 'Anda kembali ke lobi.'));
         return;
       }
 
@@ -1354,11 +1365,14 @@ export default function App() {
 
         if (justTransitionedToPlaying) {
           lastProcessedEventIdRef.current = room.lastEventId || 0;
+          matchStartedAtRef.current = Date.now();
+          setIsAnimating(false);
           setMode('online');
           setBoardMode(nextBoardMode);
           setTimeLimitSec(nextTimeLimit);
           setTimeEndsAt(room.endsAt ?? null);
           setTurnDeadlineAt(room.turnDeadlineAt ?? null);
+          setTurnTimeLeftSec(null);
           if (room.endsAt) {
             setTimeLeftSec(Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)));
           } else {
@@ -1432,8 +1446,8 @@ export default function App() {
               setWinner(winP);
               setVictoryOpen(true);
               showToast(
-                'Pemenang Room Ditetapkan!',
-                `${winP.name} memenangkan pertandingan Room #${room.code}.`,
+                'Pertandingan Selesai',
+                `${winP.name} memenangkan pertandingan!`,
               );
               void finalizeMatchProgress(
                 winP,
@@ -1447,73 +1461,6 @@ export default function App() {
           }
         } else {
           setTurnDeadlineAt(null);
-        }
-        return;
-      }
-
-      if (type === 'game:admin_victory') {
-        const room = msg.room as SerializedRoomPayload | undefined;
-        if (!room) return;
-        roomBackupRef.current = room;
-        const winP = room.players.find((p) => p.id === (msg.winnerId || room.winnerId)) ?? null;
-        const nextBoardMode = room.boardMode ?? 'classic';
-
-        setTurnDeadlineAt(null);
-        setTurnTimeLeftSec(null);
-        setPlayers(room.players);
-        setCurrentTurnIndex(room.currentTurnIndex);
-        setOnlineLobby((prev) => ({
-          ...prev,
-          status: 'finished',
-          players: room.players,
-          winningTeam: room.winningTeam ?? null,
-          chatMessages: Array.isArray(room.chatMessages)
-            ? room.chatMessages.map((c) => ({
-                senderId: c.senderId,
-                senderName: c.senderName,
-                text: c.text,
-                timestamp: c.timestamp,
-              }))
-            : prev.chatMessages,
-        }));
-
-        if (winP && (!winnerRef.current || winnerRef.current.id !== winP.id)) {
-          const winTeam = room.winningTeam ?? null;
-          const me = room.players.find((p) => p.id === profile.playerId);
-          const didWin =
-            (nextBoardMode === 'team' && winTeam && me?.team === winTeam) ||
-            winP.id === profile.playerId;
-
-          setMode('online');
-          setBoardMode(nextBoardMode);
-          if (room.boardConfig) {
-            setActiveBoardConfig(room.boardConfig);
-            activeBoardRef.current = room.boardConfig;
-          }
-          if (screenRef.current !== 'arena') {
-            setScreen('arena');
-          }
-
-          if (didWin) soundEngine.playVictory();
-          else soundEngine.playDefeat();
-          engineRef.current?.triggerVictoryCamera(winP.id);
-
-          setTimeExpired(false);
-          setWinningTeam(winTeam);
-          setWinner(winP);
-          setVictoryOpen(true);
-          showToast(
-            'Kemenangan Ditetapkan Admin!',
-            `${winP.name} ditunjuk sebagai pemenang Room #${room.code}.`,
-          );
-          void finalizeMatchProgress(
-            winP,
-            room.players,
-            'online',
-            nextBoardMode,
-            'medium',
-            winTeam,
-          );
         }
         return;
       }
@@ -1660,6 +1607,44 @@ export default function App() {
 
     return () => window.clearInterval(pollInterval);
   }, [handleMultiplayerServerEvent, onlineLobby.roomCode, profile.playerId]);
+
+  // Sync Host's active room to Firestore /activeRooms so Admin Portal & Join Lobby stay consistent across domains/instances
+  useEffect(() => {
+    if (!user?.emailVerified || !onlineLobby.roomCode) return;
+    const isHostUser =
+      onlineLobby.hostId === user.uid || onlineLobby.hostId === profile.playerId;
+    if (!isHostUser || onlineLobby.players.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      void syncActiveRoomToFirebase(user, {
+        code: onlineLobby.roomCode!,
+        name: onlineLobby.roomName,
+        isPublic: onlineLobby.isPublic,
+        boardMode: onlineLobby.boardMode,
+        boardName: activeBoardRef.current?.name || 'Papan Standar',
+        themeId: activeBoardRef.current?.themeId || 'enchanted_forest',
+        status: onlineLobby.status,
+        winnerId: winner?.id ?? null,
+        turnCount: Math.max(0, ...onlineLobby.players.map((p) => p.turnsTaken || 0)),
+        players: onlineLobby.players,
+      });
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeBoardConfig.name,
+    activeBoardConfig.themeId,
+    onlineLobby.boardMode,
+    onlineLobby.hostId,
+    onlineLobby.isPublic,
+    onlineLobby.players,
+    onlineLobby.roomCode,
+    onlineLobby.roomName,
+    onlineLobby.status,
+    profile.playerId,
+    user,
+    winner?.id,
+  ]);
 
   const ensureWebSocket = useCallback((): Promise<WebSocket> => {
     if (mpTransportRef.current === 'http') {
@@ -1967,8 +1952,16 @@ export default function App() {
   }, [achievementsOpen, arenaChatOpen, cameraSettingsOpen, cloudOpen, leaderboardOpen, screen, tutorialOpen, victoryOpen]);
 
   const leaveOnlineRoomIfAny = useCallback(() => {
-    if (onlineLobby.roomCode) {
-      void sendMultiplayerAction({ type: 'room:leave', code: onlineLobby.roomCode });
+    const code = onlineLobby.roomCode;
+    if (code) {
+      const isHostLeaving =
+        onlineLobby.hostId === onlineLobby.myPlayerId ||
+        (user?.uid ? onlineLobby.hostId === user.uid : false) ||
+        onlineLobby.players[0]?.id === onlineLobby.myPlayerId;
+      if (isHostLeaving && user?.emailVerified) {
+        void deleteActiveRoomFromFirebase(user, code);
+      }
+      void sendMultiplayerAction({ type: 'room:leave', code });
     }
     roomBackupRef.current = null;
     setTurnDeadlineAt(null);
@@ -1981,24 +1974,42 @@ export default function App() {
       chatMessages: [],
       error: null,
     }));
-  }, [onlineLobby.roomCode, sendMultiplayerAction]);
+  }, [
+    onlineLobby.hostId,
+    onlineLobby.myPlayerId,
+    onlineLobby.players,
+    onlineLobby.roomCode,
+    sendMultiplayerAction,
+    user,
+  ]);
+
+  const resetMatchUiAndReturn = useCallback(
+    (targetScreen: AppScreen) => {
+      window.clearTimeout(loadingTimerRef.current);
+      leaveOnlineRoomIfAny();
+      setVictoryOpen(false);
+      setWinner(null);
+      setWinningTeam(null);
+      setTimeExpired(false);
+      setTimeEndsAt(null);
+      setTimeLeftSec(null);
+      setInspectedTile(null);
+      setArenaChatOpen(false);
+      setUnreadChatCount(0);
+      setArenaLocalChatMessages([]);
+      setIsAnimating(false);
+      setScreen(targetScreen);
+    },
+    [leaveOnlineRoomIfAny],
+  );
 
   const handleReturnToMenu = useCallback(() => {
-    window.clearTimeout(loadingTimerRef.current);
-    leaveOnlineRoomIfAny();
-    setVictoryOpen(false);
-    setWinner(null);
-    setWinningTeam(null);
-    setTimeExpired(false);
-    setTimeEndsAt(null);
-    setTimeLeftSec(null);
-    setInspectedTile(null);
-    setArenaChatOpen(false);
-    setUnreadChatCount(0);
-    setArenaLocalChatMessages([]);
-    setIsAnimating(false);
-    setScreen('main_menu');
-  }, [leaveOnlineRoomIfAny]);
+    resetMatchUiAndReturn('main_menu');
+  }, [resetMatchUiAndReturn]);
+
+  const handleReturnToLobby = useCallback(() => {
+    resetMatchUiAndReturn('multiplayer_lobby');
+  }, [resetMatchUiAndReturn]);
 
   const handleLogout = useCallback(() => {
     window.clearTimeout(loadingTimerRef.current);
@@ -2857,10 +2868,11 @@ export default function App() {
         timeExpired={timeExpired}
         isLocalWinner={isLocalWinner}
         canRematch={mode !== 'online' || onlineLobby.hostId === onlineLobby.myPlayerId}
+        exitLabel={mode === 'online' ? 'Ke Lobi' : 'Menu Utama'}
         globalRank={globalRank}
         boardName={activeBoardConfig.name}
         onRematch={handleRematch}
-        onMainMenu={handleReturnToMenu}
+        onMainMenu={mode === 'online' ? handleReturnToLobby : handleReturnToMenu}
         onClose={() => setVictoryOpen(false)}
       />
 

@@ -30,6 +30,7 @@ interface VictoryModalProps {
   timeExpired: boolean;
   isLocalWinner: boolean;
   canRematch?: boolean;
+  exitLabel?: string;
   globalRank: number | null;
   boardName?: string;
   onRematch: () => void;
@@ -46,6 +47,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   timeExpired,
   isLocalWinner,
   canRematch = true,
+  exitLabel = 'Menu Utama',
   globalRank,
   boardName,
   onRematch,
@@ -354,7 +356,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
             className="sm:w-44 min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/35 bg-slate-800 text-amber-200 font-bold text-sm hover:bg-slate-700 hover:border-amber-400 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Home className="w-4 h-4 text-amber-400" />
-            Menu Utama
+            {exitLabel}
           </button>
           <button
             type="button"

@@ -316,6 +316,114 @@
         "grantedBy",
         "createdAt"
       ]
+    },
+    "ActiveRoom": {
+      "title": "ActiveRoom",
+      "description": "Cross-network multiplayer room state synced by the room host for live room discovery and Admin Portal monitoring (never stores hidden admin winner overrides).",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Unique room join code matching document ID.",
+          "minLength": 4,
+          "maxLength": 16,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display title of the room.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "hostUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the host who created the room.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Display name of the host.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Whether the room appears in public lobby discovery."
+        },
+        "boardMode": {
+          "type": "string",
+          "description": "Selected multiplayer game mode.",
+          "enum": ["classic", "battle", "team", "time_attack"]
+        },
+        "boardName": {
+          "type": "string",
+          "description": "Name of the active 3D board.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "themeId": {
+          "type": "string",
+          "description": "Active 3D board theme ID.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "status": {
+          "type": "string",
+          "description": "Current room lifecycle state.",
+          "enum": ["lobby", "playing", "finished"]
+        },
+        "winnerId": {
+          "type": "string",
+          "description": "Player ID of the finished match winner, or empty string while active.",
+          "maxLength": 128
+        },
+        "playerCount": {
+          "type": "integer",
+          "description": "Number of players currently inside the room."
+        },
+        "maxPlayers": {
+          "type": "integer",
+          "description": "Maximum allowed players in the room."
+        },
+        "turnCount": {
+          "type": "integer",
+          "description": "Elapsed turn count in the match."
+        },
+        "players": {
+          "type": "array",
+          "description": "Bounded list of up to 4 room participant summaries."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "hostUid",
+        "hostName",
+        "isPublic",
+        "boardMode",
+        "boardName",
+        "themeId",
+        "status",
+        "winnerId",
+        "playerCount",
+        "maxPlayers",
+        "turnCount",
+        "players",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -342,6 +450,12 @@
         "$ref": "#/entities/AdminRole"
       },
       "description": "Authoritative admin role directory managed strictly by the bootstrapped administrator."
+    },
+    "/activeRooms/{roomCode}": {
+      "schema": {
+        "$ref": "#/entities/ActiveRoom"
+      },
+      "description": "Live multiplayer rooms synced by the room host for cross-instance Admin Portal monitoring and public lobby discovery."
     }
   }
 }

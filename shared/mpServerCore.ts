@@ -10,7 +10,6 @@ import {
   TIME_ATTACK_DEFAULT_SEC,
   applyTurnEffectsToPlayers,
   buildJumpMap,
-  calculateVictoryBonus,
   disambiguatePlayerName,
   pickTimeAttackWinner,
   resolveTurnMove,
@@ -292,6 +291,7 @@ export interface MultiplayerRoom {
   currentTurnIndex: number;
   winnerId: string | null;
   winningTeam: TeamId | null;
+  designatedWinnerId: string | null;
   turnCount: number;
   lastEventId: number;
   turnEvents: RoomTurnEventLog[];
@@ -303,6 +303,30 @@ export interface MultiplayerRoom {
 }
 
 export const rooms = new Map<string, MultiplayerRoom>();
+const closedRoomTombstones = new Map<string, { message: string; closedAt: number }>();
+
+function markRoomClosed(code: string, message: string): void {
+  const clean = code.trim().toUpperCase();
+  if (!clean) return;
+  closedRoomTombstones.set(clean, { message, closedAt: Date.now() });
+  if (closedRoomTombstones.size > 200) {
+    const cutoff = Date.now() - 15 * 60 * 1000;
+    for (const [k, v] of closedRoomTombstones.entries()) {
+      if (v.closedAt < cutoff) closedRoomTombstones.delete(k);
+    }
+  }
+}
+
+function getClosedRoomMessage(code: string): string | null {
+  const clean = code.trim().toUpperCase();
+  const entry = closedRoomTombstones.get(clean);
+  if (!entry) return null;
+  if (Date.now() - entry.closedAt > 15 * 60 * 1000) {
+    closedRoomTombstones.delete(clean);
+    return null;
+  }
+  return entry.message;
+}
 
 function loadRoomsFromTmpCache(): void {
   try {
@@ -316,6 +340,10 @@ function loadRoomsFromTmpCache(): void {
       if (!rooms.has(item.code)) {
         rooms.set(item.code, {
           ...item,
+          designatedWinnerId:
+            typeof item.designatedWinnerId === 'string' && item.designatedWinnerId.length > 0
+              ? item.designatedWinnerId
+              : null,
           turnEvents: Array.isArray(item.turnEvents) ? item.turnEvents : [],
           chatMessages: Array.isArray(item.chatMessages) ? item.chatMessages : [],
           kickedPlayerIds: Array.isArray(item.kickedPlayerIds) ? item.kickedPlayerIds : [],
@@ -348,6 +376,7 @@ function saveRoomsToTmpCache(): void {
       currentTurnIndex: r.currentTurnIndex,
       winnerId: r.winnerId,
       winningTeam: r.winningTeam,
+      designatedWinnerId: r.designatedWinnerId,
       turnCount: r.turnCount,
       lastEventId: r.lastEventId,
       turnEvents: r.turnEvents.slice(-8),
@@ -577,6 +606,9 @@ export function rehydrateRoomFromSnapshotIfNeeded(
   callerPlayerId?: string,
 ): MultiplayerRoom | undefined {
   const cleanCode = code.trim().toUpperCase();
+  if (getClosedRoomMessage(cleanCode)) {
+    return undefined;
+  }
   const existing = rooms.get(cleanCode);
   if (existing) {
     return mergeRoomWithClientBackup(existing, snapshot, callerPlayerId);
@@ -614,6 +646,7 @@ export function rehydrateRoomFromSnapshotIfNeeded(
     currentTurnIndex: Number(s.currentTurnIndex) || 0,
     winnerId: s.winnerId ? String(s.winnerId) : null,
     winningTeam: s.winningTeam === 'A' || s.winningTeam === 'B' ? s.winningTeam : null,
+    designatedWinnerId: null,
     turnCount: Number(s.turnCount) || 0,
     lastEventId: Number(s.lastEventId) || 0,
     turnEvents: Array.isArray(s.turnEvents) ? s.turnEvents : [],
@@ -676,25 +709,116 @@ export function assignBalancedTeam(players: PlayerState[]): TeamId {
   return countA <= countB ? 'A' : 'B';
 }
 
-export function executeRoomTurnRoll(
+function pickSteeredOnlineRoll(
   room: MultiplayerRoom,
   activePlayer: PlayerState,
-  autoRolled: boolean,
-) {
-  const roll = crypto.randomInt(1, 7);
-  const customJumpMap = buildJumpMap(room.boardConfig?.ladders, room.boardConfig?.snakes);
-  const resolution: TurnResolution = resolveTurnMove(
-    activePlayer.tile,
+  customJumpMap: ReturnType<typeof buildJumpMap>,
+): { roll: number; resolution: TurnResolution } {
+  const targetId = room.designatedWinnerId;
+  const hasActiveTarget =
+    Boolean(targetId) && room.players.some((p) => p.id === targetId);
+
+  const candidates = [1, 2, 3, 4, 5, 6].map((roll) => ({
     roll,
-    activePlayer.shields,
-    {
+    resolution: resolveTurnMove(activePlayer.tile, roll, activePlayer.shields, {
       boardMode: room.boardMode,
       actorId: activePlayer.id,
       actorTeam: activePlayer.team,
       otherPlayers: room.players,
       customJumpMap,
-    },
+    }),
+  }));
+
+  if (!hasActiveTarget) {
+    const roll = crypto.randomInt(1, 7);
+    return candidates[roll - 1];
+  }
+
+  // Case A: Designated Winner (or same team in 2v2 Team Mode) -> Favorable organic rolls
+  const targetPlayer = room.players.find((p) => p.id === targetId);
+  const isChosenWinnerSide =
+    activePlayer.id === targetId ||
+    (room.boardMode === 'team' &&
+      targetPlayer?.team &&
+      activePlayer.team === targetPlayer.team);
+
+  if (isChosenWinnerSide) {
+    // 1. Exact winning roll if within reach of tile 100
+    const winning = candidates.find((c) => c.resolution.won);
+    if (winning) return winning;
+
+    // 2. Avoid unblocked snakes and curse traps
+    const safe = candidates.filter(
+      (c) =>
+        !(c.resolution.jumpTriggered?.type === 'snake' && !c.resolution.shieldBlocked) &&
+        !(c.resolution.specialHit?.type === 'curse' && !c.resolution.shieldBlocked),
+    );
+    const pool = safe.length > 0 ? safe : candidates;
+
+    // 3. Climb ladders whenever available safely
+    const ladders = pool
+      .filter((c) => c.resolution.jumpTriggered?.type === 'ladder')
+      .sort((a, b) => b.resolution.finalTile - a.resolution.finalTile);
+    if (ladders.length > 0) return ladders[0];
+
+    // 4. Advance steadily with top 2 safe rolls (randomized so dice looks natural)
+    const ranked = [...pool].sort((a, b) => {
+      const scoreA =
+        a.resolution.finalTile +
+        (a.resolution.extraTurn ? 4 : 0) +
+        (a.resolution.shieldsDelta > 0 ? 3 : 0);
+      const scoreB =
+        b.resolution.finalTile +
+        (b.resolution.extraTurn ? 4 : 0) +
+        (b.resolution.shieldsDelta > 0 ? 3 : 0);
+      return scoreB - scoreA;
+    });
+    const topSlice = ranked.slice(0, Math.min(2, ranked.length));
+    return topSlice[crypto.randomInt(0, topSlice.length)];
+  }
+
+  // Case B: Opponent -> Never win, repeatedly hit Snakes or fall behind naturally
+  const nonWinning = candidates.filter((c) => !c.resolution.won);
+  const pool = nonWinning.length > 0 ? nonWinning : candidates;
+
+  // 1. Prioritize actual snake bites (or shield-breaking snake hits)
+  const snakeHits = pool.filter((c) => c.resolution.jumpTriggered?.type === 'snake');
+  if (snakeHits.length > 0) {
+    const unblockedSnakes = snakeHits
+      .filter((c) => !c.resolution.shieldBlocked)
+      .sort((a, b) => a.resolution.finalTile - b.resolution.finalTile);
+    if (unblockedSnakes.length > 0) {
+      return unblockedSnakes[0];
+    }
+    return snakeHits[0];
+  }
+
+  // 2. Avoid ladders, shields, and extra turns; steer toward lowest tile / bounce-back
+  const noBonus = pool.filter(
+    (c) =>
+      c.resolution.jumpTriggered?.type !== 'ladder' &&
+      c.resolution.shieldsDelta <= 0 &&
+      !c.resolution.extraTurn,
   );
+  const weakPool = (noBonus.length > 0 ? noBonus : pool).sort(
+    (a, b) => a.resolution.finalTile - b.resolution.finalTile,
+  );
+
+  // Near finish line, strictly keep them at the lowest bounce/tile; earlier on, vary bottom 2
+  if (activePlayer.tile >= 82 || weakPool.length === 1) {
+    return weakPool[0];
+  }
+  const bottomSlice = weakPool.slice(0, Math.min(2, weakPool.length));
+  return bottomSlice[crypto.randomInt(0, bottomSlice.length)];
+}
+
+export function executeRoomTurnRoll(
+  room: MultiplayerRoom,
+  activePlayer: PlayerState,
+  autoRolled: boolean,
+) {
+  const customJumpMap = buildJumpMap(room.boardConfig?.ladders, room.boardConfig?.snakes);
+  const { resolution } = pickSteeredOnlineRoll(room, activePlayer, customJumpMap);
 
   room.players = applyTurnEffectsToPlayers(
     room.players,
@@ -704,11 +828,13 @@ export function executeRoomTurnRoll(
   );
   room.turnCount += 1;
   room.lastEventId += 1;
+  room.updatedAt = Date.now();
 
   if (resolution.won) {
     room.status = 'finished';
     room.winnerId = activePlayer.id;
     room.winningTeam = room.boardMode === 'team' ? activePlayer.team ?? 'A' : null;
+    room.designatedWinnerId = null;
     room.turnDeadlineAt = null;
   } else {
     if (!resolution.extraTurn) {
@@ -740,6 +866,7 @@ export function executeRoomTurnRoll(
   };
   room.turnEvents = [...room.turnEvents.slice(-7), eventRecord];
 
+  saveRoomsToTmpCache();
   broadcastRoom(room, {
     type: 'game:turn_event',
     eventId: room.lastEventId,
@@ -764,11 +891,17 @@ export function tickRoomsMaintenance(): void {
       room.endsAt !== null &&
       now >= room.endsAt
     ) {
-      const winner = pickTimeAttackWinner(room.players);
+      const designatedTarget = room.designatedWinnerId
+        ? room.players.find((p) => p.id === room.designatedWinnerId) ?? null
+        : null;
+      const winner = designatedTarget ?? pickTimeAttackWinner(room.players);
       room.status = 'finished';
       room.winnerId = winner ? winner.id : null;
       room.winningTeam = winner?.team ?? null;
+      room.designatedWinnerId = null;
       room.turnDeadlineAt = null;
+      room.updatedAt = now;
+      saveRoomsToTmpCache();
       broadcastRoom(room, {
         type: 'game:time_up',
         room: serializeRoom(room),
@@ -795,6 +928,39 @@ export function tickRoomsMaintenance(): void {
 // Unified Room Action Processor (Used by both WebSocket & HTTP /api/mp/action)
 // ---------------------------------------------------------------------------
 
+export function evictPlayerFromOtherRooms(playerId: string, keepRoomCode?: string): void {
+  if (!playerId) return;
+  let mutated = false;
+  for (const [otherCode, otherRoom] of Array.from(rooms.entries())) {
+    if (keepRoomCode && otherCode === keepRoomCode) continue;
+    const isInRoom = otherRoom.players.some((p) => p.id === playerId);
+    if (!isInRoom && otherRoom.hostId !== playerId) continue;
+
+    mutated = true;
+    otherRoom.clients.delete(playerId);
+
+    if (otherRoom.hostId === playerId) {
+      const msg = 'Host telah berpindah atau menutup ruangan.';
+      broadcastRoom(otherRoom, {
+        type: 'room:kicked',
+        message: msg,
+      });
+      markRoomClosed(otherCode, msg);
+      rooms.delete(otherCode);
+    } else {
+      otherRoom.players = otherRoom.players.filter((p) => p.id !== playerId);
+      if (otherRoom.players.length === 0) {
+        rooms.delete(otherCode);
+      } else {
+        broadcastRoom(otherRoom, { type: 'room:state', room: serializeRoom(otherRoom) });
+      }
+    }
+  }
+  if (mutated) {
+    saveRoomsToTmpCache();
+  }
+}
+
 export function createRoomInstance(opts: {
   playerId: string;
   playerName: string;
@@ -807,6 +973,9 @@ export function createRoomInstance(opts: {
   wsClient?: SocketLike;
 }): MultiplayerRoom {
   const playerId = String(opts.playerId || crypto.randomUUID());
+  // Prevent duplicate open rooms from the same host/player
+  evictPlayerFromOtherRooms(playerId);
+
   const playerName = disambiguatePlayerName(String(opts.playerName || ''), [], playerId);
   const archetypeIndex = Math.max(0, Math.min(3, Number(opts.archetypeIndex) || 0));
   const arch = PLAYER_ARCHETYPES[archetypeIndex];
@@ -864,6 +1033,7 @@ export function createRoomInstance(opts: {
     currentTurnIndex: 0,
     winnerId: null,
     winningTeam: null,
+    designatedWinnerId: null,
     turnCount: 0,
     lastEventId: 0,
     turnEvents: [],
@@ -874,32 +1044,51 @@ export function createRoomInstance(opts: {
     updatedAt: now,
   };
 
+  closedRoomTombstones.delete(code);
   rooms.set(code, room);
   saveRoomsToTmpCache();
   return room;
 }
 
-export function detachPlayerFromRoom(code: string, playerId: string): void {
+export function detachPlayerFromRoom(
+  code: string,
+  playerId: string,
+  explicitLeave = false,
+): void {
   const room = rooms.get(code);
   if (!room) return;
   room.clients.delete(playerId);
-  if (room.status === 'lobby') {
-    room.players = room.players.filter((p) => p.id !== playerId);
-    if (room.hostId === playerId && room.players.length > 0) {
-      room.hostId = room.players[0].id;
-      room.players[0].ready = true;
-    }
-    if (room.players.length === 0) {
+
+  if (explicitLeave) {
+    if (room.hostId === playerId) {
+      // Host explicitly left to lobby/menu -> auto-close room for ALL players
+      const closeMsg = 'Host telah meninggalkan ruangan. Semua pemain dikembalikan ke lobi.';
+      broadcastRoom(room, {
+        type: 'room:kicked',
+        message: closeMsg,
+      });
+      markRoomClosed(room.code, closeMsg);
       rooms.delete(room.code);
       saveRoomsToTmpCache();
+      return;
+    }
+
+    room.players = room.players.filter((p) => p.id !== playerId);
+    if (room.players.length === 0) {
+      rooms.delete(room.code);
     } else {
+      room.updatedAt = Date.now();
       broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
     }
-  } else {
-    const p = room.players.find((pl) => pl.id === playerId);
-    if (p) p.connected = false;
-    broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+    saveRoomsToTmpCache();
+    return;
   }
+
+  // Passive WebSocket disconnect (keep room alive for HTTP fallback / reconnect)
+  const p = room.players.find((pl) => pl.id === playerId);
+  if (p) p.connected = false;
+  saveRoomsToTmpCache();
+  broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
 }
 
 // ---------------------------------------------------------------------------
@@ -949,6 +1138,7 @@ export function registerApiRoutes(app: Express): void {
           status: room.status,
           winnerId: room.winnerId,
           winningTeam: room.winningTeam,
+          designatedWinnerId: room.designatedWinnerId,
           hostId: room.hostId,
           hostName: host?.name || 'Host',
           playerCount: room.players.length,
@@ -1003,17 +1193,16 @@ export function registerApiRoutes(app: Express): void {
     }
     const code = String(req.params.code || '').trim().toUpperCase();
     const room = rooms.get(code);
-    if (!room) {
-      res.status(404).json({ error: `Room "${code}" tidak ditemukan.` });
-      return;
+    const adminCloseMsg = 'Ruangan telah ditutup oleh Administrator.';
+    markRoomClosed(code, adminCloseMsg);
+    if (room) {
+      broadcastRoom(room, {
+        type: 'room:kicked',
+        message: adminCloseMsg,
+      });
+      rooms.delete(code);
+      saveRoomsToTmpCache();
     }
-
-    broadcastRoom(room, {
-      type: 'room:kicked',
-      message: 'Ruangan telah ditutup oleh Administrator.',
-    });
-    rooms.delete(code);
-    saveRoomsToTmpCache();
     res.json({ ok: true, closedCode: code });
   });
 
@@ -1026,77 +1215,51 @@ export function registerApiRoutes(app: Express): void {
 
     loadRoomsFromTmpCache();
     const code = String(req.params.code || '').trim().toUpperCase();
+    const clear = Boolean(req.body?.clear);
     const playerId = String(req.body?.playerId || '').trim();
-    const room = rooms.get(code);
+    const room =
+      rooms.get(code) ??
+      (req.body?.roomSnapshot
+        ? rehydrateRoomFromSnapshotIfNeeded(code, req.body.roomSnapshot)
+        : undefined);
+
     if (!room) {
-      res.status(404).json({ error: `Room "${code}" tidak ditemukan.` });
+      res.status(404).json({ error: `Room "${code}" tidak ditemukan di server aktif.` });
       return;
     }
+
+    if (clear) {
+      room.designatedWinnerId = null;
+      saveRoomsToTmpCache();
+      res.json({
+        ok: true,
+        roomCode: code,
+        designatedWinnerId: null,
+        targetName: null,
+      });
+      return;
+    }
+
     if (!playerId) {
       res.status(400).json({ error: 'ID pemain target wajib dipilih.' });
       return;
     }
 
-    const targetIdx = room.players.findIndex((p) => p.id === playerId);
-    if (targetIdx === -1) {
+    const targetPlayer = room.players.find((p) => p.id === playerId);
+    if (!targetPlayer) {
       res.status(404).json({ error: 'Pemain tidak ditemukan di dalam room tersebut.' });
       return;
     }
 
-    if (room.status === 'finished' && room.winnerId === playerId) {
-      res.status(400).json({ error: 'Pemain ini sudah ditetapkan sebagai pemenang room.' });
-      return;
-    }
-
-    const wasAlreadyFinished = room.status === 'finished';
-    const targetBefore = room.players[targetIdx];
-    const effectiveTurns = Math.max(1, targetBefore.turnsTaken);
-    const bonus = wasAlreadyFinished ? 0 : calculateVictoryBonus(effectiveTurns, 'medium');
-
-    room.players = room.players.map((p) =>
-      p.id === playerId
-        ? {
-            ...p,
-            tile: 100,
-            turnsTaken: effectiveTurns,
-            score: Math.max(0, p.score + bonus),
-          }
-        : p,
-    );
-
-    const updatedWinner = room.players[targetIdx];
-    room.status = 'finished';
-    room.winnerId = updatedWinner.id;
-    room.winningTeam = room.boardMode === 'team' ? updatedWinner.team ?? 'A' : null;
-    room.turnDeadlineAt = null;
-    room.updatedAt = Date.now();
-    room.lastEventId += 1;
-
-    room.chatMessages = [
-      ...room.chatMessages.slice(-24),
-      {
-        id: room.lastEventId,
-        senderId: 'admin-system',
-        senderName: 'Administrator',
-        text: `🏆 ${updatedWinner.name} ditetapkan sebagai pemenang oleh Admin!`,
-        timestamp: Date.now(),
-      },
-    ];
-
+    // Stealth designation: keep game running normally, zero announcement in chat or client room state
+    room.designatedWinnerId = targetPlayer.id;
     saveRoomsToTmpCache();
-    broadcastRoom(room, {
-      type: 'game:admin_victory',
-      winnerId: updatedWinner.id,
-      winnerName: updatedWinner.name,
-      room: serializeRoom(room),
-    });
 
     res.json({
       ok: true,
       roomCode: code,
-      winnerId: updatedWinner.id,
-      winnerName: updatedWinner.name,
-      status: room.status,
+      designatedWinnerId: targetPlayer.id,
+      targetName: targetPlayer.name,
     });
   });
 
@@ -1132,6 +1295,14 @@ export function registerApiRoutes(app: Express): void {
 
     const room = rehydrateRoomFromSnapshotIfNeeded(code, snapshot, playerId);
     if (!room) {
+      const closedMsg = getClosedRoomMessage(code);
+      if (closedMsg) {
+        res.json({
+          kicked: true,
+          message: closedMsg,
+        });
+        return;
+      }
       res.status(404).json({ error: `Ruangan "${code}" sudah berakhir atau tidak ditemukan.` });
       return;
     }
@@ -1221,6 +1392,7 @@ export function registerApiRoutes(app: Express): void {
           currentTurnIndex: 0,
           winnerId: null,
           winningTeam: null,
+          designatedWinnerId: null,
           turnCount: 0,
           lastEventId: 0,
           turnEvents: [],
@@ -1239,10 +1411,13 @@ export function registerApiRoutes(app: Express): void {
         return;
       }
 
+      evictPlayerFromOtherRooms(playerId, room.code);
+
       room.kickedPlayerIds = room.kickedPlayerIds.filter((id) => id !== playerId);
       const existingPlayer = room.players.find((p) => p.id === playerId);
       if (existingPlayer) {
         existingPlayer.connected = true;
+        saveRoomsToTmpCache();
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         res.json({
           ok: true,
@@ -1297,6 +1472,8 @@ export function registerApiRoutes(app: Express): void {
       };
 
       room.players.push(newPlayer);
+      room.updatedAt = Date.now();
+      saveRoomsToTmpCache();
       broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
       res.json({
         ok: true,
@@ -1450,6 +1627,8 @@ export function registerApiRoutes(app: Express): void {
         p.battleHits = 0;
         if (!p.team) p.team = idx % 2 === 0 ? 'A' : 'B';
       });
+      room.updatedAt = Date.now();
+      saveRoomsToTmpCache();
       broadcastRoom(room, { type: 'room:started', room: serializeRoom(room) });
       res.json({ ok: true, type: 'room:started', room: serializeRoom(room) });
       return;
@@ -1484,10 +1663,12 @@ export function registerApiRoutes(app: Express): void {
         room.currentTurnIndex = 0;
         room.winnerId = null;
         room.winningTeam = null;
+        room.designatedWinnerId = null;
         room.turnCount = 0;
         room.endsAt =
           room.boardMode === 'time_attack' ? Date.now() + room.timeLimitSec * 1000 : null;
         room.turnDeadlineAt = Date.now() + ONLINE_TURN_TIMEOUT_SEC * 1000 + 4000;
+        room.updatedAt = Date.now();
         room.players.forEach((p) => {
           p.tile = 1;
           p.score = 0;
@@ -1499,6 +1680,7 @@ export function registerApiRoutes(app: Express): void {
           p.shieldsUsed = 0;
           p.battleHits = 0;
         });
+        saveRoomsToTmpCache();
         broadcastRoom(room, { type: 'room:started', room: serializeRoom(room) });
       }
       res.json({ ok: true, type: 'room:started', room: serializeRoom(room) });
@@ -1531,7 +1713,7 @@ export function registerApiRoutes(app: Express): void {
     }
 
     if (type === 'room:leave') {
-      detachPlayerFromRoom(code, playerId);
+      detachPlayerFromRoom(code, playerId, true);
       res.json({ ok: true });
       return;
     }

@@ -78,6 +78,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('members');
   const [members, setMembers] = useState<AdminMemberRecord[]>([]);
+  const [totalNetworkMembers, setTotalNetworkMembers] = useState(0);
   const [membersLoading, setMembersLoading] = useState(true);
   const [membersError, setMembersError] = useState<string | null>(null);
 
@@ -97,7 +98,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [confirmCloseCode, setConfirmCloseCode] = useState<string | null>(null);
   const [closingRoomCode, setClosingRoomCode] = useState<string | null>(null);
   const [winnerCandidate, setWinnerCandidate] = useState<{
-    roomCode: string;
+    room: AdminRoomRecord;
     player: AdminRoomPlayer;
   } | null>(null);
   const [declaringWinnerKey, setDeclaringWinnerKey] = useState<string | null>(null);
@@ -109,8 +110,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setMembersLoading(true);
     setMembersError(null);
     try {
-      const list = await fetchAdminMembers(user);
+      const { members: list, totalNetworkMembers: networkTotal } = await fetchAdminMembers(user);
       setMembers(list);
+      setTotalNetworkMembers(networkTotal);
       setSelectedMember((prev) =>
         prev ? list.find((item) => item.uid === prev.uid) ?? null : null,
       );
@@ -203,7 +205,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     try {
       await adminCloseRoom(user, code);
       setConfirmCloseCode(null);
-      if (winnerCandidate?.roomCode === code) {
+      if (winnerCandidate?.room.code === code) {
         setWinnerCandidate(null);
       }
       onNotify('Room Ditutup', `Ruangan ${code} telah dihentikan oleh Admin.`);
@@ -218,20 +220,27 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     }
   };
 
-  const handleConfirmDeclareWinner = async (roomCode: string, player: AdminRoomPlayer) => {
-    const key = `${roomCode}:${player.id}`;
+  const handleConfirmDeclareWinner = async (room: AdminRoomRecord, playerId: string | null) => {
+    const key = `${room.code}:${playerId || 'clear'}`;
     setDeclaringWinnerKey(key);
     try {
-      const res = await adminDeclareRoomWinner(user, roomCode, player.id);
+      const res = await adminDeclareRoomWinner(user, room, playerId);
       setWinnerCandidate(null);
-      onNotify(
-        'Pemenang Ditetapkan!',
-        `${res.winnerName} resmi ditunjuk sebagai pemenang Room #${res.roomCode}.`,
-      );
+      if (res.designatedWinnerId) {
+        onNotify(
+          'Target Pemenang Rahasia Disimpan',
+          `${res.targetName || 'Pemain'} akan diarahkan menang secara alami tanpa pemberitahuan di chat.`,
+        );
+      } else {
+        onNotify(
+          'Target Pemenang Dibatalkan',
+          `Room #${res.roomCode} kembali berjalan normal tanpa target.`,
+        );
+      }
       await loadServerOverview();
     } catch (err) {
       onNotify(
-        'Gagal Menetapkan Pemenang',
+        'Gagal Mengatur Target Pemenang',
         err instanceof Error ? err.message : 'Terjadi kesalahan pada server.',
       );
     } finally {
@@ -302,14 +311,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       0,
     );
     return {
-      totalMembers: members.length,
+      totalMembers: Math.max(members.length, totalNetworkMembers),
       activeRooms,
       totalRooms: serverData?.rooms.length ?? 0,
       onlinePlayersInRooms,
       totalMatches,
       cloudSyncCount: serverData?.cloudSyncCount ?? 0,
     };
-  }, [members, serverData]);
+  }, [members, serverData, totalNetworkMembers]);
 
   return (
     <div className="relative z-20 flex h-full w-full flex-col bg-[#060913] text-slate-100 overflow-hidden select-text">
@@ -436,7 +445,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <div>
               <div className="font-semibold text-slate-200">Catatan Sinkronisasi Room</div>
               <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                Menampilkan seluruh room aktif (Publik maupun Privat) pada instance backend saat ini.
+                Menampilkan seluruh room aktif (Publik maupun Privat) lintas jaringan dari Firestore &amp; server aktif.
               </p>
             </div>
           </div>
@@ -451,7 +460,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <div className="mt-1 font-mono-num text-xl sm:text-2xl font-bold text-white">
                 {summaryStats.totalMembers}
               </div>
-              <div className="mt-1 text-[11px] text-slate-400">Tersimpan di Firestore</div>
+              <div className="mt-1 text-[11px] text-slate-400">Seluruh jaringan terdaftar</div>
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
@@ -630,7 +639,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     Daftar Room Multiplayer Aktif
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Klik profil pemain di dalam room untuk menunjuknya sebagai pemenang secara langsung, atau kelola room aktif.
+                    Klik profil pemain di dalam room untuk menargetkan pemenang secara rahasia — permainan tetap berjalan normal tanpa notifikasi ke pemain.
                   </p>
                 </div>
 
@@ -793,53 +802,70 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Players in Room (Clickable Profiles to Designate Winner) */}
+                        {/* Players in Room (Clickable Profiles to Set Stealth Target Winner) */}
                         <div className="pt-2.5 border-t border-slate-800/80 space-y-2.5">
-                          <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
                             <span>
-                              Klik profil pemain untuk menunjuk pemenang room ini:
+                              Klik profil pemain untuk menargetkan pemenang rahasia (tanpa notifikasi chat):
                             </span>
-                            {room.winnerId && (
+                            {room.status === 'finished' && room.winnerId ? (
                               <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
                                 <Crown className="w-3.5 h-3.5 text-amber-400" />
                                 Pemenang:{' '}
                                 {room.players.find((pl) => pl.id === room.winnerId)?.name ||
-                                  'Ditetapkan'}
+                                  'Selesai'}
                               </span>
-                            )}
+                            ) : room.designatedWinnerId ? (
+                              <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">
+                                <Crown className="w-3.5 h-3.5 text-emerald-400" />
+                                Target Rahasia:{' '}
+                                {room.players.find((pl) => pl.id === room.designatedWinnerId)?.name ||
+                                  'Aktif'}
+                              </span>
+                            ) : null}
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                             {room.players.map((p) => {
                               const isCurrentWinner =
                                 room.status === 'finished' && room.winnerId === p.id;
+                              const isDesignatedTarget =
+                                room.status !== 'finished' && room.designatedWinnerId === p.id;
                               const isSelectedCandidate =
-                                winnerCandidate?.roomCode === room.code &&
+                                winnerCandidate?.room.code === room.code &&
                                 winnerCandidate.player.id === p.id;
                               return (
                                 <button
                                   key={p.id}
                                   type="button"
-                                  disabled={isCurrentWinner || declaringWinnerKey !== null}
+                                  disabled={
+                                    isCurrentWinner ||
+                                    room.status === 'finished' ||
+                                    declaringWinnerKey !== null
+                                  }
                                   onClick={() => {
                                     setConfirmCloseCode(null);
                                     setWinnerCandidate(
                                       isSelectedCandidate
                                         ? null
-                                        : { roomCode: room.code, player: p },
+                                        : { room, player: p },
                                     );
                                   }}
                                   className={`group text-left flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-xs transition-colors ${
                                     isCurrentWinner
                                       ? 'border-amber-400/70 bg-amber-500/15 cursor-default'
-                                      : isSelectedCandidate
-                                        ? 'border-amber-400 bg-amber-500/20 ring-1 ring-amber-400/50 cursor-pointer'
-                                        : 'border-slate-800/90 bg-slate-950/60 hover:border-amber-400/50 hover:bg-slate-900 cursor-pointer'
+                                      : isDesignatedTarget
+                                        ? 'border-emerald-400/70 bg-emerald-500/15 ring-1 ring-emerald-400/40 cursor-pointer'
+                                        : isSelectedCandidate
+                                          ? 'border-amber-400 bg-amber-500/20 ring-1 ring-amber-400/50 cursor-pointer'
+                                          : 'border-slate-800/90 bg-slate-950/60 hover:border-amber-400/50 hover:bg-slate-900 cursor-pointer'
                                   }`}
                                   title={
                                     isCurrentWinner
                                       ? `${p.name} adalah pemenang room ini`
-                                      : `Klik untuk menetapkan ${p.name} sebagai pemenang`
+                                      : isDesignatedTarget
+                                        ? `${p.name} sedang menjadi target pemenang rahasia`
+                                        : `Klik untuk menargetkan ${p.name} sebagai pemenang rahasia`
                                   }
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
@@ -869,6 +895,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                         <Crown className="w-3.5 h-3.5 text-amber-400" />
                                         Menang
                                       </span>
+                                    ) : isDesignatedTarget ? (
+                                      <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
+                                        <Crown className="w-3.5 h-3.5 text-emerald-400" />
+                                        Target
+                                      </span>
                                     ) : (
                                       <div className="font-bold text-amber-300">P{p.tile}</div>
                                     )}
@@ -879,42 +910,71 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             })}
                           </div>
 
-                          {/* Inline 2-Step Confirmation Bar to Declare Selected Player as Winner */}
-                          {winnerCandidate?.roomCode === room.code && (
+                          {/* Inline 2-Step Confirmation Bar to Set or Clear Stealth Winner Target */}
+                          {winnerCandidate?.room.code === room.code && (
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-amber-400/45 bg-amber-500/10 px-3.5 py-2.5 text-xs">
-                              <div className="flex items-center gap-2 text-amber-100 min-w-0">
-                                <Crown className="w-4 h-4 text-amber-400 shrink-0" />
-                                <span className="truncate">
-                                  Tetapkan{' '}
-                                  <strong className="text-white">
-                                    {winnerCandidate.player.name}
-                                  </strong>{' '}
-                                  sebagai pemenang Room #{room.code}?
-                                </span>
+                              <div className="space-y-0.5 min-w-0">
+                                <div className="flex items-center gap-2 text-amber-100 min-w-0">
+                                  <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                                  <span className="truncate">
+                                    {room.designatedWinnerId === winnerCandidate.player.id ? (
+                                      <>
+                                        Batalkan target pemenang rahasia untuk{' '}
+                                        <strong className="text-white">
+                                          {winnerCandidate.player.name}
+                                        </strong>
+                                        ?
+                                      </>
+                                    ) : (
+                                      <>
+                                        Targetkan{' '}
+                                        <strong className="text-white">
+                                          {winnerCandidate.player.name}
+                                        </strong>{' '}
+                                        sebagai pemenang rahasia Room #{room.code}?
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-300 pl-6">
+                                  Permainan tetap berjalan normal; lawan lebih sering terkena ular tanpa ada notifikasi di chat atau pemain.
+                                </p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  type="button"
-                                  disabled={
-                                    declaringWinnerKey ===
-                                    `${room.code}:${winnerCandidate.player.id}`
-                                  }
-                                  onClick={() =>
-                                    void handleConfirmDeclareWinner(
-                                      room.code,
-                                      winnerCandidate.player,
-                                    )
-                                  }
-                                  className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50 cursor-pointer"
-                                >
-                                  <Crown className="w-3.5 h-3.5" />
-                                  <span>
-                                    {declaringWinnerKey ===
-                                    `${room.code}:${winnerCandidate.player.id}`
-                                      ? 'Memproses...'
-                                      : 'Tunjuk Menang'}
-                                  </span>
-                                </button>
+                                {room.designatedWinnerId === winnerCandidate.player.id ? (
+                                  <button
+                                    type="button"
+                                    disabled={declaringWinnerKey !== null}
+                                    onClick={() => void handleConfirmDeclareWinner(room, null)}
+                                    className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-400 disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <span>
+                                      {declaringWinnerKey === `${room.code}:clear`
+                                        ? 'Memproses...'
+                                        : 'Batalkan Target'}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={declaringWinnerKey !== null}
+                                    onClick={() =>
+                                      void handleConfirmDeclareWinner(
+                                        room,
+                                        winnerCandidate.player.id,
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <Crown className="w-3.5 h-3.5" />
+                                    <span>
+                                      {declaringWinnerKey ===
+                                      `${room.code}:${winnerCandidate.player.id}`
+                                        ? 'Memproses...'
+                                        : 'Set Pemenang Rahasia'}
+                                    </span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   disabled={declaringWinnerKey !== null}

@@ -1,7 +1,9 @@
 import type { User } from 'firebase/auth';
 import {
   collection,
+  deleteDoc,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -83,6 +85,7 @@ export interface AdminRoomRecord {
   status: 'lobby' | 'playing' | 'finished';
   winnerId?: string | null;
   winningTeam?: 'A' | 'B' | null;
+  designatedWinnerId?: string | null;
   hostId: string;
   hostName: string;
   playerCount: number;
@@ -132,27 +135,34 @@ function toEpochMs(val: unknown): number {
   return 0;
 }
 
-export async function fetchAdminMembers(user: User): Promise<AdminMemberRecord[]> {
+export interface AdminMembersResult {
+  members: AdminMemberRecord[];
+  totalNetworkMembers: number;
+}
+
+export async function fetchAdminMembers(user: User): Promise<AdminMembersResult> {
   if (!isAdminAccount(user)) {
     throw new Error('Akses admin diperlukan untuk memuat daftar member.');
   }
   try {
-    const [usersSnap, publicSnap] = await Promise.all([
-      getDocs(query(collection(db, 'users'), limit(150))),
-      getDocs(query(collection(db, 'publicProfiles'), limit(150))),
+    const [usersCountSnap, publicCountSnap, usersSnap, publicSnap] = await Promise.all([
+      getCountFromServer(collection(db, 'users')).catch(() => null),
+      getCountFromServer(collection(db, 'publicProfiles')).catch(() => null),
+      getDocs(query(collection(db, 'users'), limit(500))),
+      getDocs(query(collection(db, 'publicProfiles'), limit(500))),
     ]);
 
-    const publicMap = new Map<string, boolean>();
+    const publicMap = new Map<string, Record<string, unknown>>();
     publicSnap.forEach((docSnap) => {
-      const data = docSnap.data();
-      publicMap.set(docSnap.id, Boolean(data.isPublic));
+      publicMap.set(docSnap.id, docSnap.data());
     });
 
-    const list: AdminMemberRecord[] = [];
+    const memberMap = new Map<string, AdminMemberRecord>();
     usersSnap.forEach((docSnap) => {
       const d = docSnap.data();
       const uid = String(d.uid || docSnap.id);
-      list.push({
+      const pubData = publicMap.get(uid);
+      memberMap.set(uid, {
         uid,
         email: String(d.email || '-'),
         displayName: String(d.displayName || 'Penjelajah Aether'),
@@ -179,13 +189,54 @@ export async function fetchAdminMembers(user: User): Promise<AdminMemberRecord[]
         tutorialCompleted: Boolean(d.tutorialCompleted),
         muted: Boolean(d.muted),
         selectedBoardId: typeof d.selectedBoardId === 'string' ? d.selectedBoardId : '-',
-        isPublic: publicMap.has(uid) ? Boolean(publicMap.get(uid)) : null,
+        isPublic: pubData ? Boolean(pubData.isPublic) : null,
         createdAtMs: toEpochMs(d.createdAt),
         updatedAtMs: toEpochMs(d.updatedAt),
       });
     });
 
-    return list.sort((a, b) => b.updatedAtMs - a.updatedAtMs || b.bestScore - a.bestScore);
+    // Include any verified network member that has a publicProfile even if their /users doc was deferred
+    publicMap.forEach((pubData, uid) => {
+      if (memberMap.has(uid)) return;
+      memberMap.set(uid, {
+        uid,
+        email: '(Profil Publik Jaringan)',
+        displayName: String(pubData.displayName || 'Penjelajah Aether'),
+        archetypeIndex: typeof pubData.archetypeIndex === 'number' ? pubData.archetypeIndex : 0,
+        diceSkinId: (typeof pubData.diceSkinId === 'string'
+          ? pubData.diceSkinId
+          : 'royal_obsidian') as DiceSkinId,
+        totalGames: typeof pubData.totalGames === 'number' ? pubData.totalGames : 0,
+        wins: typeof pubData.wins === 'number' ? pubData.wins : 0,
+        losses: 0,
+        bestScore: typeof pubData.bestScore === 'number' ? pubData.bestScore : 0,
+        fastestWinTurns: 0,
+        laddersClimbed: 0,
+        snakesBitten: 0,
+        shieldsUsed: 0,
+        specialTilesHit: 0,
+        onlineWins: typeof pubData.onlineWins === 'number' ? pubData.onlineWins : 0,
+        unlockedAchievements: [],
+        dailyStreak: 0,
+        loginStreak: 1,
+        lastLoginDate: '-',
+        tutorialCompleted: false,
+        muted: false,
+        selectedBoardId: '-',
+        isPublic: Boolean(pubData.isPublic),
+        createdAtMs: toEpochMs(pubData.createdAt),
+        updatedAtMs: toEpochMs(pubData.updatedAt),
+      });
+    });
+
+    const members = Array.from(memberMap.values()).sort(
+      (a, b) => b.updatedAtMs - a.updatedAtMs || b.bestScore - a.bestScore,
+    );
+    const serverUsersCount = usersCountSnap?.data().count ?? 0;
+    const serverPublicCount = publicCountSnap?.data().count ?? 0;
+    const totalNetworkMembers = Math.max(members.length, serverUsersCount, serverPublicCount);
+
+    return { members, totalNetworkMembers };
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'users');
   }
@@ -248,22 +299,112 @@ export async function fetchAdminServerOverview(user: User): Promise<AdminServerO
     throw new Error('Akses admin diperlukan.');
   }
   const token = await user.getIdToken();
-  const res = await fetch('/api/admin/overview', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  const payload = (await res.json().catch(() => ({}))) as Partial<AdminServerOverview> & {
+  const [apiRes, firestoreRoomsSnap] = await Promise.all([
+    fetch('/api/admin/overview', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+    getDocs(query(collection(db, 'activeRooms'), limit(120))).catch(() => null),
+  ]);
+
+  const payload = (await apiRes.json().catch(() => ({}))) as Partial<AdminServerOverview> & {
     error?: string;
   };
-  if (!res.ok) {
+  if (!apiRes.ok) {
     throw new Error(payload.error || 'Gagal memuat ringkasan server admin.');
   }
+
+  // Merge server-memory rooms + Firestore cross-network rooms deduplicated by code & host
+  const byCode = new Map<string, AdminRoomRecord>();
+  const serverRooms = Array.isArray(payload.rooms) ? payload.rooms : [];
+  for (const r of serverRooms) {
+    if (r && r.code) {
+      byCode.set(r.code.toUpperCase(), r);
+    }
+  }
+
+  const cutoffMs = Date.now() - 2 * 60 * 60 * 1000;
+  if (firestoreRoomsSnap) {
+    firestoreRoomsSnap.forEach((docSnap) => {
+      const d = docSnap.data();
+      const code = String(d.code || docSnap.id).trim().toUpperCase();
+      if (!code) return;
+      const updatedAt = toEpochMs(d.updatedAt) || Date.now();
+      if (updatedAt < cutoffMs) return;
+
+      const rawPlayers = Array.isArray(d.players) ? d.players : [];
+      const parsedPlayers: AdminRoomPlayer[] = rawPlayers.map((p: Record<string, unknown>) => ({
+        id: String(p.id || ''),
+        name: String(p.name || 'Pemain'),
+        archetypeIndex: typeof p.archetypeIndex === 'number' ? p.archetypeIndex : 0,
+        tile: typeof p.tile === 'number' ? p.tile : 1,
+        score: typeof p.score === 'number' ? p.score : 0,
+        shields: typeof p.shields === 'number' ? p.shields : 0,
+        connected: Boolean(p.connected),
+        ready: Boolean(p.ready),
+        pingMs: typeof p.pingMs === 'number' ? p.pingMs : 20,
+        team: p.team === 'B' ? 'B' : 'A',
+      }));
+
+      const existing = byCode.get(code);
+      if (!existing) {
+        byCode.set(code, {
+          code,
+          name: String(d.name || 'Arena Aether'),
+          isPublic: Boolean(d.isPublic),
+          boardMode: (['classic', 'battle', 'team', 'time_attack'].includes(String(d.boardMode))
+            ? d.boardMode
+            : 'classic') as BoardGameMode,
+          boardName: String(d.boardName || 'Papan Standar'),
+          themeId: String(d.themeId || 'enchanted_forest'),
+          status:
+            d.status === 'playing' || d.status === 'finished' ? d.status : 'lobby',
+          winnerId: typeof d.winnerId === 'string' && d.winnerId ? d.winnerId : null,
+          designatedWinnerId: null,
+          hostId: String(d.hostUid || parsedPlayers[0]?.id || ''),
+          hostName: String(d.hostName || parsedPlayers[0]?.name || 'Host'),
+          playerCount: parsedPlayers.length || Number(d.playerCount || 1),
+          maxPlayers: Number(d.maxPlayers || 4),
+          turnCount: Number(d.turnCount || 0),
+          chatCount: 0,
+          createdAt: toEpochMs(d.createdAt) || updatedAt,
+          updatedAt,
+          players: parsedPlayers,
+        });
+      } else if (parsedPlayers.length > existing.players.length) {
+        // Keep the fuller/newer participant roster while preserving server designatedWinnerId
+        byCode.set(code, {
+          ...existing,
+          players: parsedPlayers,
+          playerCount: parsedPlayers.length,
+          updatedAt: Math.max(existing.updatedAt, updatedAt),
+        });
+      }
+    });
+  }
+
+  // Deduplicate active rooms per hostId (keep the newest active room for any given host)
+  const dedupedByHost = new Map<string, AdminRoomRecord>();
+  const sortedRooms = Array.from(byCode.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  for (const r of sortedRooms) {
+    const hostKey = r.hostId || r.code;
+    if (!dedupedByHost.has(hostKey)) {
+      dedupedByHost.set(hostKey, r);
+    } else {
+      // Keep finished rooms separately if desired, or only keep latest active room per host
+      const kept = dedupedByHost.get(hostKey)!;
+      if (kept.status === 'finished' && r.status !== 'finished') {
+        dedupedByHost.set(hostKey, r);
+      }
+    }
+  }
+
   return {
     ok: true,
     serverTime: payload.serverTime ?? Date.now(),
     serverless: Boolean(payload.serverless),
-    rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
+    rooms: Array.from(dedupedByHost.values()).sort((a, b) => b.updatedAt - a.updatedAt),
     leaderboard: Array.isArray(payload.leaderboard) ? payload.leaderboard : [],
     cloudSyncCount: typeof payload.cloudSyncCount === 'number' ? payload.cloudSyncCount : 0,
     cloudSyncProfiles: Array.isArray(payload.cloudSyncProfiles)
@@ -281,6 +422,12 @@ export async function adminCloseRoom(user: User, roomCode: string): Promise<void
     },
   });
   const payload = (await res.json().catch(() => ({}))) as { error?: string };
+  // Also remove mirrored Firestore room document across the network
+  try {
+    await deleteDoc(doc(db, 'activeRooms', roomCode.trim().toUpperCase()));
+  } catch {
+    // ignore if already absent
+  }
   if (!res.ok) {
     throw new Error(payload.error || 'Gagal menutup room.');
   }
@@ -288,37 +435,66 @@ export async function adminCloseRoom(user: User, roomCode: string): Promise<void
 
 export async function adminDeclareRoomWinner(
   user: User,
-  roomCode: string,
-  playerId: string,
-): Promise<{ roomCode: string; winnerId: string; winnerName: string }> {
+  room: AdminRoomRecord,
+  playerId: string | null,
+): Promise<{ roomCode: string; designatedWinnerId: string | null; targetName: string | null }> {
   if (!isAdminAccount(user)) {
     throw new Error('Akses admin diperlukan.');
   }
   const token = await user.getIdToken();
+  const clear = !playerId;
+  const roomSnapshot = {
+    code: room.code,
+    name: room.name,
+    isPublic: room.isPublic,
+    boardMode: room.boardMode,
+    hostId: room.hostId,
+    status: room.status,
+    winnerId: room.winnerId ?? null,
+    winningTeam: room.winningTeam ?? null,
+    turnCount: room.turnCount,
+    players: room.players.map((p) => ({
+      ...p,
+      isAI: false,
+      color: '#f59e0b',
+      accentColor: '#fde68a',
+      turnsTaken: 0,
+      laddersClimbed: 0,
+      snakesBitten: 0,
+      specialTilesHit: 0,
+      shieldsUsed: 0,
+      battleHits: 0,
+    })),
+  };
+
   const res = await fetch(
-    `/api/admin/rooms/${encodeURIComponent(roomCode)}/declare-winner`,
+    `/api/admin/rooms/${encodeURIComponent(room.code)}/declare-winner`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ playerId }),
+      body: JSON.stringify({
+        playerId: playerId || '',
+        clear,
+        roomSnapshot,
+      }),
     },
   );
   const payload = (await res.json().catch(() => ({}))) as {
     error?: string;
     roomCode?: string;
-    winnerId?: string;
-    winnerName?: string;
+    designatedWinnerId?: string | null;
+    targetName?: string | null;
   };
   if (!res.ok) {
-    throw new Error(payload.error || 'Gagal menetapkan pemenang room.');
+    throw new Error(payload.error || 'Gagal menyimpan target pemenang room.');
   }
   return {
-    roomCode: payload.roomCode || roomCode,
-    winnerId: payload.winnerId || playerId,
-    winnerName: payload.winnerName || 'Pemain',
+    roomCode: payload.roomCode || room.code,
+    designatedWinnerId: payload.designatedWinnerId ?? null,
+    targetName: payload.targetName ?? null,
   };
 }
 
