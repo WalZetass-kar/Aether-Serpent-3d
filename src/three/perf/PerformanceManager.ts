@@ -196,13 +196,18 @@ export function probeDeviceCapabilities(): DeviceCapabilitiesReport {
   if (
     isSoftwareGl ||
     maxTextureSize <= 2048 ||
-    benchMs > 24 ||
-    (devMem !== null && devMem <= 2) ||
-    (isLegacyIntegratedGpu && (benchMs > 9 || (devMem !== null && devMem <= 4)))
+    benchMs > 18 ||
+    (devMem !== null && devMem <= 3) ||
+    (isLegacyIntegratedGpu && (benchMs > 7 || (devMem !== null && devMem <= 4))) ||
+    (isMobileDevice &&
+      ((devMem !== null && devMem <= 4) ||
+        cores <= 6 ||
+        benchMs > 4.2 ||
+        /Mali|Adreno\s*[3456]|PowerVR/i.test(gpuRenderer)))
   ) {
     recommendedTier = 'potato';
   } else if (isMobileDevice || isLegacyIntegratedGpu) {
-    // Keep Android & legacy Intel HD Graphics devices cool, responsive, and lightweight by default
+    // Keep all other smartphones & legacy Intel HD Graphics devices cool and lag-free by default
     recommendedTier = 'low';
   } else if (
     isStandardIntegratedGpu ||
@@ -292,7 +297,7 @@ export class AdaptivePerformanceManager {
   }
 
   public getEffectivePixelRatio(): number {
-    if (this.capabilities.isSoftwareGl) return 0.9;
+    if (this.capabilities.isSoftwareGl) return 0.75;
     const isMobileOrTabletViewport =
       typeof window !== 'undefined' &&
       (window.innerWidth < 1024 ||
@@ -300,21 +305,21 @@ export class AdaptivePerformanceManager {
     const tierCap =
       this.effectiveTier === 'potato'
         ? isMobileOrTabletViewport
-          ? 1.0
-          : 1.1
+          ? 0.85
+          : 1.0
         : this.effectiveTier === 'low'
           ? isMobileOrTabletViewport
-            ? 1.12
-            : 1.25
+            ? 0.96
+            : 1.15
           : this.effectiveTier === 'medium'
             ? isMobileOrTabletViewport
-              ? 1.22
-              : 1.4
+              ? 1.1
+              : 1.35
             : isMobileOrTabletViewport
-              ? 1.35
+              ? 1.25
               : 1.75;
     const baseDpr = Math.min(this.capabilities.devicePixelRatio || 1, tierCap);
-    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.72, tierCap);
+    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.6, tierCap);
   }
 
   public setPreset(preset: QualityPresetId, autoAdjust: boolean): { changed: boolean } {

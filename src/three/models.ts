@@ -445,13 +445,14 @@ export function createFantasySnake(
   const bodyMetalness =
     matFinish === 'metallic_drake' ? 0.82 : matFinish === 'crystalline' ? 0.55 : 0.38;
 
+  const isLowPbrTier = quality.tier === 'potato' || quality.tier === 'low';
   const bodyMaterial = new THREE.MeshStandardMaterial({
     map: scalePbr.map,
-    normalMap: scalePbr.normalMap,
+    normalMap: isLowPbrTier ? null : scalePbr.normalMap,
     normalScale: new THREE.Vector2(1.65, 1.65),
-    roughnessMap: scalePbr.roughnessMap,
-    aoMap: scalePbr.aoMap,
-    metalnessMap: scalePbr.metalnessMap ?? null,
+    roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : scalePbr.aoMap,
+    metalnessMap: isLowPbrTier ? null : (scalePbr.metalnessMap ?? null),
     aoMapIntensity: 0.92,
     roughness: bodyRoughness,
     metalness: bodyMetalness,
@@ -464,30 +465,32 @@ export function createFantasySnake(
   bodyMaterial.userData.uSwallowPos = { value: -1 };
   bodyMaterial.userData.uSwallowAmp = { value: 0 };
   bodyMaterial.userData.perpDir = { value: new THREE.Vector3(perp.x, 0, perp.z) };
-  bodyMaterial.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = bodyMaterial.userData.uTime;
-    shader.uniforms.uSwallowPos = bodyMaterial.userData.uSwallowPos;
-    shader.uniforms.uSwallowAmp = bodyMaterial.userData.uSwallowAmp;
-    shader.uniforms.uPerpDir = bodyMaterial.userData.perpDir;
-    shader.vertexShader =
-      'uniform float uTime;\nuniform float uSwallowPos;\nuniform float uSwallowAmp;\nuniform vec3 uPerpDir;\n' +
-      shader.vertexShader;
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      `
-      #include <begin_vertex>
-      float slitherEnv = sin(uv.x * 3.14159265);
-      float slitherWave = sin(uv.x * 16.0 - uTime * 3.2) * 0.14 * slitherEnv;
-      transformed += uPerpDir * slitherWave;
-      transformed.y += cos(uv.x * 12.0 - uTime * 2.6) * 0.045 * slitherEnv;
-      if (uSwallowAmp > 0.001) {
-        float distSw = abs(uv.x - uSwallowPos);
-        float bulge = exp(-pow(distSw / 0.085, 2.0)) * uSwallowAmp * (1.0 - uv.x * 0.45);
-        transformed += objectNormal * (bulge * 0.28);
-      }
-      `,
-    );
-  };
+  if (quality.tier !== 'potato') {
+    bodyMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = bodyMaterial.userData.uTime;
+      shader.uniforms.uSwallowPos = bodyMaterial.userData.uSwallowPos;
+      shader.uniforms.uSwallowAmp = bodyMaterial.userData.uSwallowAmp;
+      shader.uniforms.uPerpDir = bodyMaterial.userData.perpDir;
+      shader.vertexShader =
+        'uniform float uTime;\nuniform float uSwallowPos;\nuniform float uSwallowAmp;\nuniform vec3 uPerpDir;\n' +
+        shader.vertexShader;
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `
+        #include <begin_vertex>
+        float slitherEnv = sin(uv.x * 3.14159265);
+        float slitherWave = sin(uv.x * 16.0 - uTime * 3.2) * 0.14 * slitherEnv;
+        transformed += uPerpDir * slitherWave;
+        transformed.y += cos(uv.x * 12.0 - uTime * 2.6) * 0.045 * slitherEnv;
+        if (uSwallowAmp > 0.001) {
+          float distSw = abs(uv.x - uSwallowPos);
+          float bulge = exp(-pow(distSw / 0.085, 2.0)) * uSwallowAmp * (1.0 - uv.x * 0.45);
+          transformed += objectNormal * (bulge * 0.28);
+        }
+        `,
+      );
+    };
+  }
 
   const bodyRadiusAt = (t: number) => {
     let baseR = 0.2;
@@ -551,11 +554,11 @@ export function createFantasySnake(
   const bronzePbr = getBronzePbr(maxAnisotropy, Math.min(512, quality.pbrTexSize) as 256 | 512);
   const hornMat = new THREE.MeshStandardMaterial({
     color: palette.horn,
-    normalMap: bronzePbr.normalMap,
+    normalMap: isLowPbrTier ? null : bronzePbr.normalMap,
     normalScale: new THREE.Vector2(0.85, 0.85),
-    roughnessMap: bronzePbr.roughnessMap,
-    aoMap: bronzePbr.aoMap,
-    metalnessMap: bronzePbr.metalnessMap ?? null,
+    roughnessMap: isLowPbrTier ? null : bronzePbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : bronzePbr.aoMap,
+    metalnessMap: isLowPbrTier ? null : (bronzePbr.metalnessMap ?? null),
     aoMapIntensity: 0.78,
     roughness: 0.28,
     metalness: 0.84,
@@ -565,7 +568,9 @@ export function createFantasySnake(
   spineMat.userData.uSwallowPos = bodyMaterial.userData.uSwallowPos;
   spineMat.userData.uSwallowAmp = bodyMaterial.userData.uSwallowAmp;
   spineMat.userData.perpDir = bodyMaterial.userData.perpDir;
-  spineMat.onBeforeCompile = bodyMaterial.onBeforeCompile;
+  if (quality.tier !== 'potato') {
+    spineMat.onBeforeCompile = bodyMaterial.onBeforeCompile;
+  }
 
   // 3-tier Body & Dorsal Spine LOD
   const bodyLod = new THREE.LOD();
@@ -626,21 +631,21 @@ export function createFantasySnake(
 
   const craniumMat = new THREE.MeshStandardMaterial({
     map: scalePbr.map,
-    normalMap: scalePbr.normalMap,
+    normalMap: isLowPbrTier ? null : scalePbr.normalMap,
     normalScale: new THREE.Vector2(1.5, 1.5),
-    roughnessMap: scalePbr.roughnessMap,
-    aoMap: scalePbr.aoMap,
-    metalnessMap: scalePbr.metalnessMap ?? null,
+    roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : scalePbr.aoMap,
+    metalnessMap: isLowPbrTier ? null : (scalePbr.metalnessMap ?? null),
     aoMapIntensity: 0.88,
     roughness: bodyRoughness,
     metalness: bodyMetalness,
   });
   const bellyMat = new THREE.MeshStandardMaterial({
     color: palette.belly,
-    normalMap: scalePbr.normalMap,
+    normalMap: isLowPbrTier ? null : scalePbr.normalMap,
     normalScale: new THREE.Vector2(0.95, 0.95),
-    roughnessMap: scalePbr.roughnessMap,
-    aoMap: scalePbr.aoMap,
+    roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : scalePbr.aoMap,
     aoMapIntensity: 0.75,
     roughness: 0.52,
     metalness: 0.14,
@@ -653,6 +658,13 @@ export function createFantasySnake(
 
   const headDetail = quality.tier === 'potato' ? 1 : 2;
   const radialDetail = quality.tier === 'potato' ? 8 : 12;
+
+  const toNonIndexedGeo = (g: THREE.BufferGeometry): THREE.BufferGeometry => {
+    const out = g.index ? g.toNonIndexed() : g;
+    if (out !== g) g.dispose();
+    ensureUv2(out);
+    return out;
+  };
 
   const neckGeo = new THREE.SphereGeometry(0.188, radialDetail, Math.max(6, radialDetail - 4));
   neckGeo.scale(1.06, 0.92, 1.32);
@@ -673,7 +685,14 @@ export function createFantasySnake(
   const upperJawGroup = new THREE.Group();
   upperJawGroup.position.set(0, 0.02, 0.06);
 
-  const craniumGeo = new THREE.IcosahedronGeometry(0.23, headDetail);
+  // Merge static upper-jaw geometries by material role so 14 sub-meshes collapse into 5 draw calls!
+  const upperCraniumGeos: THREE.BufferGeometry[] = [];
+  const upperGulletGeos: THREE.BufferGeometry[] = [];
+  const upperHornGeos: THREE.BufferGeometry[] = [];
+  const upperEyeGeos: THREE.BufferGeometry[] = [];
+  const upperFangGeos: THREE.BufferGeometry[] = [];
+
+  const craniumGeo = toNonIndexedGeo(new THREE.IcosahedronGeometry(0.23, headDetail));
   const cPos = craniumGeo.attributes.position;
   for (let i = 0; i < cPos.count; i++) {
     const cx = cPos.getX(i);
@@ -684,13 +703,10 @@ export function createFantasySnake(
     cPos.setXYZ(i, cx * (1.12 * taper), cy * flatVentral, cz * 1.42);
   }
   craniumGeo.computeVertexNormals();
-  ensureUv2(craniumGeo);
-  const cranium = new THREE.Mesh(craniumGeo, craniumMat);
-  cranium.position.set(0, 0.07, 0.11);
-  cranium.castShadow = shadows;
-  upperJawGroup.add(cranium);
+  craniumGeo.translate(0, 0.07, 0.11);
+  upperCraniumGeos.push(craniumGeo);
 
-  const snoutGeo = new THREE.IcosahedronGeometry(0.15, headDetail);
+  const snoutGeo = toNonIndexedGeo(new THREE.IcosahedronGeometry(0.15, headDetail));
   const sPos = snoutGeo.attributes.position;
   for (let i = 0; i < sPos.count; i++) {
     const sx = sPos.getX(i);
@@ -700,18 +716,15 @@ export function createFantasySnake(
     sPos.setXYZ(i, sx * muzzleTaper, sy * (sy < 0 ? 0.45 : 0.72), sz * 1.55);
   }
   snoutGeo.computeVertexNormals();
-  ensureUv2(snoutGeo);
-  const snout = new THREE.Mesh(snoutGeo, craniumMat);
-  snout.position.set(0, 0.045, 0.34);
-  snout.castShadow = shadows;
-  upperJawGroup.add(snout);
+  snoutGeo.translate(0, 0.045, 0.34);
+  upperCraniumGeos.push(snoutGeo);
 
-  const upperPalate = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.36), gulletMat);
-  upperPalate.position.set(0, -0.005, 0.24);
-  upperJawGroup.add(upperPalate);
+  const palateGeo = toNonIndexedGeo(new THREE.BoxGeometry(0.18, 0.03, 0.36));
+  palateGeo.translate(0, -0.005, 0.24);
+  upperGulletGeos.push(palateGeo);
 
-  const upperFangGeo = new THREE.ConeGeometry(0.02, 0.105, 7);
-  upperFangGeo.rotateX(Math.PI);
+  const upperFangBaseGeo = new THREE.ConeGeometry(0.02, 0.105, 7);
+  upperFangBaseGeo.rotateX(Math.PI);
 
   [-1, 1].forEach((side) => {
     const hornCurve = new THREE.CatmullRomCurve3([
@@ -719,48 +732,93 @@ export function createFantasySnake(
       new THREE.Vector3(side * 0.22, 0.29, -0.14),
       new THREE.Vector3(side * 0.19, 0.41, -0.34),
     ]);
-    const hornGeo = createTaperedSplineGeometry(
-      hornCurve,
-      quality.tier === 'potato' ? 7 : 12,
-      quality.tier === 'potato' ? 6 : 8,
-      (t) => THREE.MathUtils.lerp(0.048, 0.008, t),
+    const hornGeo = toNonIndexedGeo(
+      createTaperedSplineGeometry(
+        hornCurve,
+        quality.tier === 'potato' ? 7 : 12,
+        quality.tier === 'potato' ? 6 : 8,
+        (t) => THREE.MathUtils.lerp(0.048, 0.008, t),
+      ),
     );
-    const horn = new THREE.Mesh(hornGeo, hornMat);
-    horn.castShadow = shadows;
-    upperJawGroup.add(horn);
+    upperHornGeos.push(hornGeo);
 
     const browCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(side * 0.125, 0.148, 0.08),
       new THREE.Vector3(side * 0.185, 0.162, 0.21),
       new THREE.Vector3(side * 0.142, 0.122, 0.34),
     ]);
-    const browMesh = new THREE.Mesh(
+    const browGeo = toNonIndexedGeo(
       createTaperedSplineGeometry(browCurve, 6, 5, (t) =>
         THREE.MathUtils.lerp(0.036, 0.018, t),
       ),
-      craniumMat,
     );
-    upperJawGroup.add(browMesh);
+    upperCraniumGeos.push(browGeo);
 
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.064, 12, 10), eyeMat);
-    eye.position.set(side * 0.195, 0.108, 0.215);
-    eye.rotation.y = side > 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
-    upperJawGroup.add(eye);
+    const eyeGeo = toNonIndexedGeo(new THREE.SphereGeometry(0.064, 12, 10));
+    eyeGeo.rotateY(side > 0 ? Math.PI * 0.42 : -Math.PI * 0.42);
+    eyeGeo.translate(side * 0.195, 0.108, 0.215);
+    upperEyeGeos.push(eyeGeo);
 
-    const nostrilRim = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.006, 5, 10), craniumMat);
-    nostrilRim.position.set(side * 0.055, 0.072, 0.49);
-    nostrilRim.rotation.set(-0.4, side * 0.5, 0);
-    upperJawGroup.add(nostrilRim);
+    if (quality.tier !== 'potato') {
+      const nostrilRimGeo = toNonIndexedGeo(new THREE.TorusGeometry(0.016, 0.006, 5, 10));
+      nostrilRimGeo.rotateY(side * 0.5);
+      nostrilRimGeo.rotateX(-0.4);
+      nostrilRimGeo.translate(side * 0.055, 0.072, 0.49);
+      upperCraniumGeos.push(nostrilRimGeo);
 
-    const nostrilHole = new THREE.Mesh(new THREE.SphereGeometry(0.012, 5, 5), gulletMat);
-    nostrilHole.position.set(side * 0.056, 0.07, 0.495);
-    upperJawGroup.add(nostrilHole);
+      const nostrilHoleGeo = toNonIndexedGeo(new THREE.SphereGeometry(0.012, 5, 5));
+      nostrilHoleGeo.translate(side * 0.056, 0.07, 0.495);
+      upperGulletGeos.push(nostrilHoleGeo);
+    }
 
-    const fang = new THREE.Mesh(upperFangGeo, ivoryMat);
-    fang.position.set(side * 0.085, -0.025, 0.44);
-    fang.rotation.x = -0.12;
-    upperJawGroup.add(fang);
+    const fangGeo = toNonIndexedGeo(upperFangBaseGeo.clone());
+    fangGeo.rotateX(-0.12);
+    fangGeo.translate(side * 0.085, -0.025, 0.44);
+    upperFangGeos.push(fangGeo);
   });
+  upperFangBaseGeo.dispose();
+
+  // Head model specific crest / hood ornament merged into its material group
+  if (headModel === 'crowned_cobra') {
+    const hoodGeo = toNonIndexedGeo(new THREE.CylinderGeometry(0.28, 0.14, 0.36, 10));
+    hoodGeo.scale(1.4, 0.28, 0.9);
+    hoodGeo.rotateX(Math.PI * 0.22);
+    hoodGeo.translate(0, 0.04, -0.05);
+    upperCraniumGeos.push(hoodGeo);
+  } else if (headModel === 'abyssal_wyrm') {
+    const finGeo = toNonIndexedGeo(new THREE.ConeGeometry(0.14, 0.42, 4));
+    finGeo.scale(0.3, 1.0, 1.2);
+    finGeo.rotateX(-0.35);
+    finGeo.translate(0, 0.28, -0.04);
+    upperHornGeos.push(finGeo);
+  }
+
+  const mergedCranium = BufferGeometryUtils.mergeGeometries(upperCraniumGeos, false);
+  upperCraniumGeos.forEach((g) => g.dispose());
+  ensureUv2(mergedCranium);
+  const craniumMesh = new THREE.Mesh(mergedCranium, craniumMat);
+  craniumMesh.castShadow = shadows;
+  upperJawGroup.add(craniumMesh);
+
+  const mergedUpperGullet = BufferGeometryUtils.mergeGeometries(upperGulletGeos, false);
+  upperGulletGeos.forEach((g) => g.dispose());
+  upperJawGroup.add(new THREE.Mesh(mergedUpperGullet, gulletMat));
+
+  const mergedHorns = BufferGeometryUtils.mergeGeometries(upperHornGeos, false);
+  upperHornGeos.forEach((g) => g.dispose());
+  ensureUv2(mergedHorns);
+  const hornsMesh = new THREE.Mesh(mergedHorns, hornMat);
+  hornsMesh.castShadow = shadows;
+  upperJawGroup.add(hornsMesh);
+
+  const mergedEyes = BufferGeometryUtils.mergeGeometries(upperEyeGeos, false);
+  upperEyeGeos.forEach((g) => g.dispose());
+  upperJawGroup.add(new THREE.Mesh(mergedEyes, eyeMat));
+
+  const mergedUpperFangs = BufferGeometryUtils.mergeGeometries(upperFangGeos, false);
+  upperFangGeos.forEach((g) => g.dispose());
+  upperJawGroup.add(new THREE.Mesh(mergedUpperFangs, ivoryMat));
+
   headGroup.add(upperJawGroup);
 
   const jawGroup = new THREE.Group();
@@ -776,12 +834,16 @@ export function createFantasySnake(
   lowerFloor.position.set(0, 0.005, 0.2);
   jawGroup.add(lowerFloor);
 
+  const lowerFangGeos: THREE.BufferGeometry[] = [];
   [-1, 1].forEach((side) => {
-    const lFang = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.072, 6), ivoryMat);
-    lFang.position.set(side * 0.072, 0.022, 0.41);
-    lFang.rotation.x = 0.14;
-    jawGroup.add(lFang);
+    const lfGeo = toNonIndexedGeo(new THREE.ConeGeometry(0.015, 0.072, 6));
+    lfGeo.rotateX(0.14);
+    lfGeo.translate(side * 0.072, 0.022, 0.41);
+    lowerFangGeos.push(lfGeo);
   });
+  const mergedLowerFangs = BufferGeometryUtils.mergeGeometries(lowerFangGeos, false);
+  lowerFangGeos.forEach((g) => g.dispose());
+  jawGroup.add(new THREE.Mesh(mergedLowerFangs, ivoryMat));
 
   const tongueShape = new THREE.Shape();
   tongueShape.moveTo(-0.022, 0);
@@ -802,23 +864,6 @@ export function createFantasySnake(
   jawGroup.add(tongueMesh);
   headGroup.add(jawGroup);
   headGroup.scale.setScalar(sizeScale);
-
-  // Head model specific crest / hood ornament
-  if (headModel === 'crowned_cobra') {
-    const hoodGeo = new THREE.CylinderGeometry(0.28, 0.14, 0.36, 10);
-    hoodGeo.scale(1.4, 0.28, 0.9);
-    const hoodMesh = new THREE.Mesh(hoodGeo, craniumMat);
-    hoodMesh.position.set(0, 0.04, -0.05);
-    hoodMesh.rotation.x = Math.PI * 0.22;
-    upperJawGroup.add(hoodMesh);
-  } else if (headModel === 'abyssal_wyrm') {
-    const finGeo = new THREE.ConeGeometry(0.14, 0.42, 4);
-    finGeo.scale(0.3, 1.0, 1.2);
-    const finMesh = new THREE.Mesh(finGeo, hornMat);
-    finMesh.position.set(0, 0.28, -0.04);
-    finMesh.rotation.x = -0.35;
-    upperJawGroup.add(finMesh);
-  }
 
   group.add(headGroup);
 
@@ -1179,33 +1224,36 @@ export function createSpecialShrineProp(type: SpecialTileType): THREE.Group {
   plinth.position.y = 0.04;
   group.add(plinth);
 
-  const brassCap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.025, 6), brassMat);
-  brassCap.position.y = 0.085;
-  group.add(brassCap);
+  const brassGeos: THREE.BufferGeometry[] = [];
+  const capGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.025, 6).toNonIndexed();
+  capGeo.translate(0, 0.085, 0);
+  brassGeos.push(capGeo);
 
-  const prongGeo = new THREE.ConeGeometry(0.022, 0.13, 5);
+  const prongBaseGeo = new THREE.ConeGeometry(0.022, 0.13, 5).toNonIndexed();
   for (let i = 0; i < 3; i++) {
     const angle = (i / 3) * Math.PI * 2;
-    const prong = new THREE.Mesh(prongGeo, brassMat);
-    prong.position.set(Math.cos(angle) * 0.11, 0.14, Math.sin(angle) * 0.11);
-    prong.rotation.z = Math.cos(angle) * 0.28;
-    prong.rotation.x = -Math.sin(angle) * 0.28;
-    group.add(prong);
+    const pg = prongBaseGeo.clone();
+    pg.rotateZ(Math.cos(angle) * 0.28);
+    pg.rotateX(-Math.sin(angle) * 0.28);
+    pg.translate(Math.cos(angle) * 0.11, 0.14, Math.sin(angle) * 0.11);
+    brassGeos.push(pg);
   }
+  prongBaseGeo.dispose();
+
+  const haloGeo = new THREE.TorusGeometry(0.2, 0.018, 6, 20).toNonIndexed();
+  haloGeo.rotateX(Math.PI / 2);
+  haloGeo.translate(0, 0.13, 0);
+  brassGeos.push(haloGeo);
+
+  const mergedBrass = BufferGeometryUtils.mergeGeometries(brassGeos, false);
+  brassGeos.forEach((g) => g.dispose());
+  group.add(new THREE.Mesh(mergedBrass, brassMat));
 
   const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.135, 0), gemMat);
   crystal.position.y = 0.29;
   crystal.scale.set(0.88, 1.25, 0.88);
   crystal.name = 'floatingCrystal';
   group.add(crystal);
-
-  const halo = new THREE.Mesh(
-    new THREE.TorusGeometry(0.2, 0.018, 6, 24),
-    brassMat,
-  );
-  halo.rotation.x = Math.PI / 2;
-  halo.position.y = 0.13;
-  group.add(halo);
 
   return group;
 }
@@ -1242,21 +1290,26 @@ export function createFantasyDice(
     emissive: new THREE.Color(tm.studEmissive),
     emissiveIntensity: tm.studEmissiveIntensity,
   });
-  const studGeo = new THREE.OctahedronGeometry(
+  const studBaseGeo = new THREE.OctahedronGeometry(
     skinId === 'celestial_core' || skinId === 'sovereign_gold' ? 0.088 : 0.075,
     0,
   );
+  const studGeos: THREE.BufferGeometry[] = [];
   for (const sx of [-1, 1]) {
     for (const sy of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const stud = new THREE.Mesh(studGeo, studMat);
-        stud.position.set(sx * 0.48, sy * 0.48, sz * 0.48);
-        group.add(stud);
+        const sg = studBaseGeo.clone();
+        sg.translate(sx * 0.48, sy * 0.48, sz * 0.48);
+        studGeos.push(sg);
       }
     }
   }
+  studBaseGeo.dispose();
+  const mergedStuds = BufferGeometryUtils.mergeGeometries(studGeos, false);
+  studGeos.forEach((g) => g.dispose());
+  group.add(new THREE.Mesh(mergedStuds, studMat));
 
-  // Custom skin 3D energy/trim rings on the 6 faces
+  // Custom skin 3D energy/trim rings on the 6 faces (merged into 1 draw call!)
   if (skinId !== 'royal_obsidian') {
     const ringMat = new THREE.MeshStandardMaterial({
       color: tm.ringColor,
@@ -1265,7 +1318,7 @@ export function createFantasyDice(
       emissive: new THREE.Color(tm.ringColor),
       emissiveIntensity: 0.45,
     });
-    const ringGeo = new THREE.RingGeometry(0.42, 0.465, 24);
+    const ringBaseGeo = new THREE.RingGeometry(0.42, 0.465, 24);
     const ringRots: Array<[[number, number, number], [number, number, number]]> = [
       [[0, 0.598, 0], [-Math.PI / 2, 0, 0]],
       [[0, -0.598, 0], [Math.PI / 2, 0, 0]],
@@ -1274,12 +1327,19 @@ export function createFantasyDice(
       [[0.598, 0, 0], [0, Math.PI / 2, 0]],
       [[-0.598, 0, 0], [0, -Math.PI / 2, 0]],
     ];
+    const ringGeos: THREE.BufferGeometry[] = [];
     for (const [pos, rot] of ringRots) {
-      const rMesh = new THREE.Mesh(ringGeo, ringMat);
-      rMesh.position.set(...pos);
-      rMesh.rotation.set(...rot);
-      group.add(rMesh);
+      const rg = ringBaseGeo.clone();
+      rg.rotateX(rot[0]);
+      rg.rotateY(rot[1]);
+      rg.rotateZ(rot[2]);
+      rg.translate(pos[0], pos[1], pos[2]);
+      ringGeos.push(rg);
     }
+    ringBaseGeo.dispose();
+    const mergedRings = BufferGeometryUtils.mergeGeometries(ringGeos, false);
+    ringGeos.forEach((g) => g.dispose());
+    group.add(new THREE.Mesh(mergedRings, ringMat));
   }
 
   const faceConfigs: Array<{
@@ -1393,13 +1453,14 @@ export function buildBeveledStoneBoard(
           : 0.68;
   const plinthMetalness = boardMatFinish === 'metallic' ? 0.65 : boardMatFinish === 'glossy' ? 0.25 : 0.18;
 
+  const isLowBoardTier = quality.tier === 'potato' || quality.tier === 'low';
   const plinthMat = new THREE.MeshStandardMaterial({
     map: stonePlinthPbr.map,
-    normalMap: stonePlinthPbr.normalMap,
+    normalMap: isLowBoardTier ? null : stonePlinthPbr.normalMap,
     normalScale: new THREE.Vector2(1.3, 1.3),
-    roughnessMap: stonePlinthPbr.roughnessMap,
-    aoMap: stonePlinthPbr.aoMap,
-    metalnessMap: stonePlinthPbr.metalnessMap ?? null,
+    roughnessMap: isLowBoardTier ? null : stonePlinthPbr.roughnessMap,
+    aoMap: isLowBoardTier ? null : stonePlinthPbr.aoMap,
+    metalnessMap: isLowBoardTier ? null : (stonePlinthPbr.metalnessMap ?? null),
     aoMapIntensity: 0.88,
     color: primaryBoardColor.clone().offsetHSL(0, 0, 0.14),
     roughness: plinthRoughness,
@@ -1432,9 +1493,9 @@ export function buildBeveledStoneBoard(
 
   const bronzeMat = new THREE.MeshStandardMaterial({
     color: secondaryBoardColor,
-    normalMap: bronzePbr.normalMap,
+    normalMap: isLowBoardTier ? null : bronzePbr.normalMap,
     normalScale: new THREE.Vector2(0.8, 0.8),
-    roughnessMap: bronzePbr.roughnessMap,
+    roughnessMap: isLowBoardTier ? null : bronzePbr.roughnessMap,
     roughness: 0.28,
     metalness: 0.88,
   });
@@ -1444,19 +1505,26 @@ export function buildBeveledStoneBoard(
   goldBezel.position.y = -0.345;
   boardGroup.add(goldBezel);
 
-  // Carved Corner Bronze Clasps on the Board Plinth
-  const claspGeo = new THREE.BoxGeometry(1.1, 0.62, 1.1);
+  // Carved Corner Bronze Clasps on the Board Plinth (merged into 1 draw call)
+  const claspBaseGeo = new THREE.BoxGeometry(1.1, 0.62, 1.1);
+  const claspGeos: THREE.BufferGeometry[] = [];
   [
     [-1, -1],
     [1, -1],
     [-1, 1],
     [1, 1],
   ].forEach(([sx, sz]) => {
-    const clasp = new THREE.Mesh(claspGeo, bronzeMat);
-    clasp.position.set(sx * (boardSpan * 0.5 + 0.45), -0.33, sz * (boardSpan * 0.5 + 0.45));
-    clasp.castShadow = shadows;
-    boardGroup.add(clasp);
+    const cg = claspBaseGeo.clone();
+    cg.translate(sx * (boardSpan * 0.5 + 0.45), -0.33, sz * (boardSpan * 0.5 + 0.45));
+    ensureUv2(cg);
+    claspGeos.push(cg);
   });
+  claspBaseGeo.dispose();
+  const mergedClasps = BufferGeometryUtils.mergeGeometries(claspGeos, false);
+  claspGeos.forEach((g) => g.dispose());
+  const claspsMesh = new THREE.Mesh(mergedClasps, bronzeMat);
+  claspsMesh.castShadow = shadows;
+  boardGroup.add(claspsMesh);
 
   const mortarBed = new THREE.Mesh(
     new THREE.BoxGeometry(boardSpan + 0.08, 0.16, boardSpan + 0.08),
@@ -1523,11 +1591,11 @@ export function buildBeveledStoneBoard(
   const tileMetalness = tileMatFinish === 'metallic' ? 0.75 : tileMatFinish === 'glossy' ? 0.36 : 0.28;
 
   const stoneBaseMat = new THREE.MeshStandardMaterial({
-    normalMap: stonePlinthPbr.normalMap,
+    normalMap: isLowBoardTier ? null : stonePlinthPbr.normalMap,
     normalScale: new THREE.Vector2(1.15, 1.15),
-    roughnessMap: stonePlinthPbr.roughnessMap,
-    aoMap: stonePlinthPbr.aoMap,
-    metalnessMap: stonePlinthPbr.metalnessMap ?? null,
+    roughnessMap: isLowBoardTier ? null : stonePlinthPbr.roughnessMap,
+    aoMap: isLowBoardTier ? null : stonePlinthPbr.aoMap,
+    metalnessMap: isLowBoardTier ? null : (stonePlinthPbr.metalnessMap ?? null),
     aoMapIntensity: 0.82,
     color: 0xffffff,
     roughness: tileRoughness,
@@ -1598,11 +1666,11 @@ export function buildBeveledStoneBoard(
   const tileEffect = tConfig?.visualEffect ?? 'subtle_rune_glow';
   const atlasMat = new THREE.MeshStandardMaterial({
     map: boardTilePbr.map,
-    normalMap: boardTilePbr.normalMap,
+    normalMap: quality.tier === 'potato' ? null : boardTilePbr.normalMap,
     normalScale: new THREE.Vector2(1.45, 1.45),
-    roughnessMap: boardTilePbr.roughnessMap,
-    aoMap: boardTilePbr.aoMap,
-    metalnessMap: boardTilePbr.metalnessMap ?? null,
+    roughnessMap: isLowBoardTier ? null : boardTilePbr.roughnessMap,
+    aoMap: isLowBoardTier ? null : boardTilePbr.aoMap,
+    metalnessMap: isLowBoardTier ? null : (boardTilePbr.metalnessMap ?? null),
     aoMapIntensity: 0.88,
     roughness: tileRoughness,
     metalness: tileMetalness,
@@ -1648,31 +1716,43 @@ export function buildBeveledStoneBoard(
   crownRing.position.set(finishPos.x, 0.05, finishPos.z);
   boardGroup.add(crownRing);
 
-  const cornerPillarGeo = new THREE.CylinderGeometry(0.035, 0.055, 0.26, 6);
-  const finialGemGeo = new THREE.OctahedronGeometry(0.055, 0);
-  const finialGemMat = new THREE.MeshPhysicalMaterial({
+  const cornerPillarBaseGeo = new THREE.CylinderGeometry(0.035, 0.055, 0.26, 6);
+  const finialGemBaseGeo = new THREE.OctahedronGeometry(0.055, 0);
+  const finialGemMat = new THREE.MeshStandardMaterial({
     color: 0xfef08a,
     emissive: secondaryBoardColor,
     emissiveIntensity: 0.55,
-    roughness: 0.14,
-    metalness: 0.2,
-    clearcoat: quality.tier === 'potato' ? 0.0 : 1.0,
+    roughness: 0.16,
+    metalness: 0.25,
   });
+  const finishPillarGeos: THREE.BufferGeometry[] = [];
+  const finishGemGeos: THREE.BufferGeometry[] = [];
   [
     [-0.58, -0.58],
     [0.58, -0.58],
     [-0.58, 0.58],
     [0.58, 0.58],
   ].forEach(([ox, oz]) => {
-    const pillar = new THREE.Mesh(cornerPillarGeo, bronzeMat);
-    pillar.position.set(finishPos.x + ox, 0.14, finishPos.z + oz);
-    pillar.castShadow = shadows;
-    boardGroup.add(pillar);
+    const pg = cornerPillarBaseGeo.clone();
+    pg.translate(finishPos.x + ox, 0.14, finishPos.z + oz);
+    ensureUv2(pg);
+    finishPillarGeos.push(pg);
 
-    const gem = new THREE.Mesh(finialGemGeo, finialGemMat);
-    gem.position.set(finishPos.x + ox, 0.31, finishPos.z + oz);
-    boardGroup.add(gem);
+    const gg = finialGemBaseGeo.clone();
+    gg.translate(finishPos.x + ox, 0.31, finishPos.z + oz);
+    finishGemGeos.push(gg);
   });
+  cornerPillarBaseGeo.dispose();
+  finialGemBaseGeo.dispose();
+  const mergedFinishPillars = BufferGeometryUtils.mergeGeometries(finishPillarGeos, false);
+  finishPillarGeos.forEach((g) => g.dispose());
+  const finishPillarsMesh = new THREE.Mesh(mergedFinishPillars, bronzeMat);
+  finishPillarsMesh.castShadow = shadows;
+  boardGroup.add(finishPillarsMesh);
+
+  const mergedFinishGems = BufferGeometryUtils.mergeGeometries(finishGemGeos, false);
+  finishGemGeos.forEach((g) => g.dispose());
+  boardGroup.add(new THREE.Mesh(mergedFinishGems, finialGemMat));
 
   if (quality.lodBias !== 1) {
     applyLodBiasToGroup(boardGroup, quality.lodBias);

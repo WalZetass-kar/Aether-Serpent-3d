@@ -481,10 +481,15 @@ export class MainMenuEngine {
         this.applyActiveQuality();
       }
 
+      const tier = this.perf.getQualityConfig().tier;
       if (this.isSoftwareGl) {
         afterDraw(tick);
       } else if (this.backgroundThrottled) {
         this.frameId = window.setTimeout(tick, 90);
+      } else if (tier === 'potato') {
+        this.frameId = window.setTimeout(tick, 32);
+      } else if (tier === 'low') {
+        this.frameId = window.setTimeout(tick, 22);
       } else {
         this.frameId = requestAnimationFrame(tick);
       }

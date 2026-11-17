@@ -1020,9 +1020,30 @@ export function buildSkyAtmosphere(
 
   applySpec(boardConfig);
 
+  // Bake initial 3D cloud puff matrices once so update() can orbit all puffs via a single GPU rotation!
+  let initPuffIdx = 0;
+  for (let c = 0; c < cloudClusters.length; c++) {
+    const cl = cloudClusters[c];
+    const baseAngle = cl.angle;
+    const cx = Math.cos(baseAngle) * cl.radius;
+    const cz = Math.sin(baseAngle) * cl.radius;
+
+    for (let p = 0; p < cl.puffs.length; p++) {
+      const pf = cl.puffs[p];
+      _vec3.set(cx + pf.ox, cl.y + pf.oy, cz + pf.oz);
+      _euler.set(0, -baseAngle, 0);
+      _quat.setFromEuler(_euler);
+      _scaleVec.set(pf.sx, pf.sy, pf.sz);
+      _mat4.compose(_vec3, _quat, _scaleVec);
+      cloudInst.setMatrixAt(initPuffIdx++, _mat4);
+    }
+  }
+  cloudInst.instanceMatrix.needsUpdate = true;
+
   // ---------------------------------------------------------------------------
   // Zero-GC Per-Frame Update
   // ---------------------------------------------------------------------------
+  let lastBirdUpdate = -10;
   const update = (elapsed: number, reducedEffects: boolean) => {
     skyMat.uniforms.uTime.value = elapsed;
     starMat.uniforms.uTime.value = elapsed;
@@ -1033,28 +1054,13 @@ export function buildSkyAtmosphere(
       sunHaloSprite.scale.set(22 * sunPulse, 22 * sunPulse, 1);
     }
 
-    // Drift 3D fluffy clouds around the sky
-    let puffIdx = 0;
-    for (let c = 0; c < cloudClusters.length; c++) {
-      const cl = cloudClusters[c];
-      const baseAngle = cl.angle + elapsed * cl.speed;
-      const cx = Math.cos(baseAngle) * cl.radius;
-      const cz = Math.sin(baseAngle) * cl.radius;
+    // Drift 3D fluffy clouds around the sky via GPU group rotation (zero CPU matrix math!)
+    cloudInst.rotation.y = elapsed * 0.011;
 
-      for (let p = 0; p < cl.puffs.length; p++) {
-        const pf = cl.puffs[p];
-        _vec3.set(cx + pf.ox, cl.y + pf.oy, cz + pf.oz);
-        _euler.set(0, -baseAngle, 0);
-        _quat.setFromEuler(_euler);
-        _scaleVec.set(pf.sx, pf.sy, pf.sz);
-        _mat4.compose(_vec3, _quat, _scaleVec);
-        cloudInst.setMatrixAt(puffIdx++, _mat4);
-      }
-    }
-    cloudInst.instanceMatrix.needsUpdate = true;
-
-    // Soaring sky birds (Day / Sunset)
-    if (leftWingInst.visible) {
+    // Soaring sky birds (Day / Sunset) — throttled on potato/low tiers
+    const birdStep = reducedEffects || quality.tier === 'potato' ? 0.08 : quality.tier === 'low' ? 0.04 : 0;
+    if (leftWingInst.visible && (birdStep === 0 || elapsed - lastBirdUpdate >= birdStep)) {
+      lastBirdUpdate = elapsed;
       for (let b = 0; b < birdCount; b++) {
         const orbitAngle = elapsed * (0.14 + (b % 3) * 0.025) + b * 0.72;
         const r = 24 + (b % 4) * 4.5;

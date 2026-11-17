@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -300,11 +301,13 @@ export class FantasyBoardEngine {
 
     // Stage 1 (14%): Lighting & IBL Atmosphere
     this.options.onBuildProgress?.(0.14, 'Menyiapkan pencahayaan & atmosfer langit...');
-    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-    this.envMap = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environment = this.envMap;
-    this.scene.environmentIntensity = cfg.tier === 'potato' ? 0.82 : 0.96;
-    pmremGenerator.dispose();
+    if (!this.isSoftwareGl) {
+      const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+      this.envMap = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+      this.scene.environment = cfg.tier === 'potato' ? null : this.envMap;
+      this.scene.environmentIntensity = cfg.tier === 'potato' ? 0.82 : 0.96;
+      pmremGenerator.dispose();
+    }
 
     this.setupLighting(cfg);
     await this.yieldFrame();
@@ -860,21 +863,33 @@ export class FantasyBoardEngine {
     innerRuneRing.position.y = 0.43;
     daisGroup.add(innerRuneRing);
 
-    const pillarGeo = new THREE.CylinderGeometry(0.05, 0.075, 0.34, 6);
-    const tipGeo = new THREE.OctahedronGeometry(0.06, 0);
+    const pillarBaseGeo = new THREE.CylinderGeometry(0.05, 0.075, 0.34, 6);
+    const tipBaseGeo = new THREE.OctahedronGeometry(0.06, 0);
+    const pillarGeos: THREE.BufferGeometry[] = [];
+    const tipGeos: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 8; i++) {
       const angle = (i / 8) * Math.PI * 2 + Math.PI / 8;
       const px = Math.cos(angle) * 1.62;
       const pz = Math.sin(angle) * 1.62;
-      const pillar = new THREE.Mesh(pillarGeo, goldMat);
-      pillar.position.set(px, 0.36, pz);
-      pillar.castShadow = cast && !cfg.shadowImportantOnly;
-      daisGroup.add(pillar);
+      const pg = pillarBaseGeo.clone();
+      pg.translate(px, 0.36, pz);
+      pillarGeos.push(pg);
 
-      const tip = new THREE.Mesh(tipGeo, arcaneMat);
-      tip.position.set(px, 0.58, pz);
-      daisGroup.add(tip);
+      const tg = tipBaseGeo.clone();
+      tg.translate(px, 0.58, pz);
+      tipGeos.push(tg);
     }
+    pillarBaseGeo.dispose();
+    tipBaseGeo.dispose();
+    const mergedPillars = BufferGeometryUtils.mergeGeometries(pillarGeos, false);
+    pillarGeos.forEach((g) => g.dispose());
+    const pillarsMesh = new THREE.Mesh(mergedPillars, goldMat);
+    pillarsMesh.castShadow = cast && !cfg.shadowImportantOnly;
+    daisGroup.add(pillarsMesh);
+
+    const mergedTips = BufferGeometryUtils.mergeGeometries(tipGeos, false);
+    tipGeos.forEach((g) => g.dispose());
+    daisGroup.add(new THREE.Mesh(mergedTips, arcaneMat));
 
     this.scene.add(daisGroup);
   }
@@ -892,6 +907,12 @@ export class FantasyBoardEngine {
     const pr = this.perf.getEffectivePixelRatio();
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(width, height);
+
+    if (cfg.tier === 'potato' || this.isSoftwareGl) {
+      this.scene.environment = null;
+    } else if (this.envMap) {
+      this.scene.environment = this.envMap;
+    }
 
     const shadows = cfg.shadowsEnabled && !this.isSoftwareGl;
     this.renderer.shadowMap.enabled = shadows;
@@ -1523,6 +1544,11 @@ export class FantasyBoardEngine {
 
       if (this.isSoftwareGl) {
         afterDraw(tick);
+      } else if (
+        this.perf.getQualityConfig().tier === 'potato' &&
+        (this.sequenceController?.getState() ?? 'idle') === 'idle'
+      ) {
+        this.frameId = window.setTimeout(tick, 30);
       } else {
         this.frameId = requestAnimationFrame(tick);
       }

@@ -325,12 +325,13 @@ export function buildArenaEnvironment(
   }
   terrainGeo.setAttribute('color', new THREE.BufferAttribute(tColors, 3));
 
+  const isLowPbrTier = quality.tier === 'potato' || quality.tier === 'low';
   const terrainMat = new THREE.MeshStandardMaterial({
     map: terrainPbr.map,
-    normalMap: terrainPbr.normalMap,
+    normalMap: isLowPbrTier ? null : terrainPbr.normalMap,
     normalScale: new THREE.Vector2(1.4, 1.4),
-    roughnessMap: terrainPbr.roughnessMap,
-    aoMap: terrainPbr.aoMap,
+    roughnessMap: isLowPbrTier ? null : terrainPbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : terrainPbr.aoMap,
     aoMapIntensity: 0.9,
     vertexColors: true,
     roughness: themeId === 'frozen_kingdom' ? 0.52 : 0.88,
@@ -351,70 +352,81 @@ export function buildArenaEnvironment(
     quality.tier === 'potato' ? 36 : 64,
     quality.tier === 'potato' ? 2 : 5,
   );
-  const waterMat = new THREE.MeshPhysicalMaterial({
-    map: moatTex,
-    color: biome.moatBaseHex,
-    roughness: isLavaTheme ? 0.32 : 0.09,
-    metalness: isLavaTheme ? 0.08 : 0.14,
-    emissive: isLavaTheme ? new THREE.Color(0xdc2626) : new THREE.Color(0x000000),
-    emissiveIntensity: isLavaTheme ? 0.55 : 0,
-    clearcoat:
-      isSoftwareGl || quality.tier === 'potato' || quality.tier === 'low' || isLavaTheme
-        ? 0.15
-        : 1.0,
-    clearcoatRoughness: 0.06,
-    transparent: true,
-    opacity: 0.92,
-  });
+  const waterMat =
+    quality.tier === 'potato' || quality.tier === 'low' || isSoftwareGl
+      ? new THREE.MeshStandardMaterial({
+          map: moatTex,
+          color: biome.moatBaseHex,
+          roughness: isLavaTheme ? 0.32 : 0.14,
+          metalness: isLavaTheme ? 0.08 : 0.18,
+          emissive: isLavaTheme ? new THREE.Color(0xdc2626) : new THREE.Color(0x000000),
+          emissiveIntensity: isLavaTheme ? 0.55 : 0,
+          transparent: true,
+          opacity: 0.92,
+        })
+      : new THREE.MeshPhysicalMaterial({
+          map: moatTex,
+          color: biome.moatBaseHex,
+          roughness: isLavaTheme ? 0.32 : 0.09,
+          metalness: isLavaTheme ? 0.08 : 0.14,
+          emissive: isLavaTheme ? new THREE.Color(0xdc2626) : new THREE.Color(0x000000),
+          emissiveIntensity: isLavaTheme ? 0.55 : 0,
+          clearcoat: isLavaTheme ? 0.15 : 1.0,
+          clearcoatRoughness: 0.06,
+          transparent: true,
+          opacity: 0.92,
+        });
 
   const [mdR, mdG, mdB] = biome.moatDeep;
   const [msR, msG, msB] = biome.moatShallow;
   const [mfR, mfG, mfB] = biome.moatFoam;
 
-  waterMat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = uTime;
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-         uniform float uTime;
-         varying vec3 vArenaWaterWorld;`,
-      )
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-         vec4 wp0 = modelMatrix * vec4(transformed, 1.0);
-         float ang = atan(wp0.z, wp0.x);
-         float rD = length(wp0.xz);
-         float wave = sin(ang * 10.0 + uTime * 2.1) * 0.035 + cos(rD * 2.8 - uTime * 2.7) * 0.024;
-         transformed.z += wave;
-         vArenaWaterWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
-      );
+  if (quality.tier !== 'potato') {
+    waterMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = uTime;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform float uTime;
+           varying vec3 vArenaWaterWorld;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           vec4 wp0 = modelMatrix * vec4(transformed, 1.0);
+           float ang = atan(wp0.z, wp0.x);
+           float rD = length(wp0.xz);
+           float wave = sin(ang * 10.0 + uTime * 2.1) * 0.035 + cos(rD * 2.8 - uTime * 2.7) * 0.024;
+           transformed.z += wave;
+           vArenaWaterWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+        );
 
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-         uniform float uTime;
-         varying vec3 vArenaWaterWorld;`,
-      )
-      .replace(
-        '#include <color_fragment>',
-        `#include <color_fragment>
-         float w1 = sin(vArenaWaterWorld.x * 4.2 + uTime * 2.4 + cos(vArenaWaterWorld.z * 2.8)) * 0.5 + 0.5;
-         float w2 = cos(vArenaWaterWorld.z * 5.1 - uTime * 2.9 + sin(vArenaWaterWorld.x * 2.5)) * 0.5 + 0.5;
-         float caustic = pow(w1 * w2, 2.4) * 0.26;
-         vec3 deepCol = vec3(${mdR.toFixed(3)}, ${mdG.toFixed(3)}, ${mdB.toFixed(3)});
-         vec3 shallowCol = vec3(${msR.toFixed(3)}, ${msG.toFixed(3)}, ${msB.toFixed(3)});
-         vec3 foamCol = vec3(${mfR.toFixed(3)}, ${mfG.toFixed(3)}, ${mfB.toFixed(3)});
-         diffuseColor.rgb = mix(deepCol, shallowCol, 0.38 + caustic);
-         diffuseColor.rgb += shallowCol * caustic;
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform float uTime;
+           varying vec3 vArenaWaterWorld;`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+           float w1 = sin(vArenaWaterWorld.x * 4.2 + uTime * 2.4 + cos(vArenaWaterWorld.z * 2.8)) * 0.5 + 0.5;
+           float w2 = cos(vArenaWaterWorld.z * 5.1 - uTime * 2.9 + sin(vArenaWaterWorld.x * 2.5)) * 0.5 + 0.5;
+           float caustic = pow(w1 * w2, 2.4) * 0.26;
+           vec3 deepCol = vec3(${mdR.toFixed(3)}, ${mdG.toFixed(3)}, ${mdB.toFixed(3)});
+           vec3 shallowCol = vec3(${msR.toFixed(3)}, ${msG.toFixed(3)}, ${msB.toFixed(3)});
+           vec3 foamCol = vec3(${mfR.toFixed(3)}, ${mfG.toFixed(3)}, ${mfB.toFixed(3)});
+           diffuseColor.rgb = mix(deepCol, shallowCol, 0.38 + caustic);
+           diffuseColor.rgb += shallowCol * caustic;
 
-         float dPlunge = length(vArenaWaterWorld.xz - vec2(0.0, -17.4));
-         float foam = exp(-dPlunge * 0.45) * (0.55 + 0.45 * sin(dPlunge * 6.0 - uTime * 5.0));
-         diffuseColor.rgb = mix(diffuseColor.rgb, foamCol, clamp(foam, 0.0, 0.85));`,
-      );
-  };
+           float dPlunge = length(vArenaWaterWorld.xz - vec2(0.0, -17.4));
+           float foam = exp(-dPlunge * 0.45) * (0.55 + 0.45 * sin(dPlunge * 6.0 - uTime * 5.0));
+           diffuseColor.rgb = mix(diffuseColor.rgb, foamCol, clamp(foam, 0.0, 0.85));`,
+        );
+    };
+  }
   disposableGeos.push(waterGeo);
   disposableMats.push(waterMat);
   const waterMesh = new THREE.Mesh(waterGeo, waterMat);
@@ -506,10 +518,10 @@ export function buildArenaEnvironment(
   // 6. Theme-Specific 3D Sanctuary Corner, Perimeter Landmarks & Surrounding Fantasy Buildings
   const ashlarMat = new THREE.MeshStandardMaterial({
     map: stonePbr.map,
-    normalMap: stonePbr.normalMap,
+    normalMap: isLowPbrTier ? null : stonePbr.normalMap,
     normalScale: new THREE.Vector2(1.45, 1.45),
-    roughnessMap: stonePbr.roughnessMap,
-    aoMap: stonePbr.aoMap,
+    roughnessMap: isLowPbrTier ? null : stonePbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : stonePbr.aoMap,
     aoMapIntensity: 0.9,
     color:
       decorationStyle === 'desert_pyramids'
@@ -524,10 +536,10 @@ export function buildArenaEnvironment(
   });
   const slateRoofMat = new THREE.MeshStandardMaterial({
     map: slatePbr.map,
-    normalMap: slatePbr.normalMap,
+    normalMap: isLowPbrTier ? null : slatePbr.normalMap,
     normalScale: new THREE.Vector2(1.35, 1.35),
-    roughnessMap: slatePbr.roughnessMap,
-    aoMap: slatePbr.aoMap,
+    roughnessMap: isLowPbrTier ? null : slatePbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : slatePbr.aoMap,
     aoMapIntensity: 0.88,
     color:
       themeId === 'dragon_volcano'
@@ -544,10 +556,10 @@ export function buildArenaEnvironment(
   });
   const timberBeamMat = new THREE.MeshStandardMaterial({
     map: timberPbr.map,
-    normalMap: timberPbr.normalMap,
+    normalMap: isLowPbrTier ? null : timberPbr.normalMap,
     normalScale: new THREE.Vector2(1.35, 1.35),
-    roughnessMap: timberPbr.roughnessMap,
-    aoMap: timberPbr.aoMap,
+    roughnessMap: isLowPbrTier ? null : timberPbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : timberPbr.aoMap,
     aoMapIntensity: 0.88,
     color: 0xb47b48,
     roughness: 0.72,
@@ -1148,10 +1160,10 @@ export function buildArenaEnvironment(
   // 8. Multi-Ring Realistic LOD Trees (34 Ancient Oaks & Highland Pines) + Instanced Ferns & Grass
   const barkMat = new THREE.MeshStandardMaterial({
     map: barkPbr.map,
-    normalMap: barkPbr.normalMap,
+    normalMap: isLowPbrTier ? null : barkPbr.normalMap,
     normalScale: new THREE.Vector2(1.65, 1.65),
-    roughnessMap: barkPbr.roughnessMap,
-    aoMap: barkPbr.aoMap,
+    roughnessMap: isLowPbrTier ? null : barkPbr.roughnessMap,
+    aoMap: isLowPbrTier ? null : barkPbr.aoMap,
     aoMapIntensity: 0.9,
     color: themeId === 'frozen_kingdom' ? 0xcbd5e1 : 0xd6d3d1,
     roughness: 0.86,
@@ -1167,7 +1179,7 @@ export function buildArenaEnvironment(
           : 0xffffff;
   const leafMat = new THREE.MeshStandardMaterial({
     map: foliageAtlas.map,
-    normalMap: foliageAtlas.normalMap,
+    normalMap: isLowPbrTier ? null : foliageAtlas.normalMap,
     normalScale: new THREE.Vector2(1.25, 1.25),
     color: leafTint,
     alphaTest: 0.42,
@@ -1175,11 +1187,13 @@ export function buildArenaEnvironment(
     roughness: 0.62,
     metalness: 0.04,
   });
-  applyWindShader(leafMat, uWindTime, 0.09, 1.6);
+  if (quality.tier !== 'potato') {
+    applyWindShader(leafMat, uWindTime, 0.09, 1.6);
+  }
 
   const fernMat = new THREE.MeshStandardMaterial({
     map: foliageAtlas.map,
-    normalMap: foliageAtlas.normalMap,
+    normalMap: isLowPbrTier ? null : foliageAtlas.normalMap,
     normalScale: new THREE.Vector2(1.15, 1.15),
     color: leafTint,
     alphaTest: 0.38,
@@ -1187,7 +1201,9 @@ export function buildArenaEnvironment(
     roughness: 0.62,
     metalness: 0.03,
   });
-  applyWindShader(fernMat, uWindTime, 0.07, 2.0);
+  if (quality.tier !== 'potato') {
+    applyWindShader(fernMat, uWindTime, 0.07, 2.0);
+  }
   disposableMats.push(barkMat, leafMat, fernMat);
 
   const treeLods: THREE.LOD[] = [];
@@ -1315,7 +1331,9 @@ export function buildArenaEnvironment(
     roughness: 0.78,
     metalness: 0.02,
   });
-  applyWindShader(grassMat, uWindTime, 0.08, 2.2);
+  if (quality.tier !== 'potato') {
+    applyWindShader(grassMat, uWindTime, 0.08, 2.2);
+  }
   disposableMats.push(grassMat);
 
   const grassCount = 380;
@@ -1344,7 +1362,7 @@ export function buildArenaEnvironment(
   grassInst.computeBoundingSphere();
   group.add(grassInst);
 
-  // 9. Ambient Floating Sanctuary Spores / Theme Magical Particles (InstancedMesh -> 1 draw call!)
+  // 9. Ambient Floating Sanctuary Spores / Theme Magical Particles (InstancedMesh -> 1 draw call, baked once!)
   const sporeCount = 72;
   const sporeGeo = new THREE.OctahedronGeometry(0.065, 0);
   const sporeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -1356,7 +1374,19 @@ export function buildArenaEnvironment(
   for (let i = 0; i < sporeCount; i++) {
     _color.setHex(sporeColors[i % sporeColors.length]);
     sporeInst.setColorAt(i, _color);
+    const a = (i / sporeCount) * Math.PI * 2;
+    const r = 13.5 + (i % 9) * 1.25;
+    const sx = Math.cos(a) * r;
+    const sz = Math.sin(a) * r;
+    const sy = 0.65 + (i % 5) * 0.65;
+    const pulse = 0.75 + (i % 3) * 0.18;
+    _vec3.set(sx, sy, sz);
+    _scaleVec.set(pulse, pulse, pulse);
+    _quat.identity();
+    _mat4.compose(_vec3, _quat, _scaleVec);
+    sporeInst.setMatrixAt(i, _mat4);
   }
+  sporeInst.instanceMatrix.needsUpdate = true;
   if (sporeInst.instanceColor) sporeInst.instanceColor.needsUpdate = true;
   group.add(sporeInst);
 
@@ -1511,20 +1541,9 @@ export function buildArenaEnvironment(
       Math.round(sporeCount * pRatio * (reducedEffects ? 0.45 : 1)),
     );
     sporeInst.count = activeSpores;
-    for (let i = 0; i < activeSpores; i++) {
-      const a = (i / Math.max(1, activeSpores)) * Math.PI * 2 + elapsed * (0.04 + (i % 3) * 0.015);
-      const r = 13.5 + (i % 9) * 1.25;
-      const sx = Math.cos(a) * r;
-      const sz = Math.sin(a) * r;
-      const sy = 0.65 + (i % 5) * 0.65 + Math.sin(elapsed * 1.4 + i) * 0.35;
-      const pulse = 0.65 + 0.45 * Math.sin(elapsed * 2.8 + i * 0.7);
-      _vec3.set(sx, sy, sz);
-      _scaleVec.set(pulse, pulse, pulse);
-      _quat.identity();
-      _mat4.compose(_vec3, _quat, _scaleVec);
-      sporeInst.setMatrixAt(i, _mat4);
-    }
-    sporeInst.instanceMatrix.needsUpdate = true;
+    // Animate all floating spores via GPU parent transform (zero per-frame Matrix4 loops or buffer uploads!)
+    sporeInst.rotation.y = elapsed * 0.055;
+    sporeInst.position.y = Math.sin(elapsed * 1.35) * 0.28;
   };
 
   const updateSkyConfig = (nextCfg?: BoardConfig) => {

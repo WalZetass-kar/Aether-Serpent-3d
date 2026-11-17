@@ -226,20 +226,18 @@ function getSpecialTint(type: SpecialTileType): { bg: string; ring: string; glyp
  *   engraved inlays, 3D beveled borders, and razor-sharp legible tile numbers 1..100.
  * - Normal + Packed ORM (R=AO, G=Roughness, B=Metalness) maps tiled per 10x10 board for realistic masonry & gilded inlay relief.
  */
+const boardStoneCanvasCache = new Map<string, HTMLCanvasElement>();
+
 export function createBoardStonePbrSet(
   maxAnisotropy: number,
   atlasSize: 1024 | 2048 = 2048,
   reliefSize: 256 | 512 | 1024 = 512,
   boardConfig?: BoardConfig,
 ): PbrTextureSet {
-  // 1. Resolution-adaptive Albedo Atlas preserving crisp numerals & exact tile layout
+  // 1. Resolution-adaptive Albedo Atlas preserving crisp numerals & exact tile layout (cached by theme/size)
   const size = atlasSize;
   const baseSize = 2048;
   const cell = baseSize / BOARD_SIZE;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
 
   const tileCfg = boardConfig?.tileConfig;
   const primaryTileHex = tileCfg?.primaryColor ?? '#263142';
@@ -252,226 +250,241 @@ export function createBoardStonePbrSet(
       : numeralStyle === 'serif_antique'
         ? 'Georgia, serif'
         : '"JetBrains Mono", monospace';
+  const primaryBoardHex = boardConfig?.boardSettings.primaryColor ?? '#0f172a';
+  const cacheKey = `${size}:${boardConfig?.themeId ?? 'default'}:${primaryTileHex}:${alternateTileHex}:${texStyle}:${numeralStyle}:${primaryBoardHex}`;
 
-  ctx.save();
-  ctx.scale(size / baseSize, size / baseSize);
-  ctx.fillStyle = boardConfig?.boardSettings.primaryColor ?? '#0f172a';
-  ctx.fillRect(0, 0, baseSize, baseSize);
+  let canvas = boardStoneCanvasCache.get(cacheKey);
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
 
-  const boardJumpMap = buildJumpMap(boardConfig?.ladders, boardConfig?.snakes);
+    ctx.save();
+    ctx.scale(size / baseSize, size / baseSize);
+    ctx.fillStyle = primaryBoardHex;
+    ctx.fillRect(0, 0, baseSize, baseSize);
 
-  for (let tile = 1; tile <= 100; tile++) {
-    const zeroBased = tile - 1;
-    const rowFromBottom = Math.floor(zeroBased / BOARD_SIZE);
-    const rawCol = zeroBased % BOARD_SIZE;
-    const col = rowFromBottom % 2 === 0 ? rawCol : BOARD_SIZE - 1 - rawCol;
-    const canvasRow = BOARD_SIZE - 1 - rowFromBottom;
-    const x = col * cell;
-    const y = canvasRow * cell;
+    const boardJumpMap = buildJumpMap(boardConfig?.ladders, boardConfig?.snakes);
 
-    const special = SPECIAL_TILE_MAP.get(tile);
-    const jump = boardJumpMap.get(tile);
-    const isAlt = (rowFromBottom + col) % 2 === 0;
+    for (let tile = 1; tile <= 100; tile++) {
+      const zeroBased = tile - 1;
+      const rowFromBottom = Math.floor(zeroBased / BOARD_SIZE);
+      const rawCol = zeroBased % BOARD_SIZE;
+      const col = rowFromBottom % 2 === 0 ? rawCol : BOARD_SIZE - 1 - rawCol;
+      const canvasRow = BOARD_SIZE - 1 - rowFromBottom;
+      const x = col * cell;
+      const y = canvasRow * cell;
 
-    let baseColor = isAlt ? primaryTileHex : alternateTileHex;
-    if (tile === 1) baseColor = '#1a4236';
-    else if (tile === 100) baseColor = '#5b4016';
-    else if (special) baseColor = getSpecialTint(special.type).bg;
+      const special = SPECIAL_TILE_MAP.get(tile);
+      const jump = boardJumpMap.get(tile);
+      const isAlt = (rowFromBottom + col) % 2 === 0;
 
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(x, y, cell, cell);
+      let baseColor = isAlt ? primaryTileHex : alternateTileHex;
+      if (tile === 1) baseColor = '#1a4236';
+      else if (tile === 100) baseColor = '#5b4016';
+      else if (special) baseColor = getSpecialTint(special.type).bg;
 
-    // Subtle directional stone chiseling striations & mineral speckles for crisp surface definition
-    for (let g = 0; g < 48; g++) {
-      const gx = x + 6 + ((tile * 41 + g * 59) % (cell - 16));
-      const gy = y + 6 + ((tile * 73 + g * 31) % (cell - 16));
-      const w = 5 + (g % 6) * 3;
-      const h = 2 + ((g * 2) % 4) * 2;
-      ctx.fillStyle =
-        g % 3 === 0
-          ? 'rgba(255,255,255,0.075)'
-          : g % 3 === 1
-            ? 'rgba(2,6,23,0.22)'
-            : 'rgba(148,163,184,0.085)';
-      ctx.fillRect(gx, gy, w, h);
-    }
+      ctx.fillStyle = baseColor;
+      ctx.fillRect(x, y, cell, cell);
 
-    // Fine carved stone hairline cracks (deterministic per tile)
-    if (tile % 2 === 0 || tile % 5 === 0) {
-      ctx.strokeStyle =
-        texStyle === 'basalt_lava'
-          ? 'rgba(249, 115, 22, 0.62)'
-          : texStyle === 'frosted_ice'
-            ? 'rgba(186, 230, 253, 0.5)'
-            : texStyle === 'obsidian_runes'
-              ? 'rgba(192, 132, 252, 0.55)'
-              : 'rgba(2, 6, 23, 0.42)';
-      ctx.lineWidth = texStyle === 'basalt_lava' ? 3.0 : 2.4;
-      ctx.beginPath();
-      const cx0 = x + 16 + ((tile * 29) % 45);
-      const cy0 = y + cell - 18 - ((tile * 17) % 35);
-      ctx.moveTo(cx0, cy0);
-      ctx.lineTo(cx0 + 26 + (tile % 18), cy0 - 22);
-      ctx.lineTo(cx0 + 48 + (tile % 15), cy0 - 14 - (tile % 20));
-      ctx.stroke();
-
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(cx0 + 1.2, cy0 + 1.5);
-      ctx.lineTo(cx0 + 27.2 + (tile % 18), cy0 - 20.5);
-      ctx.stroke();
-    }
-
-    // Theme-specific corner detail (moss, lava glow, frost rim, gold filigree, etc.)
-    if ((tile * 13) % 7 <= 3 && tile !== 100) {
-      const mx = tile % 2 === 0 ? x + cell - 24 : x + 20;
-      const my = tile % 3 === 0 ? y + 20 : y + cell - 20;
-      const cornerGrad = ctx.createRadialGradient(mx, my, 2, mx, my, 44);
-      if (texStyle === 'basalt_lava') {
-        cornerGrad.addColorStop(0, 'rgba(249, 115, 22, 0.52)');
-        cornerGrad.addColorStop(0.55, 'rgba(185, 28, 28, 0.26)');
-        cornerGrad.addColorStop(1, 'rgba(185, 28, 28, 0)');
-      } else if (texStyle === 'frosted_ice') {
-        cornerGrad.addColorStop(0, 'rgba(224, 242, 254, 0.5)');
-        cornerGrad.addColorStop(0.55, 'rgba(56, 189, 248, 0.24)');
-        cornerGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-      } else if (texStyle === 'sandstone_carved' || texStyle === 'temple_gold_inlay') {
-        cornerGrad.addColorStop(0, 'rgba(251, 191, 36, 0.42)');
-        cornerGrad.addColorStop(0.55, 'rgba(180, 83, 9, 0.2)');
-        cornerGrad.addColorStop(1, 'rgba(180, 83, 9, 0)');
-      } else if (texStyle === 'coral_mosaic') {
-        cornerGrad.addColorStop(0, 'rgba(34, 211, 238, 0.45)');
-        cornerGrad.addColorStop(0.55, 'rgba(13, 148, 136, 0.24)');
-        cornerGrad.addColorStop(1, 'rgba(13, 148, 136, 0)');
-      } else if (texStyle === 'obsidian_runes') {
-        cornerGrad.addColorStop(0, 'rgba(168, 85, 247, 0.46)');
-        cornerGrad.addColorStop(0.55, 'rgba(88, 28, 135, 0.24)');
-        cornerGrad.addColorStop(1, 'rgba(88, 28, 135, 0)');
-      } else if (texStyle === 'celestial_marble') {
-        cornerGrad.addColorStop(0, 'rgba(253, 224, 71, 0.42)');
-        cornerGrad.addColorStop(0.55, 'rgba(56, 189, 248, 0.2)');
-        cornerGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-      } else {
-        cornerGrad.addColorStop(0, 'rgba(34, 139, 78, 0.46)');
-        cornerGrad.addColorStop(0.55, 'rgba(22, 101, 52, 0.26)');
-        cornerGrad.addColorStop(1, 'rgba(22, 101, 52, 0)');
+      // Subtle directional stone chiseling striations & mineral speckles (16 fast rects per tile)
+      for (let g = 0; g < 16; g++) {
+        const gx = x + 6 + ((tile * 41 + g * 59) % (cell - 16));
+        const gy = y + 6 + ((tile * 73 + g * 31) % (cell - 16));
+        const w = 6 + (g % 6) * 3;
+        const h = 3 + ((g * 2) % 4) * 2;
+        ctx.fillStyle =
+          g % 3 === 0
+            ? 'rgba(255,255,255,0.075)'
+            : g % 3 === 1
+              ? 'rgba(2,6,23,0.22)'
+              : 'rgba(148,163,184,0.085)';
+        ctx.fillRect(gx, gy, w, h);
       }
-      ctx.fillStyle = cornerGrad;
-      ctx.fillRect(x + 4, y + 4, cell - 8, cell - 8);
-    }
 
-    // Inner ambient occlusion vignette
-    const grad = ctx.createRadialGradient(
-      x + cell / 2,
-      y + cell / 2,
-      cell * 0.22,
-      x + cell / 2,
-      y + cell / 2,
-      cell * 0.74,
-    );
-    grad.addColorStop(0, 'rgba(255,255,255,0.05)');
-    grad.addColorStop(1, 'rgba(2,6,23,0.42)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, cell, cell);
+      // Fine carved stone hairline cracks (deterministic per tile)
+      if (tile % 2 === 0 || tile % 5 === 0) {
+        ctx.strokeStyle =
+          texStyle === 'basalt_lava'
+            ? 'rgba(249, 115, 22, 0.62)'
+            : texStyle === 'frosted_ice'
+              ? 'rgba(186, 230, 253, 0.5)'
+              : texStyle === 'obsidian_runes'
+                ? 'rgba(192, 132, 252, 0.55)'
+                : 'rgba(2, 6, 23, 0.42)';
+        ctx.lineWidth = texStyle === 'basalt_lava' ? 3.0 : 2.4;
+        ctx.beginPath();
+        const cx0 = x + 16 + ((tile * 29) % 45);
+        const cy0 = y + cell - 18 - ((tile * 17) % 35);
+        ctx.moveTo(cx0, cy0);
+        ctx.lineTo(cx0 + 26 + (tile % 18), cy0 - 22);
+        ctx.lineTo(cx0 + 48 + (tile % 15), cy0 - 14 - (tile % 20));
+        ctx.stroke();
 
-    // High-contrast 3D Chiseled Stone Bevel Outer Rim (Top-Left Lit + Bottom-Right Shadowed)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
-    ctx.lineWidth = 3.2;
-    ctx.beginPath();
-    ctx.moveTo(x + 2, y + cell - 2);
-    ctx.lineTo(x + 2, y + 2);
-    ctx.lineTo(x + cell - 2, y + 2);
-    ctx.stroke();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(cx0 + 1.2, cy0 + 1.5);
+        ctx.lineTo(cx0 + 27.2 + (tile % 18), cy0 - 20.5);
+        ctx.stroke();
+      }
 
-    ctx.strokeStyle = 'rgba(2, 6, 23, 0.55)';
-    ctx.lineWidth = 3.6;
-    ctx.beginPath();
-    ctx.moveTo(x + cell - 2, y + 2);
-    ctx.lineTo(x + cell - 2, y + cell - 2);
-    ctx.lineTo(x + 2, y + cell - 2);
-    ctx.stroke();
+      // Theme-specific corner detail (moss, lava glow, frost rim, gold filigree, etc.)
+      if ((tile * 13) % 7 <= 3 && tile !== 100) {
+        const mx = tile % 2 === 0 ? x + cell - 24 : x + 20;
+        const my = tile % 3 === 0 ? y + 20 : y + cell - 20;
+        const cornerGrad = ctx.createRadialGradient(mx, my, 2, mx, my, 44);
+        if (texStyle === 'basalt_lava') {
+          cornerGrad.addColorStop(0, 'rgba(249, 115, 22, 0.52)');
+          cornerGrad.addColorStop(0.55, 'rgba(185, 28, 28, 0.26)');
+          cornerGrad.addColorStop(1, 'rgba(185, 28, 28, 0)');
+        } else if (texStyle === 'frosted_ice') {
+          cornerGrad.addColorStop(0, 'rgba(224, 242, 254, 0.5)');
+          cornerGrad.addColorStop(0.55, 'rgba(56, 189, 248, 0.24)');
+          cornerGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        } else if (texStyle === 'sandstone_carved' || texStyle === 'temple_gold_inlay') {
+          cornerGrad.addColorStop(0, 'rgba(251, 191, 36, 0.42)');
+          cornerGrad.addColorStop(0.55, 'rgba(180, 83, 9, 0.2)');
+          cornerGrad.addColorStop(1, 'rgba(180, 83, 9, 0)');
+        } else if (texStyle === 'coral_mosaic') {
+          cornerGrad.addColorStop(0, 'rgba(34, 211, 238, 0.45)');
+          cornerGrad.addColorStop(0.55, 'rgba(13, 148, 136, 0.24)');
+          cornerGrad.addColorStop(1, 'rgba(13, 148, 136, 0)');
+        } else if (texStyle === 'obsidian_runes') {
+          cornerGrad.addColorStop(0, 'rgba(168, 85, 247, 0.46)');
+          cornerGrad.addColorStop(0.55, 'rgba(88, 28, 135, 0.24)');
+          cornerGrad.addColorStop(1, 'rgba(88, 28, 135, 0)');
+        } else if (texStyle === 'celestial_marble') {
+          cornerGrad.addColorStop(0, 'rgba(253, 224, 71, 0.42)');
+          cornerGrad.addColorStop(0.55, 'rgba(56, 189, 248, 0.2)');
+          cornerGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        } else {
+          cornerGrad.addColorStop(0, 'rgba(34, 139, 78, 0.46)');
+          cornerGrad.addColorStop(0.55, 'rgba(22, 101, 52, 0.26)');
+          cornerGrad.addColorStop(1, 'rgba(22, 101, 52, 0)');
+        }
+        ctx.fillStyle = cornerGrad;
+        ctx.fillRect(x + 4, y + 4, cell - 8, cell - 8);
+      }
 
-    // Chiseled slate / bronze / theme inlay frame + corner studs
-    const frameStroke =
-      tile === 100
-        ? '#f59e0b'
-        : texStyle === 'temple_gold_inlay' || texStyle === 'celestial_marble'
-          ? 'rgba(251, 191, 36, 0.56)'
-          : texStyle === 'frosted_ice'
-            ? 'rgba(186, 230, 253, 0.52)'
-            : texStyle === 'basalt_lava'
-              ? 'rgba(249, 115, 22, 0.52)'
-              : 'rgba(226, 232, 240, 0.4)';
-    ctx.strokeStyle = frameStroke;
-    ctx.lineWidth = tile === 100 ? 7.5 : 3.5;
-    ctx.strokeRect(x + 9, y + 9, cell - 18, cell - 18);
+      // Inner ambient occlusion vignette
+      const grad = ctx.createRadialGradient(
+        x + cell / 2,
+        y + cell / 2,
+        cell * 0.22,
+        x + cell / 2,
+        y + cell / 2,
+        cell * 0.74,
+      );
+      grad.addColorStop(0, 'rgba(255,255,255,0.05)');
+      grad.addColorStop(1, 'rgba(2,6,23,0.42)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, cell, cell);
 
-    // Ornamental corner inlay studs at bottom-right & top-right
-    ctx.fillStyle = frameStroke;
-    ctx.fillRect(x + cell - 15, y + 7, 5, 5);
-    ctx.fillRect(x + cell - 15, y + cell - 12, 5, 5);
-    ctx.fillRect(x + 7, y + cell - 12, 5, 5);
-
-    if (special) {
-      const specStyle = getSpecialTint(special.type);
-      ctx.strokeStyle = specStyle.ring;
-      ctx.lineWidth = 4.2;
+      // High-contrast 3D Chiseled Stone Bevel Outer Rim (Top-Left Lit + Bottom-Right Shadowed)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+      ctx.lineWidth = 3.2;
       ctx.beginPath();
-      ctx.arc(x + cell * 0.5, y + cell * 0.63, cell * 0.22, 0, Math.PI * 2);
+      ctx.moveTo(x + 2, y + cell - 2);
+      ctx.lineTo(x + 2, y + 2);
+      ctx.lineTo(x + cell - 2, y + 2);
       ctx.stroke();
 
-      ctx.fillStyle = specStyle.ring;
-      ctx.font = 'bold 35px "Plus Jakarta Sans", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(specStyle.glyph, x + cell * 0.5, y + cell * 0.64);
-    } else if (jump) {
-      const isLadder = jump.type === 'ladder';
-      ctx.fillStyle = isLadder ? 'rgba(245, 158, 11, 0.28)' : 'rgba(16, 185, 129, 0.26)';
+      ctx.strokeStyle = 'rgba(2, 6, 23, 0.55)';
+      ctx.lineWidth = 3.6;
       ctx.beginPath();
-      ctx.arc(x + cell * 0.5, y + cell * 0.65, cell * 0.215, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = isLadder ? 'rgba(253, 230, 138, 0.68)' : 'rgba(110, 231, 183, 0.62)';
-      ctx.lineWidth = 2.4;
+      ctx.moveTo(x + cell - 2, y + 2);
+      ctx.lineTo(x + cell - 2, y + cell - 2);
+      ctx.lineTo(x + 2, y + cell - 2);
       ctx.stroke();
 
-      ctx.fillStyle = isLadder ? '#fef08a' : '#6ee7b7';
-      ctx.font = `bold 30px ${numeralFontFamily}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(isLadder ? `↑${jump.to}` : `↓${jump.to}`, x + cell * 0.5, y + cell * 0.66);
+      // Chiseled slate / bronze / theme inlay frame + corner studs
+      const frameStroke =
+        tile === 100
+          ? '#f59e0b'
+          : texStyle === 'temple_gold_inlay' || texStyle === 'celestial_marble'
+            ? 'rgba(251, 191, 36, 0.56)'
+            : texStyle === 'frosted_ice'
+              ? 'rgba(186, 230, 253, 0.52)'
+              : texStyle === 'basalt_lava'
+                ? 'rgba(249, 115, 22, 0.52)'
+                : 'rgba(226, 232, 240, 0.4)';
+      ctx.strokeStyle = frameStroke;
+      ctx.lineWidth = tile === 100 ? 7.5 : 3.5;
+      ctx.strokeRect(x + 9, y + 9, cell - 18, cell - 18);
+
+      // Ornamental corner inlay studs at bottom-right & top-right
+      ctx.fillStyle = frameStroke;
+      ctx.fillRect(x + cell - 15, y + 7, 5, 5);
+      ctx.fillRect(x + cell - 15, y + cell - 12, 5, 5);
+      ctx.fillRect(x + 7, y + cell - 12, 5, 5);
+
+      if (special) {
+        const specStyle = getSpecialTint(special.type);
+        ctx.strokeStyle = specStyle.ring;
+        ctx.lineWidth = 4.2;
+        ctx.beginPath();
+        ctx.arc(x + cell * 0.5, y + cell * 0.63, cell * 0.22, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = specStyle.ring;
+        ctx.font = 'bold 35px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(specStyle.glyph, x + cell * 0.5, y + cell * 0.64);
+      } else if (jump) {
+        const isLadder = jump.type === 'ladder';
+        ctx.fillStyle = isLadder ? 'rgba(245, 158, 11, 0.28)' : 'rgba(16, 185, 129, 0.26)';
+        ctx.beginPath();
+        ctx.arc(x + cell * 0.5, y + cell * 0.65, cell * 0.215, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = isLadder ? 'rgba(253, 230, 138, 0.68)' : 'rgba(110, 231, 183, 0.62)';
+        ctx.lineWidth = 2.4;
+        ctx.stroke();
+
+        ctx.fillStyle = isLadder ? '#fef08a' : '#6ee7b7';
+        ctx.font = `bold 30px ${numeralFontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(isLadder ? `↑${jump.to}` : `↓${jump.to}`, x + cell * 0.5, y + cell * 0.66);
+      }
+
+      if (tile === 1) {
+        ctx.fillStyle = '#6ee7b7';
+        ctx.font = 'bold 27px "Cinzel", serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('MULAI', x + cell * 0.5, y + cell * 0.66);
+      } else if (tile === 100) {
+        ctx.fillStyle = '#fde68a';
+        ctx.font = 'bold 46px "Cinzel", serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('♛', x + cell * 0.5, y + cell * 0.66);
+      }
+
+      // Crisp engraved numeral with high-contrast dark stroke & drop shadow for instant readability
+      ctx.font = `bold 46px ${numeralFontFamily}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(2, 6, 23, 0.94)';
+      ctx.lineWidth = 7;
+      ctx.strokeText(String(tile), x + 16, y + 14);
+
+      ctx.fillStyle = tile === 100 ? '#fef08a' : '#ffffff';
+      ctx.fillText(String(tile), x + 16, y + 14);
     }
 
-    if (tile === 1) {
-      ctx.fillStyle = '#6ee7b7';
-      ctx.font = 'bold 27px "Cinzel", serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('MULAI', x + cell * 0.5, y + cell * 0.66);
-    } else if (tile === 100) {
-      ctx.fillStyle = '#fde68a';
-      ctx.font = 'bold 46px "Cinzel", serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('♛', x + cell * 0.5, y + cell * 0.66);
+    ctx.restore();
+    if (boardStoneCanvasCache.size >= 4) {
+      const oldest = boardStoneCanvasCache.keys().next().value;
+      if (oldest) boardStoneCanvasCache.delete(oldest);
     }
-
-    // Crisp engraved numeral with high-contrast dark stroke & drop shadow for instant readability
-    ctx.font = `bold 46px ${numeralFontFamily}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(2, 6, 23, 0.94)';
-    ctx.lineWidth = 7;
-    ctx.strokeText(String(tile), x + 16, y + 14);
-
-    ctx.fillStyle = tile === 100 ? '#fef08a' : '#ffffff';
-    ctx.fillText(String(tile), x + 16, y + 14);
+    boardStoneCanvasCache.set(cacheKey, canvas);
   }
-
-  ctx.restore();
 
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
