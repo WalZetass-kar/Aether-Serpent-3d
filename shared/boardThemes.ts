@@ -475,21 +475,31 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     updatedAt: 1735689600000,
     ladders: [
       { id: 'L1', from: 4, to: 25, name: 'Tangga Akar Yggdrasil', type: 'ladder' },
-      { id: 'L2', from: 13, to: 46, name: 'Tangga Sulur Zamrud', type: 'ladder' },
-      { id: 'L3', from: 33, to: 49, name: 'Tangga Runik Hutan', type: 'ladder' },
-      { id: 'L4', from: 42, to: 63, name: 'Tangga Kanopi Peri', type: 'ladder' },
-      { id: 'L5', from: 50, to: 69, name: 'Tangga Menara Lumut', type: 'ladder' },
-      { id: 'L6', from: 62, to: 81, name: 'Tangga Angin Lembah', type: 'ladder' },
-      { id: 'L7', from: 74, to: 92, name: 'Tangga Puncak Sylvan', type: 'ladder' },
+      { id: 'L2', from: 6, to: 18, name: 'Tangga Embun Fajar', type: 'ladder' },
+      { id: 'L3', from: 13, to: 46, name: 'Tangga Sulur Zamrud', type: 'ladder' },
+      { id: 'L4', from: 19, to: 38, name: 'Tangga Gerbang Lumut', type: 'ladder' },
+      { id: 'L5', from: 28, to: 52, name: 'Tangga Pelangi Rimba', type: 'ladder' },
+      { id: 'L6', from: 33, to: 49, name: 'Tangga Runik Hutan', type: 'ladder' },
+      { id: 'L7', from: 42, to: 63, name: 'Tangga Kanopi Peri', type: 'ladder' },
+      { id: 'L8', from: 50, to: 69, name: 'Tangga Menara Lumut', type: 'ladder' },
+      { id: 'L9', from: 59, to: 79, name: 'Tangga Jembatan Kunang', type: 'ladder' },
+      { id: 'L10', from: 62, to: 81, name: 'Tangga Angin Lembah', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Puncak Sylvan', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Takhta Yggdrasil', type: 'ladder' },
     ],
     snakes: [
       { id: 'S1', from: 27, to: 5, name: 'Ular Kabut Hijau', type: 'snake' },
       { id: 'S2', from: 40, to: 3, name: 'Ular Akar Berduri', type: 'snake' },
-      { id: 'S3', from: 43, to: 18, name: 'Viper Lembah Rimba', type: 'snake' },
+      { id: 'S3', from: 44, to: 17, name: 'Viper Lembah Rimba', type: 'snake' },
       { id: 'S4', from: 54, to: 31, name: 'Ular Rawa Berbisa', type: 'snake' },
       { id: 'S5', from: 66, to: 45, name: 'Ular Racun Zamrud', type: 'snake' },
-      { id: 'S6', from: 89, to: 53, name: 'Naga Rimba Kuno', type: 'snake' },
-      { id: 'S7', from: 97, to: 78, name: 'Serpent Penjaga Yggdrasil', type: 'snake' },
+      { id: 'S6', from: 92, to: 73, name: 'Viper Gerbang Hutan', type: 'snake' },
+      { id: 'S7', from: 93, to: 68, name: 'Ular Lumut Kuno', type: 'snake' },
+      { id: 'S8', from: 94, to: 75, name: 'Serpent Kabut Lembah', type: 'snake' },
+      { id: 'S9', from: 95, to: 64, name: 'Naga Kanopi Hijau', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Mahkota Sylvan', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Serpent Penjaga Puncak', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Raja Naga Yggdrasil Abadi', type: 'snake' },
     ],
     boardSettings: {
       shape: 'classic_square',
@@ -554,22 +564,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689610000,
     updatedAt: 1735689610000,
     ladders: [
-      { id: 'L1', from: 6, to: 28, name: 'Jembatan Rantai Besi', type: 'ladder' },
-      { id: 'L2', from: 15, to: 38, name: 'Tangga Batu Basal', type: 'ladder' },
-      { id: 'L3', from: 29, to: 52, name: 'Tangga Bara Tempaan', type: 'ladder' },
-      { id: 'L4', from: 44, to: 67, name: 'Jembatan Kawah Naga', type: 'ladder' },
-      { id: 'L5', from: 57, to: 79, name: 'Tangga Obsidian Api', type: 'ladder' },
-      { id: 'L6', from: 68, to: 87, name: 'Tangga Puncak Kaldera', type: 'ladder' },
-      { id: 'L7', from: 77, to: 96, name: 'Tangga Takhta Magma', type: 'ladder' },
+      { id: 'L1', from: 3, to: 22, name: 'Jembatan Rantai Besi', type: 'ladder' },
+      { id: 'L2', from: 7, to: 26, name: 'Tangga Terak Magma', type: 'ladder' },
+      { id: 'L3', from: 15, to: 38, name: 'Tangga Batu Basal', type: 'ladder' },
+      { id: 'L4', from: 20, to: 41, name: 'Jalur Pijar Lava', type: 'ladder' },
+      { id: 'L5', from: 29, to: 52, name: 'Tangga Bara Tempaan', type: 'ladder' },
+      { id: 'L6', from: 35, to: 56, name: 'Tangga Tungku Naga', type: 'ladder' },
+      { id: 'L7', from: 44, to: 67, name: 'Jembatan Kawah Naga', type: 'ladder' },
+      { id: 'L8', from: 53, to: 72, name: 'Tangga Menara Abu', type: 'ladder' },
+      { id: 'L9', from: 57, to: 79, name: 'Tangga Obsidian Api', type: 'ladder' },
+      { id: 'L10', from: 68, to: 87, name: 'Tangga Puncak Kaldera', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Gerbang Ignis', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Takhta Magma', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 24, to: 7, name: 'Viper Abu Vulkanik', type: 'snake' },
+      { id: 'S1', from: 25, to: 6, name: 'Viper Abu Vulkanik', type: 'snake' },
       { id: 'S2', from: 39, to: 14, name: 'Ular Lahar Membara', type: 'snake' },
-      { id: 'S3', from: 51, to: 26, name: 'Drake Sisik Bara', type: 'snake' },
-      { id: 'S4', from: 64, to: 35, name: 'Ular Magma Hitam', type: 'snake' },
+      { id: 'S3', from: 51, to: 24, name: 'Drake Sisik Bara', type: 'snake' },
+      { id: 'S4', from: 64, to: 36, name: 'Ular Magma Hitam', type: 'snake' },
       { id: 'S5', from: 75, to: 48, name: 'Wyrm Kawah Merah', type: 'snake' },
-      { id: 'S6', from: 91, to: 60, name: 'Naga Api Ignis', type: 'snake' },
-      { id: 'S7', from: 98, to: 73, name: 'Raja Naga Kaldera', type: 'snake' },
+      { id: 'S6', from: 92, to: 61, name: 'Viper Api Kaldera', type: 'snake' },
+      { id: 'S7', from: 93, to: 69, name: 'Ular Belerang Pijar', type: 'snake' },
+      { id: 'S8', from: 94, to: 70, name: 'Serpent Obsidian Bara', type: 'snake' },
+      { id: 'S9', from: 95, to: 73, name: 'Naga Erupsi Merah', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Api Abadi', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Naga Penjaga Kawah', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Raja Naga Ignis Kaldera', type: 'snake' },
     ],
     boardSettings: {
       shape: 'octagon_bastion',
@@ -635,21 +655,31 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     updatedAt: 1735689620000,
     ladders: [
       { id: 'L1', from: 3, to: 22, name: 'Tangga Es Kristal', type: 'ladder' },
-      { id: 'L2', from: 11, to: 32, name: 'Jembatan Salju Abadi', type: 'ladder' },
-      { id: 'L3', from: 26, to: 48, name: 'Tangga Pilar Glasier', type: 'ladder' },
-      { id: 'L4', from: 39, to: 61, name: 'Tangga Cahaya Aurora', type: 'ladder' },
-      { id: 'L5', from: 53, to: 75, name: 'Tangga Menara Beku', type: 'ladder' },
-      { id: 'L6', from: 67, to: 86, name: 'Tangga Bintang Utara', type: 'ladder' },
-      { id: 'L7', from: 78, to: 95, name: 'Tangga Singgasana Es', type: 'ladder' },
+      { id: 'L2', from: 7, to: 26, name: 'Jembatan Salju Abadi', type: 'ladder' },
+      { id: 'L3', from: 15, to: 38, name: 'Tangga Pilar Glasier', type: 'ladder' },
+      { id: 'L4', from: 20, to: 41, name: 'Tangga Embun Utara', type: 'ladder' },
+      { id: 'L5', from: 29, to: 52, name: 'Tangga Cahaya Aurora', type: 'ladder' },
+      { id: 'L6', from: 35, to: 56, name: 'Jalur Kristal Biru', type: 'ladder' },
+      { id: 'L7', from: 44, to: 67, name: 'Tangga Menara Beku', type: 'ladder' },
+      { id: 'L8', from: 53, to: 72, name: 'Tangga Tebing Tundra', type: 'ladder' },
+      { id: 'L9', from: 57, to: 79, name: 'Tangga Bintang Utara', type: 'ladder' },
+      { id: 'L10', from: 68, to: 87, name: 'Tangga Benteng Borealis', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Puncak Salju', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Singgasana Es', type: 'ladder' },
     ],
     snakes: [
       { id: 'S1', from: 25, to: 6, name: 'Ular Embun Beku', type: 'snake' },
-      { id: 'S2', from: 38, to: 17, name: 'Kobra Kristal Biru', type: 'snake' },
-      { id: 'S3', from: 49, to: 27, name: 'Ular Badai Salju', type: 'snake' },
-      { id: 'S4', from: 63, to: 41, name: 'Serpent Glasier', type: 'snake' },
-      { id: 'S5', from: 73, to: 50, name: 'Wyrm Kutub Utara', type: 'snake' },
-      { id: 'S6', from: 87, to: 59, name: 'Naga Es Borealis', type: 'snake' },
-      { id: 'S7', from: 96, to: 72, name: 'Leviathan Salju Abadi', type: 'snake' },
+      { id: 'S2', from: 39, to: 14, name: 'Kobra Kristal Biru', type: 'snake' },
+      { id: 'S3', from: 51, to: 24, name: 'Ular Badai Salju', type: 'snake' },
+      { id: 'S4', from: 64, to: 36, name: 'Serpent Glasier', type: 'snake' },
+      { id: 'S5', from: 75, to: 48, name: 'Wyrm Kutub Utara', type: 'snake' },
+      { id: 'S6', from: 92, to: 61, name: 'Viper Serpihan Es', type: 'snake' },
+      { id: 'S7', from: 93, to: 69, name: 'Ular Angin Arktik', type: 'snake' },
+      { id: 'S8', from: 94, to: 70, name: 'Serpent Kabut Beku', type: 'snake' },
+      { id: 'S9', from: 95, to: 73, name: 'Naga Es Borealis', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Puncak Glasier', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Naga Penjaga Kutub', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Leviathan Salju Abadi', type: 'snake' },
     ],
     boardSettings: {
       shape: 'citadel_terrace',
@@ -714,22 +744,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689630000,
     updatedAt: 1735689630000,
     ladders: [
-      { id: 'L1', from: 5, to: 27, name: 'Tangga Batu Pasir', type: 'ladder' },
-      { id: 'L2', from: 14, to: 36, name: 'Tangga Oasis Emas', type: 'ladder' },
-      { id: 'L3', from: 30, to: 53, name: 'Tangga Pilar Obelisk', type: 'ladder' },
-      { id: 'L4', from: 41, to: 64, name: 'Tangga Hieroglif Surya', type: 'ladder' },
-      { id: 'L5', from: 52, to: 74, name: 'Tangga Makam Raja', type: 'ladder' },
-      { id: 'L6', from: 69, to: 89, name: 'Tangga Puncak Piramida', type: 'ladder' },
-      { id: 'L7', from: 79, to: 97, name: 'Tangga Mahkota Firaun', type: 'ladder' },
+      { id: 'L1', from: 4, to: 25, name: 'Tangga Batu Pasir', type: 'ladder' },
+      { id: 'L2', from: 6, to: 18, name: 'Tangga Bukit Emas', type: 'ladder' },
+      { id: 'L3', from: 13, to: 46, name: 'Tangga Oasis Emas', type: 'ladder' },
+      { id: 'L4', from: 19, to: 38, name: 'Jalur Palem Senja', type: 'ladder' },
+      { id: 'L5', from: 28, to: 52, name: 'Tangga Pilar Obelisk', type: 'ladder' },
+      { id: 'L6', from: 33, to: 49, name: 'Tangga Hieroglif Surya', type: 'ladder' },
+      { id: 'L7', from: 42, to: 63, name: 'Tangga Makam Raja', type: 'ladder' },
+      { id: 'L8', from: 50, to: 69, name: 'Tangga Kuil Sphinx', type: 'ladder' },
+      { id: 'L9', from: 59, to: 79, name: 'Tangga Gerbang Firaun', type: 'ladder' },
+      { id: 'L10', from: 62, to: 81, name: 'Tangga Puncak Piramida', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Cahaya Ra', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Mahkota Firaun', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 28, to: 8, name: 'Viper Bukit Pasir', type: 'snake' },
-      { id: 'S2', from: 35, to: 11, name: 'Kobra Emas Gurun', type: 'snake' },
-      { id: 'S3', from: 46, to: 20, name: 'Ular Badai Debu', type: 'snake' },
-      { id: 'S4', from: 60, to: 38, name: 'Kobra Penjaga Makam', type: 'snake' },
-      { id: 'S5', from: 72, to: 49, name: 'Ular Kalajengking Surya', type: 'snake' },
-      { id: 'S6', from: 90, to: 61, name: 'Serpent Fatamorgana', type: 'snake' },
-      { id: 'S7', from: 99, to: 77, name: 'Apophis Sang Penelan Senja', type: 'snake' },
+      { id: 'S1', from: 27, to: 5, name: 'Viper Bukit Pasir', type: 'snake' },
+      { id: 'S2', from: 40, to: 3, name: 'Kobra Emas Gurun', type: 'snake' },
+      { id: 'S3', from: 44, to: 17, name: 'Ular Badai Debu', type: 'snake' },
+      { id: 'S4', from: 54, to: 31, name: 'Kobra Penjaga Makam', type: 'snake' },
+      { id: 'S5', from: 66, to: 45, name: 'Ular Kalajengking Surya', type: 'snake' },
+      { id: 'S6', from: 92, to: 73, name: 'Viper Fatamorgana', type: 'snake' },
+      { id: 'S7', from: 93, to: 68, name: 'Kobra Pasir Membara', type: 'snake' },
+      { id: 'S8', from: 94, to: 75, name: 'Serpent Kuil Kuno', type: 'snake' },
+      { id: 'S9', from: 95, to: 64, name: 'Naga Badai Sahara', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Piramida Emas', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Kobra Agung Senja', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Apophis Sang Penelan Senja', type: 'snake' },
     ],
     boardSettings: {
       shape: 'classic_square',
@@ -794,22 +834,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689640000,
     updatedAt: 1735689640000,
     ladders: [
-      { id: 'L1', from: 7, to: 29, name: 'Tangga Karang Mutiara', type: 'ladder' },
-      { id: 'L2', from: 17, to: 40, name: 'Jembatan Arus Laut', type: 'ladder' },
-      { id: 'L3', from: 31, to: 54, name: 'Tangga Pilar Poseidon', type: 'ladder' },
-      { id: 'L4', from: 45, to: 66, name: 'Tangga Bioluminesensi', type: 'ladder' },
-      { id: 'L5', from: 56, to: 78, name: 'Tangga Kuil Samudra', type: 'ladder' },
-      { id: 'L6', from: 64, to: 85, name: 'Tangga Trisula Biru', type: 'ladder' },
-      { id: 'L7', from: 75, to: 93, name: 'Tangga Mahkota Atlantis', type: 'ladder' },
+      { id: 'L1', from: 5, to: 24, name: 'Tangga Karang Mutiara', type: 'ladder' },
+      { id: 'L2', from: 8, to: 30, name: 'Jembatan Arus Laut', type: 'ladder' },
+      { id: 'L3', from: 17, to: 40, name: 'Tangga Pilar Poseidon', type: 'ladder' },
+      { id: 'L4', from: 19, to: 43, name: 'Tangga Terumbu Sian', type: 'ladder' },
+      { id: 'L5', from: 28, to: 51, name: 'Tangga Bioluminesensi', type: 'ladder' },
+      { id: 'L6', from: 32, to: 56, name: 'Jalur Gelembung Suci', type: 'ladder' },
+      { id: 'L7', from: 45, to: 66, name: 'Tangga Kuil Samudra', type: 'ladder' },
+      { id: 'L8', from: 54, to: 74, name: 'Tangga Gerbang Tirta', type: 'ladder' },
+      { id: 'L9', from: 59, to: 82, name: 'Tangga Trisula Biru', type: 'ladder' },
+      { id: 'L10', from: 64, to: 85, name: 'Tangga Menara Karang', type: 'ladder' },
+      { id: 'L11', from: 70, to: 91, name: 'Tangga Istana Mutiara', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Mahkota Atlantis', type: 'ladder' },
     ],
     snakes: [
       { id: 'S1', from: 26, to: 4, name: 'Belut Listrik Karang', type: 'snake' },
-      { id: 'S2', from: 42, to: 19, name: 'Ular Laut Sian', type: 'snake' },
+      { id: 'S2', from: 42, to: 18, name: 'Ular Laut Sian', type: 'snake' },
       { id: 'S3', from: 50, to: 25, name: 'Hydra Palung Biru', type: 'snake' },
       { id: 'S4', from: 62, to: 39, name: 'Wyrm Arus Deras', type: 'snake' },
-      { id: 'S5', from: 74, to: 51, name: 'Serpent Pusaran Air', type: 'snake' },
-      { id: 'S6', from: 86, to: 57, name: 'Naga Samudra Dalam', type: 'snake' },
-      { id: 'S7', from: 95, to: 70, name: 'Leviathan Penjaga Atlantis', type: 'snake' },
+      { id: 'S5', from: 73, to: 49, name: 'Serpent Pusaran Air', type: 'snake' },
+      { id: 'S6', from: 92, to: 63, name: 'Ular Karang Abyssal', type: 'snake' },
+      { id: 'S7', from: 93, to: 67, name: 'Belut Petir Samudra', type: 'snake' },
+      { id: 'S8', from: 94, to: 68, name: 'Serpent Ombak Gelap', type: 'snake' },
+      { id: 'S9', from: 95, to: 72, name: 'Hydra Istana Tenggelam', type: 'snake' },
+      { id: 'S10', from: 96, to: 75, name: 'Naga Samudra Dalam', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Wyrm Penjaga Trisula', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Leviathan Raja Atlantis', type: 'snake' },
     ],
     boardSettings: {
       shape: 'octagon_bastion',
@@ -874,22 +924,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689650000,
     updatedAt: 1735689650000,
     ladders: [
-      { id: 'L1', from: 2, to: 24, name: 'Rantai Bayangan Ungu', type: 'ladder' },
-      { id: 'L2', from: 18, to: 41, name: 'Tangga Monolit Rune', type: 'ladder' },
-      { id: 'L3', from: 32, to: 56, name: 'Jembatan Kabut Astral', type: 'ladder' },
-      { id: 'L4', from: 43, to: 68, name: 'Tangga Benteng Malam', type: 'ladder' },
-      { id: 'L5', from: 51, to: 73, name: 'Tangga Kristal Void', type: 'ladder' },
-      { id: 'L6', from: 63, to: 83, name: 'Tangga Gerbang Gerhana', type: 'ladder' },
-      { id: 'L7', from: 72, to: 91, name: 'Tangga Singgasana Bayangan', type: 'ladder' },
+      { id: 'L1', from: 3, to: 22, name: 'Rantai Bayangan Ungu', type: 'ladder' },
+      { id: 'L2', from: 7, to: 26, name: 'Tangga Monolit Rune', type: 'ladder' },
+      { id: 'L3', from: 15, to: 38, name: 'Jembatan Kabut Astral', type: 'ladder' },
+      { id: 'L4', from: 20, to: 41, name: 'Tangga Pilar Malam', type: 'ladder' },
+      { id: 'L5', from: 29, to: 52, name: 'Tangga Benteng Malam', type: 'ladder' },
+      { id: 'L6', from: 35, to: 56, name: 'Jalur Sihir Gerhana', type: 'ladder' },
+      { id: 'L7', from: 44, to: 67, name: 'Tangga Kristal Void', type: 'ladder' },
+      { id: 'L8', from: 53, to: 72, name: 'Tangga Menara Kelam', type: 'ladder' },
+      { id: 'L9', from: 57, to: 79, name: 'Tangga Gerbang Gerhana', type: 'ladder' },
+      { id: 'L10', from: 68, to: 87, name: 'Tangga Kastil Obsidian', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Puncak Dimensi', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Singgasana Bayangan', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 29, to: 10, name: 'Ular Asap Hitam', type: 'snake' },
-      { id: 'S2', from: 44, to: 15, name: 'Viper Rune Ungu', type: 'snake' },
-      { id: 'S3', from: 53, to: 30, name: 'Ular Pemangsa Mimpi', type: 'snake' },
-      { id: 'S4', from: 67, to: 42, name: 'Wyrm Lembah Kelam', type: 'snake' },
-      { id: 'S5', from: 79, to: 52, name: 'Serpent Kabut Malam', type: 'snake' },
-      { id: 'S6', from: 92, to: 64, name: 'Naga Gerhana Abadi', type: 'snake' },
-      { id: 'S7', from: 98, to: 69, name: 'Penguasa Void Obsidian', type: 'snake' },
+      { id: 'S1', from: 25, to: 6, name: 'Ular Asap Hitam', type: 'snake' },
+      { id: 'S2', from: 39, to: 14, name: 'Viper Rune Ungu', type: 'snake' },
+      { id: 'S3', from: 51, to: 24, name: 'Ular Pemangsa Mimpi', type: 'snake' },
+      { id: 'S4', from: 64, to: 36, name: 'Wyrm Lembah Kelam', type: 'snake' },
+      { id: 'S5', from: 75, to: 48, name: 'Serpent Kabut Malam', type: 'snake' },
+      { id: 'S6', from: 92, to: 61, name: 'Viper Bayangan Void', type: 'snake' },
+      { id: 'S7', from: 93, to: 69, name: 'Ular Monolit Gelap', type: 'snake' },
+      { id: 'S8', from: 94, to: 70, name: 'Serpent Celah Dimensi', type: 'snake' },
+      { id: 'S9', from: 95, to: 73, name: 'Naga Gerhana Abadi', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Mahkota Kelam', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Naga Penjaga Kastil', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Penguasa Void Obsidian', type: 'snake' },
     ],
     boardSettings: {
       shape: 'octagon_bastion',
@@ -954,22 +1014,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689660000,
     updatedAt: 1735689660000,
     ladders: [
-      { id: 'L1', from: 8, to: 30, name: 'Tangga Awan Perak', type: 'ladder' },
-      { id: 'L2', from: 19, to: 43, name: 'Jembatan Bintang Fajar', type: 'ladder' },
-      { id: 'L3', from: 28, to: 51, name: 'Tangga Sayap Seraphim', type: 'ladder' },
-      { id: 'L4', from: 40, to: 62, name: 'Tangga Pilar Konstelasi', type: 'ladder' },
-      { id: 'L5', from: 59, to: 80, name: 'Tangga Cahaya Surya', type: 'ladder' },
-      { id: 'L6', from: 70, to: 90, name: 'Tangga Gerbang Kosmik', type: 'ladder' },
-      { id: 'L7', from: 81, to: 98, name: 'Tangga Takhta Langit', type: 'ladder' },
+      { id: 'L1', from: 5, to: 24, name: 'Tangga Awan Perak', type: 'ladder' },
+      { id: 'L2', from: 8, to: 30, name: 'Jembatan Bintang Fajar', type: 'ladder' },
+      { id: 'L3', from: 17, to: 40, name: 'Tangga Sayap Seraphim', type: 'ladder' },
+      { id: 'L4', from: 19, to: 43, name: 'Tangga Pelangi Aether', type: 'ladder' },
+      { id: 'L5', from: 28, to: 51, name: 'Tangga Pilar Konstelasi', type: 'ladder' },
+      { id: 'L6', from: 32, to: 56, name: 'Jalur Awan Keemasan', type: 'ladder' },
+      { id: 'L7', from: 45, to: 66, name: 'Tangga Cahaya Surya', type: 'ladder' },
+      { id: 'L8', from: 54, to: 74, name: 'Tangga Pulau Melayang', type: 'ladder' },
+      { id: 'L9', from: 59, to: 82, name: 'Tangga Gerbang Kosmik', type: 'ladder' },
+      { id: 'L10', from: 64, to: 85, name: 'Tangga Menara Astral', type: 'ladder' },
+      { id: 'L11', from: 70, to: 91, name: 'Tangga Kubah Cakrawala', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Takhta Langit', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 31, to: 13, name: 'Ular Angin Stratosfer', type: 'snake' },
-      { id: 'S2', from: 45, to: 22, name: 'Naga Awan Badai', type: 'snake' },
-      { id: 'S3', from: 54, to: 33, name: 'Serpent Komet Biru', type: 'snake' },
-      { id: 'S4', from: 68, to: 46, name: 'Naga Petir Langit', type: 'snake' },
-      { id: 'S5', from: 77, to: 56, name: 'Wyrm Bintang Jatuh', type: 'snake' },
-      { id: 'S6', from: 91, to: 67, name: 'Naga Astral Penjaga', type: 'snake' },
-      { id: 'S7', from: 96, to: 74, name: 'Sovereign Naga Cakrawala', type: 'snake' },
+      { id: 'S1', from: 26, to: 4, name: 'Ular Angin Stratosfer', type: 'snake' },
+      { id: 'S2', from: 42, to: 18, name: 'Naga Awan Badai', type: 'snake' },
+      { id: 'S3', from: 50, to: 25, name: 'Serpent Komet Biru', type: 'snake' },
+      { id: 'S4', from: 62, to: 39, name: 'Naga Petir Langit', type: 'snake' },
+      { id: 'S5', from: 73, to: 49, name: 'Wyrm Bintang Jatuh', type: 'snake' },
+      { id: 'S6', from: 92, to: 63, name: 'Viper Awan Perak', type: 'snake' },
+      { id: 'S7', from: 93, to: 67, name: 'Ular Kilat Fajar', type: 'snake' },
+      { id: 'S8', from: 94, to: 68, name: 'Serpent Nebula Emas', type: 'snake' },
+      { id: 'S9', from: 95, to: 72, name: 'Naga Astral Penjaga', type: 'snake' },
+      { id: 'S10', from: 96, to: 75, name: 'Wyrm Puncak Surgawi', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Naga Penjaga Awan', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Sovereign Naga Cakrawala', type: 'snake' },
     ],
     boardSettings: {
       shape: 'citadel_terrace',
@@ -1034,22 +1104,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689670000,
     updatedAt: 1735689670000,
     ladders: [
-      { id: 'L1', from: 6, to: 26, name: 'Tangga Altar Perunggu', type: 'ladder' },
-      { id: 'L2', from: 15, to: 39, name: 'Tangga Pilar Leluhur', type: 'ladder' },
-      { id: 'L3', from: 27, to: 50, name: 'Tangga Relik Suci', type: 'ladder' },
-      { id: 'L4', from: 44, to: 63, name: 'Tangga Teras Giok', type: 'ladder' },
-      { id: 'L5', from: 57, to: 77, name: 'Tangga Menara Lonceng', type: 'ladder' },
-      { id: 'L6', from: 66, to: 86, name: 'Tangga Gerbang Kekaisaran', type: 'ladder' },
-      { id: 'L7', from: 78, to: 96, name: 'Tangga Singgasana Kuil', type: 'ladder' },
+      { id: 'L1', from: 4, to: 25, name: 'Tangga Altar Perunggu', type: 'ladder' },
+      { id: 'L2', from: 6, to: 18, name: 'Tangga Prasasti Kuno', type: 'ladder' },
+      { id: 'L3', from: 13, to: 46, name: 'Tangga Pilar Leluhur', type: 'ladder' },
+      { id: 'L4', from: 19, to: 38, name: 'Jalur Obor Sanctum', type: 'ladder' },
+      { id: 'L5', from: 28, to: 52, name: 'Tangga Relik Suci', type: 'ladder' },
+      { id: 'L6', from: 33, to: 49, name: 'Tangga Teras Giok', type: 'ladder' },
+      { id: 'L7', from: 42, to: 63, name: 'Tangga Menara Lonceng', type: 'ladder' },
+      { id: 'L8', from: 50, to: 69, name: 'Tangga Ruang Harta', type: 'ladder' },
+      { id: 'L9', from: 59, to: 79, name: 'Tangga Gerbang Kekaisaran', type: 'ladder' },
+      { id: 'L10', from: 62, to: 81, name: 'Tangga Kubah Emas', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Altar Puncak', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Tangga Singgasana Kuil', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 30, to: 7, name: 'Ular Penjaga Relik', type: 'snake' },
-      { id: 'S2', from: 41, to: 17, name: 'Viper Batu Giok', type: 'snake' },
-      { id: 'S3', from: 52, to: 29, name: 'Ular Kutukan Kuil', type: 'snake' },
-      { id: 'S4', from: 61, to: 36, name: 'Naga Perunggu Kuno', type: 'snake' },
-      { id: 'S5', from: 73, to: 48, name: 'Serpent Lorong Rahasia', type: 'snake' },
-      { id: 'S6', from: 89, to: 60, name: 'Naga Giok Pelindung', type: 'snake' },
-      { id: 'S7', from: 97, to: 75, name: 'Dewa Naga Kuil Emas', type: 'snake' },
+      { id: 'S1', from: 27, to: 5, name: 'Ular Penjaga Relik', type: 'snake' },
+      { id: 'S2', from: 40, to: 3, name: 'Viper Batu Giok', type: 'snake' },
+      { id: 'S3', from: 44, to: 17, name: 'Ular Kutukan Kuil', type: 'snake' },
+      { id: 'S4', from: 54, to: 31, name: 'Naga Perunggu Kuno', type: 'snake' },
+      { id: 'S5', from: 66, to: 45, name: 'Serpent Lorong Rahasia', type: 'snake' },
+      { id: 'S6', from: 92, to: 73, name: 'Viper Altar Emas', type: 'snake' },
+      { id: 'S7', from: 93, to: 68, name: 'Ular Pilar Suci', type: 'snake' },
+      { id: 'S8', from: 94, to: 75, name: 'Serpent Ukiran Kuno', type: 'snake' },
+      { id: 'S9', from: 95, to: 64, name: 'Naga Giok Pelindung', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Mahkota Kuil', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Naga Penjaga Sanctum', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Dewa Naga Kuil Emas', type: 'snake' },
     ],
     boardSettings: {
       shape: 'classic_square',
@@ -1114,22 +1194,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689608000,
     updatedAt: 1735689608000,
     ladders: [
-      { id: 'L1', from: 3, to: 24, name: 'Jembatan Torii Timur', type: 'ladder' },
-      { id: 'L2', from: 11, to: 42, name: 'Tangga Kelopak Hanami', type: 'ladder' },
-      { id: 'L3', from: 26, to: 57, name: 'Jalur Lentera Shogun', type: 'ladder' },
-      { id: 'L4', from: 39, to: 73, name: 'Tangga Pagoda Crimson', type: 'ladder' },
-      { id: 'L5', from: 54, to: 85, name: 'Gerbang Angin Sakura', type: 'ladder' },
-      { id: 'L6', from: 70, to: 92, name: 'Tangga Kaisar Fajar', type: 'ladder' },
-      { id: 'L7', from: 81, to: 98, name: 'Puncak Kuil Bunga', type: 'ladder' },
+      { id: 'L1', from: 5, to: 24, name: 'Jembatan Torii Timur', type: 'ladder' },
+      { id: 'L2', from: 8, to: 30, name: 'Tangga Kelopak Hanami', type: 'ladder' },
+      { id: 'L3', from: 17, to: 40, name: 'Jalur Lentera Shogun', type: 'ladder' },
+      { id: 'L4', from: 19, to: 43, name: 'Tangga Taman Koi', type: 'ladder' },
+      { id: 'L5', from: 28, to: 51, name: 'Tangga Pagoda Crimson', type: 'ladder' },
+      { id: 'L6', from: 32, to: 56, name: 'Jembatan Bambu Senja', type: 'ladder' },
+      { id: 'L7', from: 45, to: 66, name: 'Gerbang Angin Sakura', type: 'ladder' },
+      { id: 'L8', from: 54, to: 74, name: 'Tangga Kastil Samurai', type: 'ladder' },
+      { id: 'L9', from: 59, to: 82, name: 'Tangga Kaisar Fajar', type: 'ladder' },
+      { id: 'L10', from: 64, to: 85, name: 'Tangga Menara Kipas', type: 'ladder' },
+      { id: 'L11', from: 70, to: 91, name: 'Tangga Gerbang Vermilion', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Puncak Kuil Bunga', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 28, to: 7, name: 'Ryu Merah Muda', type: 'snake' },
-      { id: 'S2', from: 46, to: 18, name: 'Ular Kipas Kabuki', type: 'snake' },
-      { id: 'S3', from: 60, to: 31, name: 'Naga Awan Senja', type: 'snake' },
-      { id: 'S4', from: 68, to: 37, name: 'Penjaga Sungai Koi', type: 'snake' },
-      { id: 'S5', from: 86, to: 52, name: 'Ular Pedang Ronin', type: 'snake' },
-      { id: 'S6', from: 94, to: 65, name: 'Ryu Gerhana Sakura', type: 'snake' },
-      { id: 'S7', from: 99, to: 77, name: 'Shogun Ryu Abadi', type: 'snake' },
+      { id: 'S1', from: 26, to: 4, name: 'Ryu Merah Muda', type: 'snake' },
+      { id: 'S2', from: 42, to: 18, name: 'Ular Kipas Kabuki', type: 'snake' },
+      { id: 'S3', from: 50, to: 25, name: 'Naga Awan Senja', type: 'snake' },
+      { id: 'S4', from: 62, to: 39, name: 'Penjaga Sungai Koi', type: 'snake' },
+      { id: 'S5', from: 73, to: 49, name: 'Ular Pedang Ronin', type: 'snake' },
+      { id: 'S6', from: 92, to: 63, name: 'Viper Kelopak Crimson', type: 'snake' },
+      { id: 'S7', from: 93, to: 67, name: 'Ular Torii Malam', type: 'snake' },
+      { id: 'S8', from: 94, to: 68, name: 'Ryu Gerhana Sakura', type: 'snake' },
+      { id: 'S9', from: 95, to: 72, name: 'Naga Lentera Merah', type: 'snake' },
+      { id: 'S10', from: 96, to: 75, name: 'Wyrm Pagoda Emas', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Ryu Penjaga Istana', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Shogun Ryu Abadi', type: 'snake' },
     ],
     boardSettings: {
       shape: 'citadel_terrace',
@@ -1194,22 +1284,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689609000,
     updatedAt: 1735689609000,
     ladders: [
-      { id: 'L1', from: 5, to: 29, name: 'Lift Piston Kronos', type: 'ladder' },
-      { id: 'L2', from: 15, to: 44, name: 'Tangga Roda Gigi', type: 'ladder' },
-      { id: 'L3', from: 27, to: 61, name: 'Rel Uap Kuningan', type: 'ladder' },
-      { id: 'L4', from: 41, to: 74, name: 'Jembatan Pendulum', type: 'ladder' },
-      { id: 'L5', from: 53, to: 83, name: 'Menara Dinamo Aether', type: 'ladder' },
-      { id: 'L6', from: 69, to: 91, name: 'Tangga Kompas Emas', type: 'ladder' },
-      { id: 'L7', from: 79, to: 97, name: 'Poros Waktu Agung', type: 'ladder' },
+      { id: 'L1', from: 3, to: 22, name: 'Lift Piston Kronos', type: 'ladder' },
+      { id: 'L2', from: 7, to: 26, name: 'Tangga Roda Gigi', type: 'ladder' },
+      { id: 'L3', from: 15, to: 38, name: 'Rel Uap Kuningan', type: 'ladder' },
+      { id: 'L4', from: 20, to: 41, name: 'Tangga Katup Aether', type: 'ladder' },
+      { id: 'L5', from: 29, to: 52, name: 'Jembatan Pendulum', type: 'ladder' },
+      { id: 'L6', from: 35, to: 56, name: 'Jalur Turbin Emas', type: 'ladder' },
+      { id: 'L7', from: 44, to: 67, name: 'Menara Dinamo Aether', type: 'ladder' },
+      { id: 'L8', from: 53, to: 72, name: 'Tangga Astrolab Uap', type: 'ladder' },
+      { id: 'L9', from: 57, to: 79, name: 'Tangga Kompas Emas', type: 'ladder' },
+      { id: 'L10', from: 68, to: 87, name: 'Tangga Menara Lonceng', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Kronometer Agung', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Poros Waktu Agung', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 32, to: 10, name: 'Kobra Tembaga', type: 'snake' },
-      { id: 'S2', from: 48, to: 21, name: 'Ular Pegas Baja', type: 'snake' },
-      { id: 'S3', from: 63, to: 33, name: 'Viper Voltase', type: 'snake' },
-      { id: 'S4', from: 72, to: 40, name: 'Naga Mesin Uap', type: 'snake' },
-      { id: 'S5', from: 84, to: 49, name: 'Automaton Wyrm', type: 'snake' },
-      { id: 'S6', from: 93, to: 62, name: 'Ular Kronometer', type: 'snake' },
-      { id: 'S7', from: 98, to: 76, name: 'Leviathan Kronos', type: 'snake' },
+      { id: 'S1', from: 25, to: 6, name: 'Kobra Tembaga', type: 'snake' },
+      { id: 'S2', from: 39, to: 14, name: 'Ular Pegas Baja', type: 'snake' },
+      { id: 'S3', from: 51, to: 24, name: 'Viper Voltase', type: 'snake' },
+      { id: 'S4', from: 64, to: 36, name: 'Naga Mesin Uap', type: 'snake' },
+      { id: 'S5', from: 75, to: 48, name: 'Automaton Wyrm', type: 'snake' },
+      { id: 'S6', from: 92, to: 61, name: 'Viper Roda Gigi', type: 'snake' },
+      { id: 'S7', from: 93, to: 69, name: 'Ular Kronometer', type: 'snake' },
+      { id: 'S8', from: 94, to: 70, name: 'Serpent Pegas Emas', type: 'snake' },
+      { id: 'S9', from: 95, to: 73, name: 'Naga Dinamo Aether', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Kuningan Tempa', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Automaton Penjaga Puncak', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Leviathan Kronos Abadi', type: 'snake' },
     ],
     boardSettings: {
       shape: 'octagon_bastion',
@@ -1274,22 +1374,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689610000,
     updatedAt: 1735689610000,
     ladders: [
-      { id: 'L1', from: 2, to: 23, name: 'Tangga Gerbang Giok', type: 'ladder' },
-      { id: 'L2', from: 14, to: 47, name: 'Jembatan Kabut Awan', type: 'ladder' },
-      { id: 'L3', from: 29, to: 59, name: 'Tangga Pagoda Langit', type: 'ladder' },
-      { id: 'L4', from: 43, to: 76, name: 'Jalur Lentera Kaisar', type: 'ladder' },
-      { id: 'L5', from: 56, to: 86, name: 'Tangga Teratai Emas', type: 'ladder' },
-      { id: 'L6', from: 72, to: 93, name: 'Pilar Naga Timur', type: 'ladder' },
-      { id: 'L7', from: 82, to: 98, name: 'Takhta Giok Abadi', type: 'ladder' },
+      { id: 'L1', from: 4, to: 25, name: 'Tangga Gerbang Giok', type: 'ladder' },
+      { id: 'L2', from: 6, to: 18, name: 'Tangga Kolam Teratai', type: 'ladder' },
+      { id: 'L3', from: 13, to: 46, name: 'Jembatan Kabut Awan', type: 'ladder' },
+      { id: 'L4', from: 19, to: 38, name: 'Tangga Bambu Suci', type: 'ladder' },
+      { id: 'L5', from: 28, to: 52, name: 'Tangga Pagoda Langit', type: 'ladder' },
+      { id: 'L6', from: 33, to: 49, name: 'Jalur Lentera Kaisar', type: 'ladder' },
+      { id: 'L7', from: 42, to: 63, name: 'Tangga Teratai Emas', type: 'ladder' },
+      { id: 'L8', from: 50, to: 69, name: 'Tangga Balai Zamrud', type: 'ladder' },
+      { id: 'L9', from: 59, to: 79, name: 'Pilar Naga Timur', type: 'ladder' },
+      { id: 'L10', from: 62, to: 81, name: 'Tangga Awan Kahyangan', type: 'ladder' },
+      { id: 'L11', from: 74, to: 91, name: 'Tangga Gerbang Kekaisaran', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Takhta Giok Abadi', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 30, to: 8, name: 'Naga Embun Giok', type: 'snake' },
-      { id: 'S2', from: 49, to: 17, name: 'Ular Bambu Suci', type: 'snake' },
-      { id: 'S3', from: 61, to: 26, name: 'Ryu Kabut Lembah', type: 'snake' },
-      { id: 'S4', from: 71, to: 38, name: 'Penjaga Kolam Teratai', type: 'snake' },
-      { id: 'S5', from: 88, to: 55, name: 'Naga Awan Zamrud', type: 'snake' },
-      { id: 'S6', from: 95, to: 66, name: 'Kaisar Ular Emas', type: 'snake' },
-      { id: 'S7', from: 99, to: 79, name: 'Shenlong Langit Giok', type: 'snake' },
+      { id: 'S1', from: 27, to: 5, name: 'Naga Embun Giok', type: 'snake' },
+      { id: 'S2', from: 40, to: 3, name: 'Ular Bambu Suci', type: 'snake' },
+      { id: 'S3', from: 44, to: 17, name: 'Ryu Kabut Lembah', type: 'snake' },
+      { id: 'S4', from: 54, to: 31, name: 'Penjaga Kolam Teratai', type: 'snake' },
+      { id: 'S5', from: 66, to: 45, name: 'Naga Awan Zamrud', type: 'snake' },
+      { id: 'S6', from: 92, to: 73, name: 'Viper Pagoda Giok', type: 'snake' },
+      { id: 'S7', from: 93, to: 68, name: 'Ular Lentera Emas', type: 'snake' },
+      { id: 'S8', from: 94, to: 75, name: 'Serpent Kabut Timur', type: 'snake' },
+      { id: 'S9', from: 95, to: 64, name: 'Kaisar Ular Emas', type: 'snake' },
+      { id: 'S10', from: 96, to: 77, name: 'Wyrm Istana Giok', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Naga Penjaga Kahyangan', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Shenlong Langit Giok', type: 'snake' },
     ],
     boardSettings: {
       shape: 'citadel_terrace',
@@ -1354,22 +1464,32 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
     createdAt: 1735689611000,
     updatedAt: 1735689611000,
     ladders: [
-      { id: 'L1', from: 4, to: 26, name: 'Gerbang Warp Orion', type: 'ladder' },
-      { id: 'L2', from: 12, to: 45, name: 'Jembatan Cahaya Pulsar', type: 'ladder' },
-      { id: 'L3', from: 25, to: 58, name: 'Tangga Konstelasi Lyra', type: 'ladder' },
-      { id: 'L4', from: 40, to: 75, name: 'Cincin Orbit Saturnus', type: 'ladder' },
-      { id: 'L5', from: 55, to: 87, name: 'Tangga Supernova', type: 'ladder' },
-      { id: 'L6', from: 71, to: 94, name: 'Jalur Bima Sakti', type: 'ladder' },
-      { id: 'L7', from: 83, to: 99, name: 'Portal Singularitas', type: 'ladder' },
+      { id: 'L1', from: 5, to: 24, name: 'Gerbang Warp Orion', type: 'ladder' },
+      { id: 'L2', from: 8, to: 30, name: 'Jembatan Cahaya Pulsar', type: 'ladder' },
+      { id: 'L3', from: 17, to: 40, name: 'Tangga Konstelasi Lyra', type: 'ladder' },
+      { id: 'L4', from: 19, to: 43, name: 'Jalur Komet Biru', type: 'ladder' },
+      { id: 'L5', from: 28, to: 51, name: 'Cincin Orbit Saturnus', type: 'ladder' },
+      { id: 'L6', from: 32, to: 56, name: 'Tangga Nebula Violet', type: 'ladder' },
+      { id: 'L7', from: 45, to: 66, name: 'Tangga Supernova', type: 'ladder' },
+      { id: 'L8', from: 54, to: 74, name: 'Jalur Bima Sakti', type: 'ladder' },
+      { id: 'L9', from: 59, to: 82, name: 'Tangga Cakrawala Quasar', type: 'ladder' },
+      { id: 'L10', from: 64, to: 85, name: 'Tangga Observatorium Astral', type: 'ladder' },
+      { id: 'L11', from: 70, to: 91, name: 'Gerbang Galaksi Andromeda', type: 'ladder' },
+      { id: 'L12', from: 80, to: 98, name: 'Portal Singularitas', type: 'ladder' },
     ],
     snakes: [
-      { id: 'S1', from: 31, to: 9, name: 'Komet Ekor Ungu', type: 'snake' },
-      { id: 'S2', from: 47, to: 16, name: 'Ular Lubang Hitam', type: 'snake' },
-      { id: 'S3', from: 62, to: 28, name: 'Wyrm Sabuk Asteroid', type: 'snake' },
-      { id: 'S4', from: 73, to: 36, name: 'Naga Gerhana Nova', type: 'snake' },
-      { id: 'S5', from: 85, to: 50, name: 'Serpent Quasar', type: 'snake' },
+      { id: 'S1', from: 26, to: 4, name: 'Komet Ekor Ungu', type: 'snake' },
+      { id: 'S2', from: 42, to: 18, name: 'Ular Lubang Hitam', type: 'snake' },
+      { id: 'S3', from: 50, to: 25, name: 'Wyrm Sabuk Asteroid', type: 'snake' },
+      { id: 'S4', from: 62, to: 39, name: 'Naga Gerhana Nova', type: 'snake' },
+      { id: 'S5', from: 73, to: 49, name: 'Serpent Quasar', type: 'snake' },
       { id: 'S6', from: 92, to: 63, name: 'Naga Nebula Andromeda', type: 'snake' },
-      { id: 'S7', from: 97, to: 72, name: 'Aurelion Penguasa Bintang', type: 'snake' },
+      { id: 'S7', from: 93, to: 67, name: 'Ular Debu Bintang', type: 'snake' },
+      { id: 'S8', from: 94, to: 68, name: 'Serpent Meteorit Ungu', type: 'snake' },
+      { id: 'S9', from: 95, to: 72, name: 'Naga Pulsar Kosmik', type: 'snake' },
+      { id: 'S10', from: 96, to: 75, name: 'Wyrm Horizon Peristiwa', type: 'snake' },
+      { id: 'S11', from: 97, to: 78, name: 'Naga Penjaga Galaksi', type: 'snake' },
+      { id: 'S12', from: 99, to: 2, name: 'Aurelion Penguasa Bintang', type: 'snake' },
     ],
     boardSettings: {
       shape: 'octagon_bastion',
@@ -1465,8 +1585,8 @@ export function getDefaultBoardByTheme(themeId: BoardThemeId): BoardConfig {
  */
 export function generateRandomJumpsForTheme(
   themeId: BoardThemeId,
-  ladderCount = 7,
-  snakeCount = 7,
+  ladderCount = 12,
+  snakeCount = 12,
 ): { ladders: SnakeOrLadder[]; snakes: SnakeOrLadder[] } {
   const themeBoard = getDefaultBoardByTheme(themeId);
   const usedTiles = new Set<number>([1, 100]);
@@ -1474,56 +1594,70 @@ export function generateRandomJumpsForTheme(
     usedTiles.add(specTile);
   }
 
-  const pickFreeTile = (min: number, max: number): number => {
-    for (let attempt = 0; attempt < 80; attempt++) {
-      const candidate = Math.floor(min + Math.random() * (max - min + 1));
+  const pickFreeTile = (min: number, max: number): number | null => {
+    const lo = Math.max(2, Math.min(99, min));
+    const hi = Math.max(lo, Math.min(99, max));
+    for (let attempt = 0; attempt < 90; attempt++) {
+      const candidate = Math.floor(lo + Math.random() * (hi - lo + 1));
       if (!usedTiles.has(candidate)) {
         usedTiles.add(candidate);
         return candidate;
       }
     }
-    for (let t = min; t <= max; t++) {
+    for (let t = lo; t <= hi; t++) {
       if (!usedTiles.has(t)) {
         usedTiles.add(t);
         return t;
       }
     }
-    return Math.max(2, Math.min(99, min));
+    for (let t = 2; t <= 99; t++) {
+      if (!usedTiles.has(t)) {
+        usedTiles.add(t);
+        return t;
+      }
+    }
+    return null;
   };
 
   const ladders: SnakeOrLadder[] = [];
+  const ladderStep = Math.max(4, Math.floor(78 / Math.max(1, ladderCount)));
   for (let i = 0; i < ladderCount; i++) {
-    const bandMin = Math.max(2, Math.min(82, 3 + i * 11));
-    const bandMax = Math.min(86, bandMin + 10);
+    const bandMin = Math.max(2, Math.min(82, 3 + i * ladderStep));
+    const bandMax = Math.min(86, bandMin + Math.max(6, ladderStep));
     const from = pickFreeTile(bandMin, bandMax);
-    const minTo = Math.min(98, from + 12);
-    const maxTo = Math.min(99, from + 32);
+    if (from === null) break;
+    const minTo = Math.min(98, from + 10);
+    const maxTo = Math.min(98, from + 28);
     const to = pickFreeTile(minTo, Math.max(minTo, maxTo));
+    if (to === null || to <= from) continue;
     const templateName =
       themeBoard.ladders[i % themeBoard.ladders.length]?.name || `Tangga Suci #${i + 1}`;
     ladders.push({
-      id: `L${i + 1}`,
-      from: Math.min(from, to - 1),
-      to: Math.max(to, from + 1),
+      id: `L${ladders.length + 1}`,
+      from,
+      to,
       name: templateName,
       type: 'ladder',
     });
   }
 
   const snakes: SnakeOrLadder[] = [];
+  const snakeStep = Math.max(4, Math.floor(74 / Math.max(1, snakeCount)));
   for (let i = 0; i < snakeCount; i++) {
-    const bandMin = Math.max(20, Math.min(94, 22 + i * 11));
-    const bandMax = Math.min(99, bandMin + 10);
+    const bandMin = Math.max(20, Math.min(95, 22 + i * snakeStep));
+    const bandMax = Math.min(99, bandMin + Math.max(5, snakeStep));
     const from = pickFreeTile(bandMin, bandMax);
-    const minTo = Math.max(2, from - 34);
-    const maxTo = Math.max(3, from - 12);
+    if (from === null) break;
+    const minTo = Math.max(2, from - 32);
+    const maxTo = Math.max(3, from - 10);
     const to = pickFreeTile(minTo, Math.max(minTo, maxTo));
+    if (to === null || to >= from) continue;
     const templateName =
       themeBoard.snakes[i % themeBoard.snakes.length]?.name || `Ular Penjaga #${i + 1}`;
     snakes.push({
-      id: `S${i + 1}`,
-      from: Math.max(from, to + 1),
-      to: Math.min(to, from - 1),
+      id: `S${snakes.length + 1}`,
+      from,
+      to,
       name: templateName,
       type: 'snake',
     });
@@ -1531,6 +1665,12 @@ export function generateRandomJumpsForTheme(
 
   ladders.sort((a, b) => a.from - b.from);
   snakes.sort((a, b) => a.from - b.from);
+  ladders.forEach((l, idx) => {
+    l.id = `L${idx + 1}`;
+  });
+  snakes.forEach((s, idx) => {
+    s.id = `S${idx + 1}`;
+  });
 
   return { ladders, snakes };
 }

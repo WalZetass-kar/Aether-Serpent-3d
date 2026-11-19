@@ -975,7 +975,16 @@ export class FantasyBoardEngine {
       }
       const fromPos = tileToWorld(ladder.from);
       const toPos = tileToWorld(ladder.to);
-      const res = createEnchantedLadder(fromPos, toPos, maxAnisotropy, cfg, this.boardConfig);
+      // Elevate sanctuary summit ladders (e.g. 80 -> 98) cleanly over the 99 -> 2 mega serpent
+      const archLiftBoost = ladder.to >= 96 ? 0.34 : 0;
+      const res = createEnchantedLadder(
+        fromPos,
+        toPos,
+        maxAnisotropy,
+        cfg,
+        this.boardConfig,
+        archLiftBoost,
+      );
       this.laddersById.set(ladder.id, res);
       this.scene.add(res.group);
     }
@@ -997,9 +1006,10 @@ export class FantasyBoardEngine {
       const fromPos = tileToWorld(snake.from);
       const toPos = tileToWorld(snake.to);
       const basePalette = SNAKE_PALETTES[idx % SNAKE_PALETTES.length];
-      // Primary hero snakes use the board/custom snake palette directly; secondary snakes harmonize with it
+      // Primary hero snakes (and the 99 -> 2 mega boss) use the board hero palette; others harmonize cleanly
+      const isMegaBoss = snake.from === 99 && snake.to <= 10;
       const palette =
-        idx % 2 === 0
+        isMegaBoss || idx % 2 === 0
           ? {
               primary: customSnake.primaryColor,
               stripe: customSnake.stripeColor,
@@ -1012,7 +1022,15 @@ export class FantasyBoardEngine {
               belly: customSnake.bellyColor,
               horn: hornHexNum,
             };
-      const res = createFantasySnake(fromPos, toPos, palette, maxAnisotropy, cfg, this.boardConfig);
+      const res = createFantasySnake(
+        fromPos,
+        toPos,
+        palette,
+        maxAnisotropy,
+        cfg,
+        this.boardConfig,
+        idx,
+      );
       this.snakesById.set(snake.id, res);
       this.scene.add(res.group);
     });

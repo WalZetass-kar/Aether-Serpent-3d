@@ -396,11 +396,12 @@ export function createFantasySnake(
   maxAnisotropy: number,
   quality: QualityConfig = QUALITY_PRESETS.high,
   boardConfig?: BoardConfig,
+  variantIndex = 0,
 ): SerpentBuildResult {
   const shadows = quality.shadowsEnabled;
   const group = new THREE.Group();
   const snakeCfg = boardConfig?.snakeConfig;
-  const sizeScale = THREE.MathUtils.clamp(snakeCfg?.sizeScale ?? 1.0, 0.75, 1.35);
+  const rawSizeScale = THREE.MathUtils.clamp(snakeCfg?.sizeScale ?? 1.0, 0.75, 1.35);
   const scalePattern = snakeCfg?.scalePattern ?? 'diamond_keel';
   const headModel = snakeCfg?.headModel ?? 'oriental_dragon';
   const matFinish = snakeCfg?.materialFinish ?? 'glossy_scales';
@@ -409,18 +410,26 @@ export function createFantasySnake(
   const end = new THREE.Vector3(toPos.x, 0.14, toPos.z);
   const delta = new THREE.Vector3().subVectors(end, start);
   const len = delta.length();
+  const isMegaBoss = len > 11.5;
+  const sizeScale = isMegaBoss ? Math.min(1.42, rawSizeScale * 1.14) : rawSizeScale;
   const dir = delta.clone().normalize();
   const perp = new THREE.Vector3(-dir.z, 0, dir.x);
 
-  const waveAmp = Math.min(1.22, Math.max(0.62, len * 0.145));
+  // Alternate wave direction and stagger arch height so adjacent top-row serpents (92-97) weave cleanly without clipping
+  const waveSign = isMegaBoss ? 1 : variantIndex % 2 === 0 ? 1 : -1;
+  const waveAmp = isMegaBoss
+    ? 1.28
+    : Math.min(0.86, Math.max(0.46, len * 0.115));
+  const waveCycles = isMegaBoss ? 4.0 : 3.0;
+  const archHeight = isMegaBoss ? 0.56 : 0.38 + (variantIndex % 3) * 0.13;
   const points: THREE.Vector3[] = [];
-  const numCtrl = 10;
+  const numCtrl = isMegaBoss ? 16 : 10;
   for (let i = 0; i <= numCtrl; i++) {
     const t = i / numCtrl;
     const p = new THREE.Vector3().lerpVectors(start, end, t);
-    const wave = Math.sin(t * Math.PI * 3.0) * waveAmp * Math.sin(t * Math.PI);
+    const wave = Math.sin(t * Math.PI * waveCycles) * waveAmp * waveSign * Math.sin(t * Math.PI);
     p.addScaledVector(perp, wave);
-    p.y += Math.sin(t * Math.PI) * 0.44 + (1 - t) * 0.08;
+    p.y += Math.sin(t * Math.PI) * archHeight + (1 - t) * 0.08;
     points.push(p);
   }
 
@@ -505,7 +514,7 @@ export function createFantasySnake(
 
   const buildSpineMesh = (step: number, mat: THREE.Material): THREE.Mesh | null => {
     const spineGeos: THREE.BufferGeometry[] = [];
-    const spineCount = Math.max(14, Math.floor(len * 3.2));
+    const spineCount = Math.min(54, Math.max(14, Math.floor(len * 3.1)));
     const upVec = new THREE.Vector3(0, 1, 0);
     const pSample = new THREE.Vector3();
     const tang = new THREE.Vector3();
@@ -576,11 +585,15 @@ export function createFantasySnake(
   const bodyLod = new THREE.LOD();
   const lodBias = quality.lodBias;
 
-  // LOD0: Hero detail
+  // LOD0: Hero detail (higher tubular resolution for full-board boss serpents like 99 -> 2)
+  const segLod0 = isMegaBoss ? 116 : 76;
+  const segLod1 = isMegaBoss ? 58 : 38;
+  const segLod2 = isMegaBoss ? 32 : 22;
+
   const bodyLod0 = new THREE.Group();
   bodyLod0.userData.baseLodDist = 0;
   const bodyMesh0 = new THREE.Mesh(
-    createTaperedSplineGeometry(curve, 76, 18, bodyRadiusAt),
+    createTaperedSplineGeometry(curve, segLod0, 18, bodyRadiusAt),
     bodyMaterial,
   );
   bodyMesh0.castShadow = shadows;
@@ -593,7 +606,7 @@ export function createFantasySnake(
   const bodyLod1 = new THREE.Group();
   bodyLod1.userData.baseLodDist = 14;
   const bodyMesh1 = new THREE.Mesh(
-    createTaperedSplineGeometry(curve, 38, 11, bodyRadiusAt),
+    createTaperedSplineGeometry(curve, segLod1, 11, bodyRadiusAt),
     bodyMaterial,
   );
   bodyMesh1.castShadow = shadows;
@@ -606,7 +619,7 @@ export function createFantasySnake(
   const bodyLod2 = new THREE.Group();
   bodyLod2.userData.baseLodDist = 24;
   const bodyMesh2 = new THREE.Mesh(
-    createTaperedSplineGeometry(curve, 22, 8, bodyRadiusAt),
+    createTaperedSplineGeometry(curve, segLod2, 8, bodyRadiusAt),
     bodyMaterial,
   );
   bodyMesh2.receiveShadow = shadows;
@@ -984,6 +997,7 @@ export function createEnchantedLadder(
   maxAnisotropy: number,
   quality: QualityConfig = QUALITY_PRESETS.high,
   boardConfig?: BoardConfig,
+  archLiftBoost = 0,
 ): LadderBuildResult {
   const shadows = quality.shadowsEnabled;
   const group = new THREE.Group();
@@ -995,7 +1009,9 @@ export function createEnchantedLadder(
   const start = new THREE.Vector3(fromPos.x, 0.14, fromPos.z);
   const end = new THREE.Vector3(toPos.x, 0.14, toPos.z);
   const mid = new THREE.Vector3().lerpVectors(start, end, 0.5);
-  mid.y += modelStyle === 'crystal_spire' ? 0.85 : modelStyle === 'royal_steps' ? 0.45 : 0.62;
+  const baseLift =
+    modelStyle === 'crystal_spire' ? 0.85 : modelStyle === 'royal_steps' ? 0.45 : 0.62;
+  mid.y += baseLift + archLiftBoost;
   const climbCurve = new THREE.CatmullRomCurve3([start, mid, end]);
 
   const dir = new THREE.Vector3().subVectors(end, start).normalize();

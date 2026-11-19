@@ -533,8 +533,8 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   const handleRandomizeJumps = (target: 'both' | 'ladders' | 'snakes') => {
     const generated = generateRandomJumpsForTheme(
       draftBoard.themeId,
-      draftBoard.ladders.length || 7,
-      draftBoard.snakes.length || 7,
+      draftBoard.ladders.length || 12,
+      draftBoard.snakes.length || 12,
     );
     setDraftBoard((prev) => ({
       ...prev,
@@ -579,7 +579,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
 
   const handleAddLadder = () => {
     setDraftBoard((prev) => {
-      if (prev.ladders.length >= 10) return prev;
+      if (prev.ladders.length >= 20) return prev;
       const used = new Set<number>([
         1,
         100,
@@ -645,7 +645,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
 
   const handleAddSnake = () => {
     setDraftBoard((prev) => {
-      if (prev.snakes.length >= 10) return prev;
+      if (prev.snakes.length >= 20) return prev;
       const used = new Set<number>([
         1,
         100,
@@ -2016,7 +2016,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <button
                           type="button"
                           onClick={handleAddSnake}
-                          disabled={draftBoard.snakes.length >= 10}
+                          disabled={draftBoard.snakes.length >= 20}
                           className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-950/50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-40 cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />
@@ -2255,7 +2255,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <button
                           type="button"
                           onClick={handleAddLadder}
-                          disabled={draftBoard.ladders.length >= 10}
+                          disabled={draftBoard.ladders.length >= 20}
                           className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-950/50 px-2.5 py-1.5 text-[11px] font-bold text-amber-300 hover:bg-amber-900/60 disabled:opacity-40 cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />

@@ -651,7 +651,8 @@ export class AnimationSequenceController {
       subPhase: 'swallow',
     });
 
-    const swallowDuration = 1050;
+    const snakePathLen = snake.curve.getLength();
+    const swallowDuration = Math.min(2150, Math.max(1050, Math.round(snakePathLen * 125)));
     const swallowStart = performance.now();
     _quatStart.copy(snake.headGroup.quaternion);
 

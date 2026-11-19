@@ -145,22 +145,32 @@ export const ONLINE_TURN_TIMEOUT_SEC = 20;
 
 export const LADDERS: SnakeOrLadder[] = [
   { id: 'L1', from: 4, to: 25, name: 'Tangga Akar Yggdrasil', type: 'ladder' },
-  { id: 'L2', from: 13, to: 46, name: 'Tangga Kristal Langit', type: 'ladder' },
-  { id: 'L3', from: 33, to: 49, name: 'Tangga Runik Emas', type: 'ladder' },
-  { id: 'L4', from: 42, to: 63, name: 'Tangga Cahaya Bintang', type: 'ladder' },
-  { id: 'L5', from: 50, to: 69, name: 'Tangga Menara Zamrud', type: 'ladder' },
-  { id: 'L6', from: 62, to: 81, name: 'Tangga Sayap Aether', type: 'ladder' },
-  { id: 'L7', from: 74, to: 92, name: 'Tangga Takhta Naga', type: 'ladder' },
+  { id: 'L2', from: 6, to: 18, name: 'Tangga Embun Fajar', type: 'ladder' },
+  { id: 'L3', from: 13, to: 46, name: 'Tangga Kristal Langit', type: 'ladder' },
+  { id: 'L4', from: 19, to: 38, name: 'Tangga Gerbang Lumut', type: 'ladder' },
+  { id: 'L5', from: 28, to: 52, name: 'Tangga Pelangi Rimba', type: 'ladder' },
+  { id: 'L6', from: 33, to: 49, name: 'Tangga Runik Emas', type: 'ladder' },
+  { id: 'L7', from: 42, to: 63, name: 'Tangga Cahaya Bintang', type: 'ladder' },
+  { id: 'L8', from: 50, to: 69, name: 'Tangga Menara Zamrud', type: 'ladder' },
+  { id: 'L9', from: 59, to: 79, name: 'Tangga Jembatan Peri', type: 'ladder' },
+  { id: 'L10', from: 62, to: 81, name: 'Tangga Sayap Aether', type: 'ladder' },
+  { id: 'L11', from: 74, to: 91, name: 'Tangga Puncak Sylvan', type: 'ladder' },
+  { id: 'L12', from: 80, to: 98, name: 'Tangga Takhta Sanctuary', type: 'ladder' },
 ];
 
 export const SNAKES: SnakeOrLadder[] = [
   { id: 'S1', from: 27, to: 5, name: 'Ular Kabut Hijau', type: 'snake' },
   { id: 'S2', from: 40, to: 3, name: 'Ular Obsidian', type: 'snake' },
-  { id: 'S3', from: 43, to: 18, name: 'Ular Bara Api', type: 'snake' },
+  { id: 'S3', from: 44, to: 17, name: 'Ular Bara Api', type: 'snake' },
   { id: 'S4', from: 54, to: 31, name: 'Ular Bayangan', type: 'snake' },
   { id: 'S5', from: 66, to: 45, name: 'Ular Racun Zamrud', type: 'snake' },
-  { id: 'S6', from: 89, to: 53, name: 'Naga Petir Ungu', type: 'snake' },
-  { id: 'S7', from: 97, to: 78, name: 'Serpent Penjaga Puncak', type: 'snake' },
+  { id: 'S6', from: 92, to: 73, name: 'Viper Gerbang Puncak', type: 'snake' },
+  { id: 'S7', from: 93, to: 68, name: 'Ular Petir Ungu', type: 'snake' },
+  { id: 'S8', from: 94, to: 75, name: 'Serpent Kabut Langit', type: 'snake' },
+  { id: 'S9', from: 95, to: 64, name: 'Naga Awan Kelam', type: 'snake' },
+  { id: 'S10', from: 96, to: 77, name: 'Wyrm Mahkota Emas', type: 'snake' },
+  { id: 'S11', from: 97, to: 78, name: 'Serpent Penjaga Puncak', type: 'snake' },
+  { id: 'S12', from: 99, to: 2, name: 'Raja Naga Aether Abadi', type: 'snake' },
 ];
 
 export const SPECIAL_TILES: SpecialTileInfo[] = [
@@ -182,7 +192,7 @@ export const SPECIAL_TILES: SpecialTileInfo[] = [
   { tile: 23, type: 'curse', label: 'Kabut Penyesat', description: 'Kabut gelap mendorongmu mundur 3 langkah.', delta: -3 },
   { tile: 47, type: 'curse', label: 'Kabut Penyesat', description: 'Kabut gelap mendorongmu mundur 3 langkah.', delta: -3 },
   { tile: 71, type: 'curse', label: 'Kabut Penyesat', description: 'Kabut gelap mendorongmu mundur 3 langkah.', delta: -3 },
-  { tile: 94, type: 'curse', label: 'Kabut Penyesat', description: 'Kabut gelap mendorongmu mundur 3 langkah.', delta: -3 },
+  { tile: 90, type: 'curse', label: 'Kabut Penyesat', description: 'Kabut gelap mendorongmu mundur 3 langkah.', delta: -3 },
 ];
 
 export const SPECIAL_TILE_MAP = new Map<number, SpecialTileInfo>(
