@@ -639,7 +639,7 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
       </header>
 
       {/* Main Lobby Container (shrink-0 & overflow-x-hidden prevents horizontal scrolling or card clipping) */}
-      <main className="my-auto mx-auto w-full max-w-6xl shrink-0 overflow-x-hidden overflow-y-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 space-y-4">
+      <main className="my-auto mx-auto w-full max-w-6xl shrink-0 overflow-x-hidden overflow-y-hidden glass-panel-lobby rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 space-y-4">
         {!isOnlineNetwork && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 p-3.5 text-xs text-amber-200">
             Koneksi internet sedang terputus. Hubungkan jaringan untuk membuat atau bergabung ke ruangan daring.

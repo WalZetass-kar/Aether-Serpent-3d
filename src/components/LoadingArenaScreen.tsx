@@ -122,27 +122,30 @@ function getThemeVisualAccent(themeId?: BoardThemeId): {
 } {
   switch (themeId) {
     case 'dragon_volcano':
+    case 'sakura_shogun':
       return {
         ringTone: 'rose',
-        auraPrimary: 'bg-orange-500/15',
-        auraSecondary: 'bg-rose-600/12',
-        barGradient: 'from-rose-600 via-orange-500 to-amber-300',
-        accentText: 'text-orange-300',
-        badgeBorder: 'border-orange-500/35 bg-orange-950/35 text-orange-200',
+        auraPrimary: 'bg-rose-500/15',
+        auraSecondary: 'bg-pink-600/12',
+        barGradient: 'from-rose-600 via-pink-500 to-amber-300',
+        accentText: 'text-rose-300',
+        badgeBorder: 'border-rose-500/35 bg-rose-950/35 text-rose-200',
       };
     case 'frozen_kingdom':
     case 'atlantis_ocean':
     case 'celestial_sky':
+    case 'cosmic_nebula':
       return {
         ringTone: 'sky',
         auraPrimary: 'bg-sky-500/15',
-        auraSecondary: 'bg-cyan-400/12',
-        barGradient: 'from-sky-600 via-cyan-400 to-teal-200',
+        auraSecondary: 'bg-violet-500/12',
+        barGradient: 'from-violet-600 via-sky-400 to-cyan-200',
         accentText: 'text-sky-300',
         badgeBorder: 'border-sky-500/35 bg-sky-950/35 text-sky-200',
       };
     case 'enchanted_forest':
     case 'ancient_temple':
+    case 'jade_palace':
       return {
         ringTone: 'emerald',
         auraPrimary: 'bg-emerald-500/15',
@@ -153,6 +156,7 @@ function getThemeVisualAccent(themeId?: BoardThemeId): {
       };
     case 'lost_desert':
     case 'shadow_realm':
+    case 'clockwork_aether':
     default:
       return {
         ringTone: 'amber',

@@ -4,13 +4,25 @@ import {
   Camera,
   Compass,
   Cpu,
+  Dices,
   Eye,
   Gauge,
+  MousePointerClick,
+  Music,
+  Play,
   RotateCcw,
   Sliders,
   Sparkles,
+  Volume2,
+  VolumeX,
+  Wind,
   X,
 } from 'lucide-react';
+import {
+  DEFAULT_SOUND_SETTINGS,
+  soundEngine,
+  type SoundSettings,
+} from '../audio/soundEngine';
 import {
   DEFAULT_CAMERA_SETTINGS,
   type CameraMode,
@@ -33,6 +45,10 @@ interface CameraSettingsModalProps {
   graphicsPrefs: GraphicsPreferences;
   onGraphicsChange: (next: GraphicsPreferences) => void;
   deviceCaps: DeviceCapabilitiesReport;
+  soundSettings: SoundSettings;
+  muted: boolean;
+  onSoundChange: (next: SoundSettings) => void;
+  onToggleMute: () => void;
 }
 
 const CAMERA_MODES: Array<{ id: CameraMode; label: string; desc: string }> = [
@@ -104,8 +120,12 @@ export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
   graphicsPrefs,
   onGraphicsChange,
   deviceCaps,
+  soundSettings,
+  muted,
+  onSoundChange,
+  onToggleMute,
 }) => {
-  const [activeTab, setActiveTab] = useState<'camera' | 'graphics'>('camera');
+  const [activeTab, setActiveTab] = useState<'camera' | 'sound' | 'graphics'>('camera');
 
   if (!open) return null;
 
@@ -117,24 +137,48 @@ export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
     onGraphicsChange({ ...graphicsPrefs, ...partial });
   };
 
+  const patchSound = (partial: Partial<SoundSettings>) => {
+    onSoundChange({ ...soundSettings, ...partial });
+  };
+
   const recommendedLabel = QUALITY_PRESETS[deviceCaps.recommendedTier].label;
+
+  const headerTitle =
+    activeTab === 'camera'
+      ? 'Pengaturan Kamera'
+      : activeTab === 'sound'
+        ? 'Pengaturan Suara'
+        : 'Grafis & Performa';
+
+  const activeCategoryCount = [
+    soundSettings.musicEnabled,
+    soundSettings.uiSoundsEnabled,
+    soundSettings.boardEffectsEnabled,
+    soundSettings.ambientBoardEnabled,
+  ].filter(Boolean).length;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/80 p-4">
       <div className="w-full max-w-lg max-h-[88vh] flex flex-col rounded-2xl glass-panel shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-amber-500/20">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             {activeTab === 'camera' ? (
-              <Camera className="w-5 h-5 text-amber-400" />
+              <Camera className="w-5 h-5 text-amber-400 shrink-0" />
+            ) : activeTab === 'sound' ? (
+              muted ? (
+                <VolumeX className="w-5 h-5 text-rose-400 shrink-0" />
+              ) : (
+                <Volume2 className="w-5 h-5 text-amber-400 shrink-0" />
+              )
             ) : (
-              <Gauge className="w-5 h-5 text-amber-400" />
+              <Gauge className="w-5 h-5 text-amber-400 shrink-0" />
             )}
-            <div>
-              <h2 className="font-display text-lg font-bold text-gold-gradient">
-                {activeTab === 'camera' ? 'Pengaturan Kamera' : 'Grafis & Performa'}
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-bold text-gold-gradient truncate">
+                {headerTitle}
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 truncate">
                 Preferensi perangkat lokal tersimpan otomatis di browser Anda.
               </p>
             </div>
@@ -143,7 +187,7 @@ export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+            className="p-2 min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -151,30 +195,51 @@ export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
 
         {/* Navigation Tabs */}
         <div className="px-5 pt-3">
-          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-950/75 border border-slate-800">
+          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-950/75 border border-slate-800">
             <button
               type="button"
-              onClick={() => setActiveTab('camera')}
-              className={`min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              onClick={() => {
+                soundEngine.playUiClick();
+                setActiveTab('camera');
+              }}
+              className={`min-h-[38px] px-2 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 activeTab === 'camera'
                   ? 'bg-amber-500 text-slate-950'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              <Camera className="w-3.5 h-3.5" />
-              Kamera 3D
+              <Camera className="w-3.5 h-3.5 shrink-0" />
+              <span>Kamera 3D</span>
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('graphics')}
-              className={`min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              onClick={() => {
+                soundEngine.playUiClick();
+                setActiveTab('sound');
+              }}
+              className={`min-h-[38px] px-2 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                activeTab === 'sound'
+                  ? 'bg-amber-500 text-slate-950'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <Volume2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Suara</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                setActiveTab('graphics');
+              }}
+              className={`min-h-[38px] px-2 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 activeTab === 'graphics'
                   ? 'bg-amber-500 text-slate-950'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              Grafis & Performa
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span>Grafis</span>
             </button>
           </div>
         </div>
@@ -346,6 +411,358 @@ export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
                   Reset
+                </button>
+              </div>
+            </>
+          ) : activeTab === 'sound' ? (
+            <>
+              {/* Master Audio Switch & Master Volume */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-100">Master Audio</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      {muted
+                        ? 'Semua suara sedang dibisukan'
+                        : `${activeCategoryCount} dari 4 kategori audio aktif`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!muted}
+                    aria-label="Aktifkan Master Audio"
+                    onClick={onToggleMute}
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                      !muted
+                        ? 'border-amber-400/70 bg-amber-500'
+                        : 'border-slate-700 bg-slate-800'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 rounded-full bg-slate-950 shadow-sm transition-transform duration-150 ${
+                        !muted ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className={muted ? 'opacity-50' : ''}>
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="text-slate-300 font-medium">Volume Utama</span>
+                    <span className="font-mono-num text-amber-300 font-semibold">
+                      {Math.round(soundSettings.masterVolume * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={Math.round(soundSettings.masterVolume * 100)}
+                    onChange={(e) =>
+                      patchSound({ masterVolume: Number(e.target.value) / 100 })
+                    }
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {muted && (
+                <div className="rounded-xl border border-rose-500/30 bg-rose-950/25 px-3.5 py-2.5 text-[11px] text-rose-200 leading-relaxed">
+                  Master Audio sedang nonaktif. Anda tetap dapat mengatur kategori di bawah dan menyalakan Master Audio kapan saja.
+                </div>
+              )}
+
+              {/* Individual Audio Categories */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-300">Kategori Audio</span>
+                  <span className="text-[11px] text-slate-400">
+                    Aktifkan atau nonaktifkan per jenis suara
+                  </span>
+                </div>
+
+                <div className="divide-y divide-slate-800/80 rounded-xl border border-slate-800 bg-slate-950/55">
+                  {/* 1. Background Music */}
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Music className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-100">
+                            Musik Latar
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                            Alunan harpa dan harmoni fantasi lembut selama berada di menu dan arena.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={muted || !soundSettings.musicEnabled}
+                          onClick={() => soundEngine.previewCategory('music')}
+                          title="Uji Musik Latar"
+                          className="min-h-[34px] px-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Tes</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={soundSettings.musicEnabled}
+                          aria-label="Toggle Musik Latar"
+                          onClick={() => {
+                            const nextVal = !soundSettings.musicEnabled;
+                            patchSound({ musicEnabled: nextVal });
+                            soundEngine.playUiToggle(nextVal);
+                          }}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                            soundSettings.musicEnabled
+                              ? 'border-amber-400/70 bg-amber-500'
+                              : 'border-slate-700 bg-slate-800'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-slate-950 transition-transform duration-150 ${
+                              soundSettings.musicEnabled ? 'translate-x-5.5' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    {soundSettings.musicEnabled && (
+                      <div className="pl-7 pt-1">
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="text-slate-400">Tingkat Musik</span>
+                          <span className="font-mono-num text-amber-300">
+                            {Math.round(soundSettings.musicVolume * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10}
+                          max={100}
+                          step={5}
+                          value={Math.round(soundSettings.musicVolume * 100)}
+                          onChange={(e) =>
+                            patchSound({ musicVolume: Number(e.target.value) / 100 })
+                          }
+                          className="w-full accent-amber-400 cursor-pointer"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Interface Sounds */}
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <MousePointerClick className="w-4 h-4 text-sky-400 mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-100">
+                            Suara Antarmuka
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                            Umpan balik klik tombol, perpindahan tab, dan interaksi menu.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={muted || !soundSettings.uiSoundsEnabled}
+                          onClick={() => soundEngine.previewCategory('ui')}
+                          title="Uji Suara Antarmuka"
+                          className="min-h-[34px] px-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Tes</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={soundSettings.uiSoundsEnabled}
+                          aria-label="Toggle Suara Antarmuka"
+                          onClick={() => {
+                            const nextVal = !soundSettings.uiSoundsEnabled;
+                            patchSound({ uiSoundsEnabled: nextVal });
+                            if (nextVal) {
+                              soundEngine.setSettings({
+                                ...soundSettings,
+                                uiSoundsEnabled: true,
+                              });
+                              soundEngine.playUiToggle(true);
+                            }
+                          }}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                            soundSettings.uiSoundsEnabled
+                              ? 'border-amber-400/70 bg-amber-500'
+                              : 'border-slate-700 bg-slate-800'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-slate-950 transition-transform duration-150 ${
+                              soundSettings.uiSoundsEnabled ? 'translate-x-5.5' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Board Action & Gameplay Effects */}
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Dices className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-100">
+                            Efek Papan & Permainan
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                            Lemparan dadu, lompatan pion, naiki tangga, gigitan ular, perisai, dan kemenangan.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={muted || !soundSettings.boardEffectsEnabled}
+                          onClick={() => soundEngine.previewCategory('board')}
+                          title="Uji Efek Papan"
+                          className="min-h-[34px] px-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Tes</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={soundSettings.boardEffectsEnabled}
+                          aria-label="Toggle Efek Papan & Permainan"
+                          onClick={() => {
+                            const nextVal = !soundSettings.boardEffectsEnabled;
+                            patchSound({ boardEffectsEnabled: nextVal });
+                            soundEngine.playUiToggle(nextVal);
+                          }}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                            soundSettings.boardEffectsEnabled
+                              ? 'border-amber-400/70 bg-amber-500'
+                              : 'border-slate-700 bg-slate-800'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-slate-950 transition-transform duration-150 ${
+                              soundSettings.boardEffectsEnabled
+                                ? 'translate-x-5.5'
+                                : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Ambient Board Effects */}
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Wind className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-100">
+                            Efek Ambien Papan
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                            Desir angin hutan, air terjun latar, dan resonansi kristal papan 3D.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={muted || !soundSettings.ambientBoardEnabled}
+                          onClick={() => soundEngine.previewCategory('ambient')}
+                          title="Uji Efek Ambien Papan"
+                          className="min-h-[34px] px-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Tes</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={soundSettings.ambientBoardEnabled}
+                          aria-label="Toggle Efek Ambien Papan"
+                          onClick={() => {
+                            const nextVal = !soundSettings.ambientBoardEnabled;
+                            patchSound({ ambientBoardEnabled: nextVal });
+                            soundEngine.playUiToggle(nextVal);
+                          }}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                            soundSettings.ambientBoardEnabled
+                              ? 'border-amber-400/70 bg-amber-500'
+                              : 'border-slate-700 bg-slate-800'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-slate-950 transition-transform duration-150 ${
+                              soundSettings.ambientBoardEnabled
+                                ? 'translate-x-5.5'
+                                : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    {soundSettings.ambientBoardEnabled && (
+                      <div className="pl-7 pt-1">
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="text-slate-400">Tingkat Ambien</span>
+                          <span className="font-mono-num text-amber-300">
+                            {Math.round(soundSettings.ambientVolume * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10}
+                          max={100}
+                          step={5}
+                          value={Math.round(soundSettings.ambientVolume * 100)}
+                          onChange={(e) =>
+                            patchSound({ ambientVolume: Number(e.target.value) / 100 })
+                          }
+                          className="w-full accent-amber-400 cursor-pointer"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Reset Sound Defaults */}
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <span className="text-[11px] text-slate-400">
+                  Perubahan audio langsung aktif tanpa memuat ulang arena.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSoundChange({ ...DEFAULT_SOUND_SETTINGS });
+                    soundEngine.playUiClick();
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-amber-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Reset Audio</span>
                 </button>
               </div>
             </>

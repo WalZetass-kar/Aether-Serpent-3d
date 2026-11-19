@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { User } from 'firebase/auth';
 import {
   ArrowLeft,
   Check,
+  Coins,
   Copy,
   Crown,
   Edit3,
   Eye,
   Heart,
+  Info,
   Layers,
+  Lock,
+  MessageCircle,
   Moon,
   Palette,
   Play,
@@ -18,26 +23,36 @@ import {
   Sparkles,
   Sun,
   Sunset,
+  Target,
   Trash2,
+  Unlock,
   Wand2,
+  X,
 } from 'lucide-react';
 import {
   BOARD_THEME_LABELS,
   BoardConfig,
   BoardSelectionMode,
   BoardThemeId,
+  DEFAULT_BOARD_CONFIGS,
   cloneBoardConfig,
   generateRandomJumpsForTheme,
   getDefaultBoardByTheme,
 } from '../../shared/boardThemes';
 import {
   BoardCollectionState,
+  claimBoardMission,
   createTemplateFromTheme,
   deleteCustomBoard,
   duplicateBoard,
   getAllAvailableBoards,
   getBoardById,
+  getBoardUnlockStatus,
+  getClaimableMissionBoards,
+  isBoardUnlocked,
+  isThemeUnlocked,
   loadBoardCollection,
+  purchasePremiumBoard,
   renameCustomBoard,
   saveCustomBoard,
   selectBoard,
@@ -45,21 +60,39 @@ import {
   setDefaultBoard,
   toggleFavoriteBoard,
 } from '../services/boardStorageService';
+import type { PlayerProfile } from '../services/storageService';
+import { subscribeToMemberTopUpThread } from '../services/topUpChatService';
+import { soundEngine } from '../audio/soundEngine';
 import { FantasyBoardEngine, type TileInspectInfo } from '../three/FantasyBoardEngine';
 import type { DiceSkinId } from '../../shared/gameConfig';
 import type { GraphicsPreferences } from '../three/perf/qualityPresets';
+import { BoardUnlockedOverlay } from './BoardUnlockedOverlay';
+import { TopUpAdminChatModal } from './TopUpAdminChatModal';
 
 interface BoardManagerViewProps {
   initialTab?: 'collection' | 'creator';
   graphicsPrefs: GraphicsPreferences;
   diceSkinId: DiceSkinId;
+  profile: PlayerProfile;
+  user: User | null;
+  onOpenAuth?: () => void;
+  onUpdateProfile: (next: PlayerProfile) => void;
+  onNotify?: (title: string, detail?: string) => void;
   onBack: () => void;
   onPlayWithBoard: (board: BoardConfig) => void;
   onBoardSelectionChanged?: (board: BoardConfig, mode: BoardSelectionMode) => void;
 }
 
-type CollectionCategory = 'default' | 'custom' | 'favorite';
+type CollectionCategory = 'all' | 'unlocked' | 'mission' | 'premium' | 'custom' | 'favorite';
 type CreatorSection = 'board' | 'tile' | 'snake' | 'ladder' | 'environment' | 'vfx';
+
+const RARITY_LABEL: Record<string, { text: string; colorClass: string }> = {
+  starter: { text: 'Gratis', colorClass: 'text-emerald-400' },
+  rare: { text: 'Langka', colorClass: 'text-sky-400' },
+  epic: { text: 'Epik', colorClass: 'text-violet-400' },
+  legendary: { text: 'Legendaris', colorClass: 'text-amber-300' },
+  mythic: { text: 'Mitik', colorClass: 'text-fuchsia-300' },
+};
 
 function getBoardVisualSignature(b: BoardConfig): string {
   return JSON.stringify({
@@ -89,20 +122,56 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   initialTab = 'collection',
   graphicsPrefs,
   diceSkinId,
+  profile,
+  user,
+  onOpenAuth,
+  onUpdateProfile,
+  onNotify,
   onBack,
   onPlayWithBoard,
   onBoardSelectionChanged,
 }) => {
   const [collection, setCollection] = useState<BoardCollectionState>(() => loadBoardCollection());
   const [activeModeTab, setActiveModeTab] = useState<'collection' | 'creator'>(initialTab);
-  const [category, setCategory] = useState<CollectionCategory>('default');
+  const [category, setCategory] = useState<CollectionCategory>('all');
   const [creatorSection, setCreatorSection] = useState<CreatorSection>('board');
+  const [unlockGuideBoard, setUnlockGuideBoard] = useState<BoardConfig | null>(null);
+  const [topUpChatOpen, setTopUpChatOpen] = useState(false);
+  const [topUpBoardContext, setTopUpBoardContext] = useState<string | null>(null);
+  const [unreadAdminReplies, setUnreadAdminReplies] = useState(0);
+  const [celebrationOverlay, setCelebrationOverlay] = useState<{
+    board: BoardConfig;
+    unlockSource: 'mission' | 'premium';
+    bonusCoins: number;
+  } | null>(null);
 
   const allBoards = useMemo(() => getAllAvailableBoards(collection), [collection]);
-  const selectedBoard = useMemo(
-    () => getBoardById(collection.selectedBoardId, collection),
-    [collection],
+  const selectedBoard = useMemo(() => {
+    const raw = getBoardById(collection.selectedBoardId, collection);
+    if (isBoardUnlocked(raw.id, profile)) return raw;
+    return DEFAULT_BOARD_CONFIGS[0];
+  }, [collection, profile]);
+
+  const unlockedDefaultCount = useMemo(
+    () => DEFAULT_BOARD_CONFIGS.filter((b) => isBoardUnlocked(b.id, profile)).length,
+    [profile],
   );
+  const lockedSpotlightBoards = useMemo(
+    () => DEFAULT_BOARD_CONFIGS.filter((b) => !isBoardUnlocked(b.id, profile)),
+    [profile],
+  );
+  const claimableMissionBoards = useMemo(() => getClaimableMissionBoards(profile), [profile]);
+  const currentCoins = profile.aetherCoins ?? 0;
+
+  useEffect(() => {
+    if (!user || !user.emailVerified) {
+      setUnreadAdminReplies(0);
+      return;
+    }
+    return subscribeToMemberTopUpThread(user, (thread) => {
+      setUnreadAdminReplies(thread?.unreadByMember ?? 0);
+    });
+  }, [user]);
 
   const [previewBoard, setPreviewBoard] = useState<BoardConfig>(() =>
     cloneBoardConfig(selectedBoard),
@@ -207,16 +276,97 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   const filteredBoards = useMemo(() => {
-    if (category === 'default') {
-      return allBoards.filter((b) => !b.isCustom);
+    if (category === 'all') {
+      return allBoards;
+    }
+    if (category === 'unlocked') {
+      return allBoards.filter((b) => isBoardUnlocked(b.id, profile));
+    }
+    if (category === 'mission') {
+      return allBoards.filter(
+        (b) => !b.isCustom && getBoardUnlockStatus(b.id, profile).rule.unlockType === 'mission',
+      );
+    }
+    if (category === 'premium') {
+      return allBoards.filter(
+        (b) => !b.isCustom && getBoardUnlockStatus(b.id, profile).rule.unlockType === 'premium',
+      );
     }
     if (category === 'custom') {
       return allBoards.filter((b) => b.isCustom);
     }
     return allBoards.filter((b) => collection.favoriteBoardIds.includes(b.id));
-  }, [allBoards, category, collection.favoriteBoardIds]);
+  }, [allBoards, category, collection.favoriteBoardIds, profile]);
+
+  const handleClaimMissionBoard = (board: BoardConfig) => {
+    const res = claimBoardMission(board.id, profile);
+    if (!res.ok) {
+      showNotice(res.reason || 'Misi belum selesai.');
+      return;
+    }
+    soundEngine.playVictory();
+    onUpdateProfile(res.profile);
+    const nextState = selectBoard(board.id, 'manual');
+    setCollection({ ...nextState });
+    setPreviewBoard(cloneBoardConfig(board));
+    onBoardSelectionChanged?.(board, nextState.selectionMode);
+    setUnlockGuideBoard(null);
+    setCelebrationOverlay({
+      board,
+      unlockSource: 'mission',
+      bonusCoins: res.rewardCoins,
+    });
+    const msg = `Papan "${board.name}" terbuka! Bonus +${res.rewardCoins.toLocaleString('id-ID')} Koin Aether.`;
+    showNotice(msg);
+    onNotify?.(`Papan Baru Terbuka: ${board.name}`, `+${res.rewardCoins.toLocaleString('id-ID')} Koin Aether`);
+  };
+
+  const handleConfirmPurchasePremium = (board: BoardConfig) => {
+    const res = purchasePremiumBoard(board.id, profile);
+    if (!res.ok) {
+      showNotice(res.reason || 'Koin Aether belum mencukupi.');
+      return;
+    }
+    soundEngine.playVictory();
+    onUpdateProfile(res.profile);
+    const nextState = selectBoard(board.id, 'manual');
+    setCollection({ ...nextState });
+    setPreviewBoard(cloneBoardConfig(board));
+    onBoardSelectionChanged?.(board, nextState.selectionMode);
+    setUnlockGuideBoard(null);
+    setCelebrationOverlay({
+      board,
+      unlockSource: 'premium',
+      bonusCoins: 0,
+    });
+    showNotice(`Papan Premium "${board.name}" berhasil dibuka!`);
+    onNotify?.(
+      `Papan Premium Terbuka: ${board.name}`,
+      `Menggunakan ${res.spentCoins.toLocaleString('id-ID')} Koin Aether`,
+    );
+  };
+
+  const handleOpenTopUpChat = (boardName?: string | null) => {
+    soundEngine.playUiClick();
+    setUnlockGuideBoard(null);
+    setTopUpBoardContext(boardName ?? null);
+    setTopUpChatOpen(true);
+  };
+
+  const handleLockedBoardAttempt = (board: BoardConfig) => {
+    soundEngine.playUiClick();
+    setPreviewBoard(cloneBoardConfig(board));
+    if (mobilePreviewSize === 'hidden') {
+      setMobilePreviewSize('compact');
+    }
+    setUnlockGuideBoard(board);
+  };
 
   const handleSelectBoard = (board: BoardConfig, modeOverride?: BoardSelectionMode) => {
+    if (!isBoardUnlocked(board.id, profile)) {
+      handleLockedBoardAttempt(board);
+      return;
+    }
     const nextMode = modeOverride ?? (board.isCustom ? 'custom' : 'manual');
     const nextState = selectBoard(board.id, nextMode);
     setCollection({ ...nextState });
@@ -226,8 +376,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   const handleRandomPick = () => {
-    const candidates = allBoards.filter((b) => b.id !== previewBoard.id);
-    const pool = candidates.length > 0 ? candidates : allBoards;
+    const unlockedPool = allBoards.filter((b) => isBoardUnlocked(b.id, profile));
+    const safePool = unlockedPool.length > 0 ? unlockedPool : [DEFAULT_BOARD_CONFIGS[0]];
+    const candidates = safePool.filter((b) => b.id !== previewBoard.id);
+    const pool = candidates.length > 0 ? candidates : safePool;
     const randomBoard = pool[Math.floor(Math.random() * pool.length)];
     const nextState = selectBoard(randomBoard.id, 'random');
     setCollection({ ...nextState });
@@ -239,12 +391,13 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   const handleModeSwitch = (mode: BoardSelectionMode) => {
     const nextState = setBoardSelectionMode(mode);
     setCollection({ ...nextState });
-    const active = getBoardById(nextState.selectedBoardId, nextState);
+    const rawActive = getBoardById(nextState.selectedBoardId, nextState);
+    const active = isBoardUnlocked(rawActive.id, profile) ? rawActive : DEFAULT_BOARD_CONFIGS[0];
     setPreviewBoard(cloneBoardConfig(active));
     onBoardSelectionChanged?.(active, mode);
     showNotice(
       mode === 'random'
-        ? 'Mode Pemilihan Papan: RANDOM MODE aktif'
+        ? 'Mode Pemilihan Papan: RANDOM MODE aktif (khusus papan terbuka)'
         : mode === 'custom'
           ? 'Mode Pemilihan Papan: CUSTOM MODE aktif'
           : 'Mode Pemilihan Papan: MANUAL MODE aktif',
@@ -257,6 +410,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   const handleSetDefault = (board: BoardConfig) => {
+    if (!isBoardUnlocked(board.id, profile)) {
+      handleLockedBoardAttempt(board);
+      return;
+    }
     const nextState = setDefaultBoard(board.id);
     setCollection({ ...nextState });
     setPreviewBoard(cloneBoardConfig(board));
@@ -265,6 +422,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   const handleDuplicate = (board: BoardConfig) => {
+    if (!isBoardUnlocked(board.id, profile)) {
+      handleLockedBoardAttempt(board);
+      return;
+    }
     const { state, duplicated } = duplicateBoard(board.id);
     setCollection({ ...state });
     setPreviewBoard(cloneBoardConfig(duplicated));
@@ -299,6 +460,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   const handleOpenCreatorWithBoard = (board: BoardConfig, asNewCopy = false) => {
+    if (!isBoardUnlocked(board.id, profile)) {
+      handleLockedBoardAttempt(board);
+      return;
+    }
     const cloned = cloneBoardConfig(board);
     if (asNewCopy || !board.isCustom) {
       cloned.id = `draft_${Date.now()}`;
@@ -313,6 +478,15 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   const handleApplyBaseThemeToDraft = (themeId: BoardThemeId) => {
+    if (!isThemeUnlocked(themeId, profile)) {
+      const targetBoard = DEFAULT_BOARD_CONFIGS.find((b) => b.themeId === themeId);
+      if (targetBoard) {
+        handleLockedBoardAttempt(targetBoard);
+      } else {
+        showNotice(`Tema ${BOARD_THEME_LABELS[themeId]} masih terkunci.`);
+      }
+      return;
+    }
     const base = getDefaultBoardByTheme(themeId);
     setDraftBoard((prev) => ({
       ...base,
@@ -337,6 +511,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   };
 
   const handlePlayBoard = (boardToPlay: BoardConfig) => {
+    if (!boardToPlay.isCustom && !isBoardUnlocked(boardToPlay.id, profile)) {
+      handleLockedBoardAttempt(boardToPlay);
+      return;
+    }
     const isDraftOrCreator =
       boardToPlay.id.startsWith('draft_') || (activeModeTab === 'creator' && hasUnsavedDraft);
     if (isDraftOrCreator || (activeModeTab === 'creator' && boardToPlay.isCustom)) {
@@ -505,6 +683,8 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
     });
   };
 
+  const activePreviewStatus = getBoardUnlockStatus(active3DBoard.id, profile);
+
   return (
     <div className="relative safe-viewport bg-slate-950 text-slate-100 flex flex-col select-none">
       {/* Top Navigation Header */}
@@ -513,19 +693,28 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-white transition-colors cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-white transition-colors cursor-pointer shrink-0 whitespace-nowrap"
           >
             <ArrowLeft className="w-4 h-4 text-amber-400" />
             <span className="hidden xs:inline sm:inline">Kembali</span>
           </button>
           <div className="min-w-0">
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">
-                Multi Board System & 3D Studio
+            <div className="hidden sm:flex items-center gap-2 text-[11px]">
+              <span className="font-bold uppercase tracking-widest text-emerald-400">
+                Studio Papan 3D
               </span>
-              <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
-                {allBoards.length} Papan Tersedia
+              <span className="text-slate-600">·</span>
+              <span className="font-mono-num font-semibold text-amber-300">
+                {unlockedDefaultCount}/{DEFAULT_BOARD_CONFIGS.length} Tema Terbuka
               </span>
+              {claimableMissionBoards.length > 0 && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="font-bold text-emerald-300">
+                    {claimableMissionBoards.length} Misi Siap Klaim!
+                  </span>
+                </>
+              )}
             </div>
             <h1 className="font-display text-sm sm:text-xl font-bold text-gold-gradient truncate">
               Koleksi Papan & 3D Creator
@@ -533,13 +722,29 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           </div>
         </div>
 
-        {/* Mode Switcher Tabs: Collection vs Custom Creator */}
-        <div className="flex items-center justify-between w-full sm:w-auto gap-1.5 sm:gap-2">
+        {/* Right Controls: Wallet + Mode Switcher + Play/Unlock CTA */}
+        <div className="flex flex-wrap items-center justify-between w-full sm:w-auto gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={() => handleOpenTopUpChat(null)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-950/40 px-2.5 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs font-bold text-amber-200 hover:bg-amber-900/50 hover:border-amber-400 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            title="Beli Koin Aether & Royal Pass melalui Chat Admin Resmi"
+          >
+            <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="font-mono-num">{currentCoins.toLocaleString('id-ID')}</span>
+            <span className="text-amber-400/90 font-semibold">· Beli Koin</span>
+            {unreadAdminReplies > 0 && (
+              <span className="font-mono-num text-[10px] font-bold text-emerald-300">
+                ({unreadAdminReplies})
+              </span>
+            )}
+          </button>
+
           <div className="inline-flex flex-1 sm:flex-initial rounded-xl border border-slate-800 bg-slate-900/90 p-0.5 sm:p-1">
             <button
               type="button"
               onClick={() => setActiveModeTab('collection')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'collection'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -551,7 +756,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveModeTab('creator')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'creator'
                   ? 'bg-amber-500 text-slate-950 shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -565,10 +770,32 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           <button
             type="button"
             onClick={() => handlePlayBoard(active3DBoard)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold text-slate-950 shadow-lg hover:bg-amber-400 transition-colors cursor-pointer shrink-0"
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold shadow-lg transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+              activeModeTab === 'collection' && !activePreviewStatus.unlocked
+                ? activePreviewStatus.canClaimMission
+                  ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                  : 'bg-violet-500 text-white hover:bg-violet-400'
+                : 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+            }`}
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{activeModeTab === 'creator' ? 'Simpan & Main' : 'Mainkan'}</span>
+            {activeModeTab === 'collection' && !activePreviewStatus.unlocked ? (
+              activePreviewStatus.canClaimMission ? (
+                <>
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Klaim Misi</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Buka Papan</span>
+                </>
+              )
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>{activeModeTab === 'creator' ? 'Simpan & Main' : 'Mainkan'}</span>
+              </>
+            )}
           </button>
         </div>
       </header>
@@ -643,57 +870,207 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                 </div>
               </div>
 
-              {/* Category Filter Tabs + Create New Button */}
+              {/* Dedicated Locked Boards Showcase: Mission-Locked & Premium Exclusive */}
+              {lockedSpotlightBoards.length > 0 && (
+                <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5 sm:p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
+                        <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Sorotan Papan Terkunci · Misi &amp; Eksklusif Premium</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Selesaikan misi pencapaian atau gunakan Koin Aether untuk membuka{' '}
+                        <span className="font-mono-num text-slate-200 font-semibold">
+                          {lockedSpotlightBoards.length}
+                        </span>{' '}
+                        papan legendaris. Klik kartu untuk panduan buka &amp; pratinjau 3D.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTopUpChat(null)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-950/45 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-900/55 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Chat Admin Beli Koin</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {lockedSpotlightBoards.map((board) => {
+                      const status = getBoardUnlockStatus(board.id, profile);
+                      const isMission = status.rule.unlockType === 'mission';
+                      const isSelectedPreview = previewBoard.id === board.id;
+
+                      return (
+                        <button
+                          key={`locked_spot_${board.id}`}
+                          type="button"
+                          onClick={() => handleLockedBoardAttempt(board)}
+                          className={`group text-left rounded-xl border p-3 transition-all cursor-pointer flex items-center gap-3 ${
+                            status.canClaimMission
+                              ? 'border-emerald-400/70 bg-emerald-950/25 hover:bg-emerald-950/40'
+                              : isSelectedPreview
+                                ? 'border-amber-400/65 bg-slate-950/90'
+                                : 'border-slate-800 bg-slate-950/70 hover:border-amber-500/45 hover:bg-slate-900/90'
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                              status.canClaimMission
+                                ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-300'
+                                : isMission
+                                  ? 'border-sky-500/40 bg-sky-950/60 text-sky-300'
+                                  : 'border-amber-500/45 bg-amber-950/60 text-amber-300'
+                            }`}
+                          >
+                            {status.canClaimMission ? (
+                              <Unlock className="w-4 h-4" />
+                            ) : (
+                              <Lock className="w-4 h-4" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="flex items-center gap-1 shrink-0">
+                                {board.previewSwatches.slice(0, 3).map((hex, idx) => (
+                                  <span
+                                    key={`spot_sw_${board.id}_${idx}`}
+                                    className="w-2 h-2 rounded-full border border-white/20"
+                                    style={{ backgroundColor: hex }}
+                                  />
+                                ))}
+                              </span>
+                              <span className="font-display text-xs sm:text-sm font-bold text-white truncate">
+                                {board.name}
+                              </span>
+                            </div>
+
+                            {isMission && status.rule.mission ? (
+                              <div className="mt-1 space-y-1">
+                                <div className="flex items-center justify-between gap-2 text-[11px]">
+                                  <span
+                                    className={`truncate font-semibold ${
+                                      status.canClaimMission ? 'text-emerald-300' : 'text-sky-300'
+                                    }`}
+                                  >
+                                    {status.canClaimMission
+                                      ? 'Misi Selesai · Klik untuk Klaim!'
+                                      : `Misi · ${status.rule.mission.title}`}
+                                  </span>
+                                  <span className="font-mono-num text-[10px] text-slate-300 shrink-0">
+                                    {status.progressPct}%
+                                  </span>
+                                </div>
+                                <div className="h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+                                  <div
+                                    className={`h-full ${
+                                      status.canClaimMission ? 'bg-emerald-400' : 'bg-sky-400'
+                                    }`}
+                                    style={{ width: `${status.progressPct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : status.rule.premium ? (
+                              <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+                                <span className="inline-flex items-center gap-1 text-amber-300 font-semibold truncate">
+                                  <Crown className="w-3 h-3 shrink-0" />
+                                  <span>{status.rule.premium.tierLabel}</span>
+                                </span>
+                                <span className="font-mono-num font-bold text-amber-200 shrink-0">
+                                  {status.rule.premium.priceCoins.toLocaleString('id-ID')} Koin
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <Info className="w-4 h-4 text-slate-500 group-hover:text-amber-300 transition-colors shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* Category Filter Tabs + Create New & Coin Chat Buttons */}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex rounded-xl border border-slate-800 bg-slate-900/80 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setCategory('default')}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-                      category === 'default'
-                        ? 'bg-slate-800 text-amber-300 border border-amber-500/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Default Boards (8)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCategory('custom')}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-                      category === 'custom'
-                        ? 'bg-slate-800 text-emerald-300 border border-emerald-500/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    My Custom Boards ({collection.customBoards.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCategory('favorite')}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-                      category === 'favorite'
-                        ? 'bg-slate-800 text-rose-300 border border-rose-500/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Favorite Boards ({collection.favoriteBoardIds.length})
-                  </button>
+                <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-800 bg-slate-900/80 p-1">
+                  {(
+                    [
+                      { id: 'all', label: `Semua (${allBoards.length})`, activeCls: 'bg-slate-800 text-amber-300 border border-amber-500/30' },
+                      {
+                        id: 'unlocked',
+                        label: `Terbuka (${allBoards.filter((b) => isBoardUnlocked(b.id, profile)).length})`,
+                        activeCls: 'bg-slate-800 text-emerald-300 border border-emerald-500/30',
+                      },
+                      {
+                        id: 'mission',
+                        label:
+                          claimableMissionBoards.length > 0
+                            ? `Misi (5 · ${claimableMissionBoards.length} Klaim)`
+                            : 'Misi (5)',
+                        activeCls: 'bg-slate-800 text-sky-300 border border-sky-500/30',
+                      },
+                      {
+                        id: 'premium',
+                        label: 'Premium (5)',
+                        activeCls: 'bg-slate-800 text-fuchsia-300 border border-fuchsia-500/30',
+                      },
+                      {
+                        id: 'custom',
+                        label: `Kustom (${collection.customBoards.length})`,
+                        activeCls: 'bg-slate-800 text-emerald-300 border border-emerald-500/30',
+                      },
+                      {
+                        id: 'favorite',
+                        label: `Favorit (${collection.favoriteBoardIds.length})`,
+                        activeCls: 'bg-slate-800 text-rose-300 border border-rose-500/30',
+                      },
+                    ] as Array<{ id: CollectionCategory; label: string; activeCls: string }>
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setCategory(tab.id)}
+                      className={`rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                        category === tab.id ? tab.activeCls : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const fresh = createTemplateFromTheme('enchanted_forest', 'Papan Fantasi Baru');
-                    setDraftBoard(fresh);
-                    setHasUnsavedDraft(true);
-                    setActiveModeTab('creator');
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-3.5 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-900/60 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Buat Papan Baru
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenTopUpChat(null)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-900/50 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Beli Koin (Chat Admin)</span>
+                    {unreadAdminReplies > 0 && (
+                      <span className="font-mono-num text-[10px] font-bold text-emerald-300">
+                        ({unreadAdminReplies})
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fresh = createTemplateFromTheme('enchanted_forest', 'Papan Fantasi Baru');
+                      setDraftBoard(fresh);
+                      setHasUnsavedDraft(true);
+                      setActiveModeTab('creator');
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-900/60 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Buat Papan
+                  </button>
+                </div>
               </div>
 
               {/* Board Cards Grid */}
@@ -702,10 +1079,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                   <p className="text-sm font-semibold text-slate-300">
                     {category === 'custom'
                       ? 'Belum ada Papan Kustom yang disimpan.'
-                      : 'Belum ada papan di daftar Favorit.'}
+                      : 'Belum ada papan di kategori ini.'}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    Gunakan Custom Board Creator atau duplikat papan yang ada untuk membuat kreasi dunia 3D milikmu.
+                    Gunakan 3D Creator atau duplikat papan yang sudah terbuka untuk merancang dunia 3D milikmu.
                   </p>
                   <button
                     type="button"
@@ -713,16 +1090,19 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                     className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer"
                   >
                     <Wand2 className="w-3.5 h-3.5" />
-                    Buka Custom Board Creator
+                    Buka 3D Board Creator
                   </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {filteredBoards.map((board) => {
-                    const isSelected = collection.selectedBoardId === board.id;
-                    const isDefault = collection.defaultBoardId === board.id;
+                    const unlockStatus = getBoardUnlockStatus(board.id, profile);
+                    const isUnlocked = unlockStatus.unlocked;
+                    const isSelected = isUnlocked && collection.selectedBoardId === board.id;
+                    const isDefault = isUnlocked && collection.defaultBoardId === board.id;
                     const isFav = collection.favoriteBoardIds.includes(board.id);
                     const isPreviewing = previewBoard.id === board.id;
+                    const rarityMeta = RARITY_LABEL[unlockStatus.rule.rarity] ?? RARITY_LABEL.starter;
 
                     return (
                       <div
@@ -730,37 +1110,43 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         className={`rounded-2xl border p-4 transition-all flex flex-col justify-between ${
                           isSelected
                             ? 'border-amber-400/70 bg-slate-900/95 shadow-lg shadow-amber-500/5'
-                            : isPreviewing
-                              ? 'border-cyan-400/60 bg-slate-900/85'
-                              : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                            : unlockStatus.canClaimMission
+                              ? 'border-emerald-400/70 bg-emerald-950/20 shadow-lg shadow-emerald-500/10'
+                              : isPreviewing
+                                ? 'border-cyan-400/60 bg-slate-900/85'
+                                : !isUnlocked
+                                  ? 'border-slate-800/90 bg-slate-900/50 hover:border-slate-700'
+                                  : 'border-slate-800 bg-slate-900/65 hover:border-slate-700'
                         }`}
                       >
                         <div>
-                          {/* Swatch Banner & Badges */}
-                          <div className="flex items-center justify-between gap-2 mb-2.5">
-                            <div className="flex items-center gap-1.5">
+                          {/* Swatch Banner & Clean Status Header */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
                               {board.previewSwatches.map((hex, sIdx) => (
                                 <span
                                   key={`${board.id}_sw_${sIdx}`}
-                                  className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                                  className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm shrink-0"
                                   style={{ backgroundColor: hex }}
                                 />
                               ))}
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 ml-1">
-                                {BOARD_THEME_LABELS[board.themeId]}
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ml-1 truncate ${rarityMeta.colorClass}`}>
+                                {board.isCustom
+                                  ? 'Kustom'
+                                  : unlockStatus.rule.unlockType === 'free'
+                                    ? 'Starter Gratis'
+                                    : unlockStatus.rule.unlockType === 'mission'
+                                      ? `Misi · ${rarityMeta.text}`
+                                      : `Premium · ${rarityMeta.text}`}
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5 shrink-0">
                               {isDefault && (
-                                <span className="rounded-md bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
-                                  Default
-                                </span>
+                                <span className="text-[10px] font-bold text-amber-300">Default</span>
                               )}
-                              {board.isCustom && (
-                                <span className="rounded-md bg-emerald-500/20 border border-emerald-400/40 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
-                                  Custom
-                                </span>
+                              {!isUnlocked && (
+                                <Lock className="w-3.5 h-3.5 text-slate-400" />
                               )}
                               <button
                                 type="button"
@@ -805,110 +1191,204 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                             {board.subtitle} — {board.description}
                           </p>
 
-                          {/* Unique Ladder & Snake Route Summary */}
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
-                            <span className="rounded-md border border-amber-500/30 bg-amber-950/50 px-1.5 py-0.5 font-semibold text-amber-300">
-                              ↑ {board.ladders.length} Tangga (
-                              {board.ladders
-                                .slice(0, 3)
-                                .map((l) => `${l.from}→${l.to}`)
-                                .join(', ')}
-                              )
-                            </span>
-                            <span className="rounded-md border border-emerald-500/30 bg-emerald-950/50 px-1.5 py-0.5 font-semibold text-emerald-300">
-                              ↓ {board.snakes.length} Ular (
-                              {board.snakes
-                                .slice(0, 3)
-                                .map((s) => `${s.from}→${s.to}`)
-                                .join(', ')}
-                              )
-                            </span>
-                          </div>
+                          {/* Mission Progress Panel OR Premium Unlock Panel OR Route Summary */}
+                          {!isUnlocked && unlockStatus.rule.unlockType === 'mission' && unlockStatus.rule.mission ? (
+                            <div className="mt-2.5 rounded-xl border border-slate-800 bg-slate-950/80 p-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <span className="inline-flex items-center gap-1 font-bold text-sky-300 truncate">
+                                  <Target className="w-3.5 h-3.5 shrink-0" />
+                                  {unlockStatus.rule.mission.title}
+                                </span>
+                                <span className="font-mono-num font-bold text-amber-300 shrink-0">
+                                  +{unlockStatus.rule.mission.rewardCoins} Koin
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-300 leading-snug">
+                                {unlockStatus.rule.mission.description}
+                              </p>
+                              <div className="flex items-center justify-between text-[10px] font-mono-num text-slate-400">
+                                <span>
+                                  Progres: {Math.min(unlockStatus.currentProgress, unlockStatus.targetProgress).toLocaleString('id-ID')} /{' '}
+                                  {unlockStatus.targetProgress.toLocaleString('id-ID')} {unlockStatus.rule.mission.metricUnit}
+                                  {unlockStatus.rule.mission.altLabel && unlockStatus.altTargetProgress !== undefined
+                                    ? ` · atau ${Math.min(unlockStatus.altCurrentProgress ?? 0, unlockStatus.altTargetProgress)}/${unlockStatus.altTargetProgress} Online`
+                                    : ''}
+                                </span>
+                                <span className={unlockStatus.canClaimMission ? 'text-emerald-300 font-bold' : 'text-slate-300'}>
+                                  {unlockStatus.progressPct}%
+                                </span>
+                              </div>
+                              <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${
+                                    unlockStatus.canClaimMission ? 'bg-emerald-400' : 'bg-sky-400'
+                                  }`}
+                                  style={{ width: `${unlockStatus.progressPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : !isUnlocked && unlockStatus.rule.unlockType === 'premium' && unlockStatus.rule.premium ? (
+                            <div className="mt-2.5 rounded-xl border border-amber-500/25 bg-slate-950/80 p-2.5 space-y-1">
+                              <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <span className="inline-flex items-center gap-1 font-bold text-amber-300">
+                                  <Crown className="w-3.5 h-3.5 shrink-0" />
+                                  {unlockStatus.rule.premium.tierLabel}
+                                </span>
+                                <span className="font-mono-num font-bold text-amber-200">
+                                  {unlockStatus.rule.premium.priceCoins.toLocaleString('id-ID')} Koin · {unlockStatus.rule.premium.priceIdr}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-300 leading-snug">
+                                {unlockStatus.rule.premium.perks}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono-num text-slate-400">
+                              <span className="text-amber-300/90">
+                                ↑ {board.ladders.length} Tangga ({board.ladders.slice(0, 2).map((l) => `${l.from}→${l.to}`).join(', ')})
+                              </span>
+                              <span className="text-emerald-300/90">
+                                ↓ {board.snakes.length} Ular ({board.snakes.slice(0, 2).map((s) => `${s.from}→${s.to}`).join(', ')})
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Card Actions */}
                         <div className="mt-3.5 pt-3 border-t border-slate-800/80 space-y-2">
-                          <div className="grid grid-cols-3 gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleSelectBoard(board)}
-                              className={`inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-                                isSelected
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                              }`}
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              {isSelected ? 'Terpilih' : 'Pilih'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreviewBoard(cloneBoardConfig(board));
-                                if (mobilePreviewSize === 'hidden') {
-                                  setMobilePreviewSize('compact');
-                                }
-                              }}
-                              className="inline-flex items-center justify-center gap-1 rounded-lg border border-cyan-500/30 bg-cyan-950/40 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/50 cursor-pointer"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              3D Preview
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handlePlayBoard(board)}
-                              className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer"
-                            >
-                              <Play className="w-3.5 h-3.5 fill-current" />
-                              Play
-                            </button>
-                          </div>
+                          {!isUnlocked ? (
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playUiClick();
+                                  setPreviewBoard(cloneBoardConfig(board));
+                                  if (mobilePreviewSize === 'hidden') {
+                                    setMobilePreviewSize('compact');
+                                  }
+                                }}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-500/35 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/50 cursor-pointer whitespace-nowrap"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                3D Preview
+                              </button>
 
-                          <div className="flex flex-wrap items-center justify-between gap-1 text-[11px]">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenCreatorWithBoard(board, !board.isCustom)}
-                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-amber-300 cursor-pointer"
-                            >
-                              <Edit3 className="w-3 h-3" />
-                              {board.isCustom ? 'Edit' : 'Kustomisasi'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicate(board)}
-                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-cyan-300 cursor-pointer"
-                            >
-                              <Copy className="w-3 h-3" />
-                              Duplikat
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSetDefault(board)}
-                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-amber-300 cursor-pointer"
-                            >
-                              <Crown className="w-3 h-3" />
-                              Set Default
-                            </button>
-                            {board.isCustom && (
-                              <>
+                              {unlockStatus.rule.unlockType === 'mission' ? (
+                                unlockStatus.canClaimMission ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleClaimMissionBoard(board)}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 cursor-pointer whitespace-nowrap shadow"
+                                  >
+                                    <Unlock className="w-3.5 h-3.5" />
+                                    Klaim & Buka
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleLockedBoardAttempt(board)}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-sky-400/50 hover:text-white cursor-pointer whitespace-nowrap"
+                                  >
+                                    <Lock className="w-3.5 h-3.5 text-sky-400" />
+                                    Cara Buka ({unlockStatus.progressPct}%)
+                                  </button>
+                                )
+                              ) : (
                                 <button
                                   type="button"
-                                  onClick={() => handleStartRename(board)}
-                                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"
+                                  onClick={() => handleLockedBoardAttempt(board)}
+                                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap shadow"
                                 >
-                                  Rename
+                                  <Coins className="w-3.5 h-3.5" />
+                                  Buka ({unlockStatus.rule.premium?.priceCoins.toLocaleString('id-ID')})
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectBoard(board)}
+                                  className={`inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                                    isSelected
+                                      ? 'bg-emerald-600 text-white'
+                                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                                  }`}
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  {isSelected ? 'Terpilih' : 'Pilih'}
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteCustom(board)}
-                                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-rose-400 hover:bg-rose-950/50 cursor-pointer"
+                                  onClick={() => {
+                                    setPreviewBoard(cloneBoardConfig(board));
+                                    if (mobilePreviewSize === 'hidden') {
+                                      setMobilePreviewSize('compact');
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-cyan-500/30 bg-cyan-950/40 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/50 cursor-pointer whitespace-nowrap"
                                 >
-                                  <Trash2 className="w-3 h-3" />
-                                  Hapus
+                                  <Eye className="w-3.5 h-3.5" />
+                                  Preview
                                 </button>
-                              </>
-                            )}
-                          </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePlayBoard(board)}
+                                  className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                  Main
+                                </button>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCreatorWithBoard(board, !board.isCustom)}
+                                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-amber-300 cursor-pointer"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  {board.isCustom ? 'Edit' : 'Kustomisasi'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDuplicate(board)}
+                                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-cyan-300 cursor-pointer"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                  Duplikat
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetDefault(board)}
+                                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-amber-300 cursor-pointer"
+                                >
+                                  <Crown className="w-3 h-3" />
+                                  Set Default
+                                </button>
+                                {board.isCustom && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartRename(board)}
+                                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer"
+                                    >
+                                      Rename
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteCustom(board)}
+                                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-rose-400 hover:bg-rose-950/50 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                      Hapus
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -1010,7 +1490,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1">
-                        Tema Dasar Dunia (8 Tema)
+                        Tema Dasar Dunia (12 Tema)
                       </label>
                       <select
                         value={draftBoard.themeId}
@@ -1019,11 +1499,15 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         }
                         className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
                       >
-                        {(Object.keys(BOARD_THEME_LABELS) as BoardThemeId[]).map((tId) => (
-                          <option key={tId} value={tId}>
-                            {BOARD_THEME_LABELS[tId]}
-                          </option>
-                        ))}
+                        {(Object.keys(BOARD_THEME_LABELS) as BoardThemeId[]).map((tId) => {
+                          const unlockedTheme = isThemeUnlocked(tId, profile);
+                          return (
+                            <option key={tId} value={tId} disabled={!unlockedTheme}>
+                              {BOARD_THEME_LABELS[tId]}
+                              {unlockedTheme ? '' : ' (Terkunci)'}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -1198,6 +1682,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <option value="obsidian_runes">Shadow Obsidian Runes</option>
                         <option value="celestial_marble">Celestial Astral Marble</option>
                         <option value="temple_gold_inlay">Ancient Temple Gold Inlay</option>
+                        <option value="sakura_lacquer">Sakura Shogunate Lacquer</option>
+                        <option value="brass_clockwork">Clockwork Aether Brass</option>
+                        <option value="imperial_jade">Imperial Dragon Jade</option>
+                        <option value="nebula_crystal">Cosmic Nebula Star-Crystal</option>
                       </select>
                     </div>
 
@@ -1647,6 +2135,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <option value="shadow_wrought">Shadow Wrought Darkmetal</option>
                         <option value="celestial_marble">Celestial White Marble</option>
                         <option value="temple_bronze">Ancient Temple Bronze</option>
+                        <option value="lacquer_gold">Vermilion Lacquer & Gold</option>
+                        <option value="gilded_brass">Gilded Clockwork Brass</option>
+                        <option value="imperial_jade_stone">Carved Imperial Jade</option>
+                        <option value="astral_prism">Astral Nebula Prism</option>
                       </select>
                     </div>
 
@@ -1895,7 +2387,9 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                           }))
                         }
                         className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
-                          draftBoard.environmentConfig.skyPreset === 'temple_sunset'
+                          draftBoard.environmentConfig.skyPreset === 'temple_sunset' ||
+                          draftBoard.environmentConfig.skyPreset === 'sakura_dusk' ||
+                          draftBoard.environmentConfig.skyPreset === 'aether_twilight'
                             ? 'border-orange-400/70 bg-orange-500/20 text-orange-200'
                             : 'border-slate-700 bg-slate-950 text-slate-300 hover:text-white'
                         }`}
@@ -1919,7 +2413,9 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                           draftBoard.environmentConfig.skyPreset === 'starlit_night' ||
                           draftBoard.environmentConfig.skyPreset === 'eclipse_void' ||
                           draftBoard.environmentConfig.skyPreset === 'volcanic_ash' ||
-                          draftBoard.environmentConfig.skyPreset === 'abyssal_sea'
+                          draftBoard.environmentConfig.skyPreset === 'abyssal_sea' ||
+                          draftBoard.environmentConfig.skyPreset === 'jade_mist' ||
+                          draftBoard.environmentConfig.skyPreset === 'cosmic_nebula_sky'
                             ? 'border-indigo-400/70 bg-indigo-500/20 text-indigo-200'
                             : 'border-slate-700 bg-slate-950 text-slate-300 hover:text-white'
                         }`}
@@ -1954,6 +2450,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <option value="golden_mirage">Siang Terik · Gurun Emas (Matahari & Awan Pasir)</option>
                         <option value="astral_dawn">Siang Surgawi · Langit Astral (Matahari & Pelangi)</option>
                         <option value="temple_sunset">Senja Keemasan · Kuil Kuno (Matahari Terbenam)</option>
+                        <option value="sakura_dusk">Senja Sakura · Shogunate (Langit Merah Muda & Lentera)</option>
+                        <option value="aether_twilight">Senja Kuningan · Clockwork Aether (Langit Tembaga)</option>
+                        <option value="jade_mist">Malam Kabut Giok · Istana Naga (Bulan Zamrud)</option>
+                        <option value="cosmic_nebula_sky">Malam Galaksi · Cosmic Nebula (Aurora & Bintang Jatuh)</option>
                         <option value="eclipse_void">Malam Berbintang · Gerhana (Bulan & Bintang Jatuh)</option>
                         <option value="volcanic_ash">Malam Vulkanik · Kaldera (Bulan Merah & Meteor)</option>
                         <option value="abyssal_sea">Malam Samudra · Atlantis (Bulan, Aurora & Bintang Jatuh)</option>
@@ -1987,6 +2487,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <option value="shadow_monoliths">Shadow Obsidian Monoliths</option>
                         <option value="floating_islands">Floating Sky Islands</option>
                         <option value="temple_columns">Carved Temple Columns</option>
+                        <option value="sakura_torii">Vermilion Torii Shrines</option>
+                        <option value="clockwork_gears">Giant Brass Clockwork Gears</option>
+                        <option value="jade_pagodas">Imperial Jade Pagodas</option>
+                        <option value="nebula_rings">Orbiting Astrolabe Rings</option>
                       </select>
                     </div>
 
@@ -2016,6 +2520,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <option value="shadow_moon">Violet Shadow Moon</option>
                         <option value="divine_radiance">Divine Celestial Radiance</option>
                         <option value="torchlit_sanctum">Torchlit Temple Sanctum</option>
+                        <option value="blossom_lantern">Sakura Blossom Lantern</option>
+                        <option value="brass_atelier">Golden Brass Atelier</option>
+                        <option value="jade_sanctuary">Imperial Jade Sanctuary</option>
+                        <option value="nebula_aurora">Cosmic Nebula Aurora</option>
                       </select>
                     </div>
 
@@ -2116,6 +2624,10 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         <option value="shadow_wisps">Violet Shadow Wisps</option>
                         <option value="starlight">Celestial Starlight Motes</option>
                         <option value="golden_runes">Sacred Temple Golden Spores</option>
+                        <option value="sakura_petals">Drifting Sakura Petals</option>
+                        <option value="brass_sparks">Clockwork Brass Sparks</option>
+                        <option value="jade_lanterns">Floating Jade Lanterns</option>
+                        <option value="cosmic_stardust">Cosmic Nebula Stardust</option>
                       </select>
                     </div>
 
@@ -2365,6 +2877,237 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Modal 1: Panduan Buka Papan Terkunci (Misi & Premium) */}
+      {unlockGuideBoard && (() => {
+        const status = getBoardUnlockStatus(unlockGuideBoard.id, profile);
+        const isMission = status.rule.unlockType === 'mission' && Boolean(status.rule.mission);
+        const isPremium = status.rule.unlockType === 'premium' && Boolean(status.rule.premium);
+        const prem = status.rule.premium;
+        const mission = status.rule.mission;
+        const canAfford = prem ? currentCoins >= prem.priceCoins : false;
+        const shortfall = prem ? Math.max(0, prem.priceCoins - currentCoins) : 0;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/82 backdrop-blur-sm p-4">
+            <div className="w-full max-w-md rounded-2xl border border-amber-500/40 bg-slate-900 p-5 shadow-2xl space-y-4">
+              {/* Modal Header */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 ${
+                      status.canClaimMission
+                        ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-300'
+                        : isMission
+                          ? 'border-sky-400/50 bg-sky-950/60 text-sky-300'
+                          : 'border-amber-400/55 bg-amber-950/60 text-amber-300'
+                    }`}
+                  >
+                    {status.canClaimMission ? (
+                      <Unlock className="w-5 h-5" />
+                    ) : (
+                      <Lock className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div
+                      className={`text-[11px] font-bold uppercase tracking-widest ${
+                        isMission ? 'text-sky-300' : 'text-amber-300'
+                      }`}
+                    >
+                      {isMission
+                        ? 'Panduan Buka · Papan Misi Pencapaian'
+                        : prem?.tierLabel || 'Panduan Buka · Papan Premium'}
+                    </div>
+                    <h3 className="font-display text-lg sm:text-xl font-bold text-white mt-0.5 truncate">
+                      {unlockGuideBoard.name}
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">{unlockGuideBoard.subtitle}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUnlockGuideBoard(null)}
+                  aria-label="Tutup Panduan"
+                  className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Theme Swatches */}
+              <div className="flex items-center gap-2">
+                {unlockGuideBoard.previewSwatches.map((hex, idx) => (
+                  <span
+                    key={`guide_sw_${idx}`}
+                    className="h-2.5 flex-1 rounded-full border border-white/15"
+                    style={{ backgroundColor: hex }}
+                  />
+                ))}
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {unlockGuideBoard.description}
+              </p>
+
+              {/* Mission-Locked Guide Body */}
+              {isMission && mission && (
+                <div className="rounded-xl border border-sky-500/30 bg-slate-950/85 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1.5 font-bold text-sky-300">
+                      <Target className="w-4 h-4 shrink-0" />
+                      <span>{mission.title}</span>
+                    </span>
+                    <span className="font-mono-num font-bold text-amber-300 shrink-0">
+                      Bonus +{mission.rewardCoins} Koin
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-200 leading-relaxed">{mission.description}</p>
+
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-[11px] font-mono-num">
+                      <span className="text-slate-300">
+                        Progres:{' '}
+                        <strong className="text-white">
+                          {Math.min(status.currentProgress, status.targetProgress).toLocaleString('id-ID')}
+                        </strong>{' '}
+                        / {status.targetProgress.toLocaleString('id-ID')} {mission.metricUnit}
+                      </span>
+                      <span
+                        className={
+                          status.canClaimMission ? 'text-emerald-300 font-bold' : 'text-sky-300 font-bold'
+                        }
+                      >
+                        {status.progressPct}%
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          status.canClaimMission ? 'bg-emerald-400' : 'bg-sky-400'
+                        }`}
+                        style={{ width: `${status.progressPct}%` }}
+                      />
+                    </div>
+                    {mission.altLabel && status.altTargetProgress !== undefined && (
+                      <div className="text-[11px] font-mono-num text-slate-400">
+                        Jalur alternatif: {Math.min(status.altCurrentProgress ?? 0, status.altTargetProgress)}/
+                        {status.altTargetProgress} {mission.altLabel}
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 border-t border-slate-800 pt-2">
+                    {status.canClaimMission
+                      ? 'Target misi telah tercapai! Klik tombol Klaim di bawah untuk membuka papan ini secara permanen dan dapatkan bonus Koin Aether.'
+                      : 'Terus bermain di Mode Klasik, Battle, atau Multiplayer Daring untuk menyelesaikan target misi ini.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Premium Guide Body */}
+              {isPremium && prem && (
+                <div className="rounded-xl border border-amber-500/30 bg-slate-950/85 p-3.5 space-y-2.5 text-xs">
+                  <p className="text-slate-200 leading-relaxed">{prem.perks}</p>
+                  <div className="space-y-1.5 border-t border-slate-800 pt-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Biaya Buka Papan</span>
+                      <span className="font-mono-num font-bold text-amber-300">
+                        {prem.priceCoins.toLocaleString('id-ID')} Koin ({prem.priceIdr})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Saldo Koin Aether Kamu</span>
+                      <span
+                        className={`font-mono-num font-bold ${
+                          canAfford ? 'text-emerald-300' : 'text-rose-300'
+                        }`}
+                      >
+                        {currentCoins.toLocaleString('id-ID')} Koin
+                      </span>
+                    </div>
+                  </div>
+                  {!canAfford && (
+                    <p className="text-[11px] text-amber-200/90 border-t border-slate-800 pt-2 leading-relaxed">
+                      Kurang{' '}
+                      <strong className="font-mono-num">
+                        {shortfall.toLocaleString('id-ID')} Koin
+                      </strong>{' '}
+                      lagi. Kumpulkan Koin dari pertandingan &amp; klaim misi, atau hubungi Admin resmi melalui fitur Chat Top-Up untuk membeli paket Koin / Royal Pass berbayar.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Modal Actions */}
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setUnlockGuideBoard(null)}
+                  className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 cursor-pointer whitespace-nowrap"
+                >
+                  Tutup
+                </button>
+
+                {isMission && status.canClaimMission && (
+                  <button
+                    type="button"
+                    onClick={() => handleClaimMissionBoard(unlockGuideBoard)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 cursor-pointer whitespace-nowrap shadow-lg"
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Klaim &amp; Buka Papan</span>
+                  </button>
+                )}
+
+                {isPremium && prem && (
+                  canAfford ? (
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmPurchasePremium(unlockGuideBoard)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap shadow-lg"
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      <span>Buka Sekarang ({prem.priceCoins.toLocaleString('id-ID')} Koin)</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTopUpChat(unlockGuideBoard.name)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap shadow-lg"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>Beli Koin via Chat Admin</span>
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal 2: Pembelian Koin Aether & Royal Pass Berbayar via Chat Admin */}
+      {topUpChatOpen && (
+        <TopUpAdminChatModal
+          user={user}
+          displayName={profile.name}
+          currentCoins={currentCoins}
+          initialBoardRequestName={topUpBoardContext}
+          onOpenAuth={onOpenAuth}
+          onClose={() => setTopUpChatOpen(false)}
+        />
+      )}
+
+      {/* Particle-Based Board Unlocked Celebration Overlay */}
+      {celebrationOverlay && (
+        <BoardUnlockedOverlay
+          board={celebrationOverlay.board}
+          unlockSource={celebrationOverlay.unlockSource}
+          bonusCoins={celebrationOverlay.bonusCoins}
+          onClose={() => setCelebrationOverlay(null)}
+        />
+      )}
     </div>
   );
 };

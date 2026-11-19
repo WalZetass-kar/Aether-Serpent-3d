@@ -394,7 +394,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                   className="w-full flex items-center gap-2.5 min-h-[44px] px-3.5 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200"
                 >
                   <Camera className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span>Kamera & Detail Grafis</span>
+                  <span>Kamera, Suara & Grafis</span>
                 </button>
               )}
 

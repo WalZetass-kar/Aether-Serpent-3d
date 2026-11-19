@@ -64,11 +64,12 @@ service cloud.firestore {
           'onlineWins', 'unlockedAchievements', 'dailyStreak',
           'loginStreak', 'lastLoginDate',
           'tutorialCompleted', 'muted', 'selectedBoardId',
+          'aetherCoins', 'unlockedBoardIds',
           'createdAt', 'updatedAt'
         ])
-        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
         && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
-        && (request.auth.token.email == null || data.email == request.auth.token.email)
+        && (isAdmin() || request.auth.token.email == null || data.email == request.auth.token.email)
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
         && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 3
         && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
@@ -90,6 +91,8 @@ service cloud.firestore {
         && data.tutorialCompleted is bool
         && data.muted is bool
         && data.selectedBoardId is string && data.selectedBoardId.size() >= 1 && data.selectedBoardId.size() <= 80
+        && (!('aetherCoins' in data) || (data.aetherCoins is int && data.aetherCoins >= 0 && data.aetherCoins <= 10000000))
+        && (!('unlockedBoardIds' in data) || (data.unlockedBoardIds is list && data.unlockedBoardIds.size() <= 30 && (data.unlockedBoardIds.size() == 0 || (data.unlockedBoardIds[0] is string && data.unlockedBoardIds[0].size() <= 64))))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -177,8 +180,76 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidTopUpChatThread(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'status', 'requestedPackName',
+          'lastMessageText', 'lastSenderRole', 'unreadByAdmin', 'unreadByMember',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'status', 'requestedPackName',
+          'lastMessageText', 'lastSenderRole', 'unreadByAdmin', 'unreadByMember',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && (isAdmin() || request.auth.token.email == null || data.email == request.auth.token.email)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
+        && data.status is string && data.status in ['open', 'pending_payment', 'completed']
+        && (isAdmin() || data.status != 'completed')
+        && data.requestedPackName is string && data.requestedPackName.size() <= 80
+        && data.lastMessageText is string && data.lastMessageText.size() <= 300
+        && data.lastSenderRole is string && data.lastSenderRole in ['member', 'admin']
+        && data.unreadByAdmin is int && data.unreadByAdmin >= 0 && data.unreadByAdmin <= 999
+        && data.unreadByMember is int && data.unreadByMember >= 0 && data.unreadByMember <= 999
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTopUpChatMessage(data, userId, messageId) {
+      return data.keys().hasAll([
+          'id', 'threadUid', 'senderUid', 'senderName', 'senderRole',
+          'text', 'packId', 'coinDelta', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'threadUid', 'senderUid', 'senderName', 'senderRole',
+          'text', 'packId', 'coinDelta', 'createdAt'
+        ])
+        && data.id is string && data.id == messageId && data.id.size() >= 1 && data.id.size() <= 80
+        && data.threadUid is string && data.threadUid == userId && data.threadUid.size() <= 128
+        && data.senderUid is string && data.senderUid == request.auth.uid && data.senderUid.size() <= 128
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40
+        && data.senderRole is string
+        && ((data.senderRole == 'admin' && isAdmin()) || (data.senderRole == 'member' && isOwner(userId)))
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 600
+        && data.packId is string && data.packId.size() <= 40
+        && data.coinDelta is int && data.coinDelta >= -10000000 && data.coinDelta <= 10000000
+        && (data.coinDelta == 0 || isAdmin())
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCoinGift(data, userId, giftId) {
+      return data.keys().hasAll([
+          'id', 'recipientUid', 'senderUid', 'senderName',
+          'amount', 'message', 'acknowledged', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'recipientUid', 'senderUid', 'senderName',
+          'amount', 'message', 'acknowledged', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == giftId && data.id.size() >= 1 && data.id.size() <= 80
+        && data.recipientUid is string && data.recipientUid == userId && data.recipientUid.size() >= 1 && data.recipientUid.size() <= 128
+        && data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40
+        && data.amount is int && data.amount >= 1 && data.amount <= 10000000
+        && data.message is string && data.message.size() <= 200
+        && data.acknowledged is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // -------------------------------------------------------------------------
-    // /users/{userId} — Private PII & Account State (Owner + Verified Admin Read)
+    // /users/{userId} — Private PII & Account State (Owner + Verified Admin)
     // -------------------------------------------------------------------------
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -187,29 +258,43 @@ service cloud.firestore {
       allow create: if isValidId(userId)
         && isOwner(userId)
         && isValidUserProfile(incoming(), userId)
+        && (!('aetherCoins' in incoming()) || incoming().aetherCoins <= 500)
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
       allow update: if isValidId(userId)
-        && isOwner(userId)
         && isValidUserProfile(incoming(), userId)
         && incoming().uid == existing().uid
         && incoming().email == existing().email
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'displayName', 'archetypeIndex', 'diceSkinId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'updatedAt'
-          ])
+          (
+            isOwner(userId)
+            && (!('aetherCoins' in incoming()) || !('aetherCoins' in existing()) || incoming().aetherCoins <= existing().aetherCoins + 500)
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName', 'archetypeIndex', 'diceSkinId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'aetherCoins', 'unlockedBoardIds', 'updatedAt'
+              ])
+              ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName', 'archetypeIndex', 'diceSkinId',
+                'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
+                'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
+                'onlineWins', 'unlockedAchievements', 'dailyStreak',
+                'loginStreak', 'lastLoginDate',
+                'tutorialCompleted', 'muted', 'selectedBoardId',
+                'aetherCoins', 'unlockedBoardIds', 'updatedAt'
+              ])
+            )
+          )
           ||
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'displayName', 'archetypeIndex', 'diceSkinId',
-            'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
-            'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
-            'onlineWins', 'unlockedAchievements', 'dailyStreak',
-            'loginStreak', 'lastLoginDate',
-            'tutorialCompleted', 'muted', 'selectedBoardId', 'updatedAt'
-          ])
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'aetherCoins', 'unlockedBoardIds', 'updatedAt'
+            ])
+          )
         );
 
       allow delete: if isValidId(userId) && isOwner(userId);
@@ -247,6 +332,56 @@ service cloud.firestore {
         allow delete: if isValidId(userId)
           && isValidId(boardId)
           && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      // /users/{userId}/coinGifts/{giftId} — Admin-Issued Gift Coins Notifications (Master Gate -> /users/{userId})
+      match /coinGifts/{giftId} {
+        allow get: if isValidId(userId) && isValidId(giftId)
+          && (isOwner(userId) || isAdmin())
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow list: if isValidId(userId) && (
+          (isOwner(userId) && resource.data.recipientUid == request.auth.uid)
+          || isBootstrappedAdmin()
+        );
+
+        allow create: if isValidId(userId) && isValidId(giftId)
+          && isAdmin()
+          && isValidCoinGift(incoming(), userId, giftId)
+          && incoming().senderUid == request.auth.uid
+          && incoming().acknowledged == false
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isValidId(userId) && isValidId(giftId)
+          && isValidCoinGift(incoming(), userId, giftId)
+          && incoming().id == existing().id
+          && incoming().recipientUid == existing().recipientUid
+          && incoming().senderUid == existing().senderUid
+          && incoming().senderName == existing().senderName
+          && incoming().amount == existing().amount
+          && incoming().message == existing().message
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (
+              isOwner(userId)
+              && existing().acknowledged == false
+              && incoming().acknowledged == true
+              && incoming().diff(existing()).affectedKeys().hasOnly(['acknowledged', 'updatedAt'])
+            )
+            ||
+            (
+              isAdmin()
+              && incoming().diff(existing()).affectedKeys().hasOnly(['acknowledged', 'updatedAt'])
+            )
+          )
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow delete: if isValidId(userId) && isValidId(giftId)
+          && isAdmin()
           && exists(/databases/$(database)/documents/users/$(userId));
       }
     }
@@ -335,6 +470,58 @@ service cloud.firestore {
       allow delete: if isValidId(roomCode)
         && isEmailVerified()
         && (existing().hostUid == request.auth.uid || isAdmin());
+    }
+
+    // -------------------------------------------------------------------------
+    // /topupChats/{userId} — Private Paid Top-Up Chat Thread (Owner + Admin)
+    // -------------------------------------------------------------------------
+    match /topupChats/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isValidId(userId)
+        && (isOwner(userId) || isAdmin())
+        && isValidTopUpChatThread(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && (isOwner(userId) || isAdmin())
+        && isValidTopUpChatThread(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'status', 'requestedPackName', 'lastMessageText',
+          'lastSenderRole', 'unreadByAdmin', 'unreadByMember', 'updatedAt'
+        ]);
+
+      allow delete: if isValidId(userId) && isAdmin();
+
+      // /topupChats/{userId}/messages/{messageId} — Immutable Chat & Coin Audit Log
+      match /messages/{messageId} {
+        allow get: if isValidId(userId) && isValidId(messageId)
+          && (isOwner(userId) || isAdmin())
+          && exists(/databases/$(database)/documents/topupChats/$(userId));
+
+        allow list: if isValidId(userId)
+          && (
+            (isOwner(userId) && resource.data.threadUid == request.auth.uid)
+            || isBootstrappedAdmin()
+          )
+          && exists(/databases/$(database)/documents/topupChats/$(userId));
+
+        allow create: if isValidId(userId) && isValidId(messageId)
+          && (isOwner(userId) || isAdmin())
+          && isValidTopUpChatMessage(incoming(), userId, messageId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/topupChats/$(userId));
+
+        allow update: if false;
+
+        allow delete: if isValidId(userId) && isValidId(messageId) && isAdmin();
+      }
     }
   }
 }

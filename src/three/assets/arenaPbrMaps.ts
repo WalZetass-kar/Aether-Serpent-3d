@@ -312,8 +312,16 @@ export function createBoardStonePbrSet(
               ? 'rgba(186, 230, 253, 0.5)'
               : texStyle === 'obsidian_runes'
                 ? 'rgba(192, 132, 252, 0.55)'
-                : 'rgba(2, 6, 23, 0.42)';
-        ctx.lineWidth = texStyle === 'basalt_lava' ? 3.0 : 2.4;
+                : texStyle === 'sakura_lacquer'
+                  ? 'rgba(251, 113, 133, 0.45)'
+                  : texStyle === 'brass_clockwork'
+                    ? 'rgba(245, 158, 11, 0.54)'
+                    : texStyle === 'imperial_jade'
+                      ? 'rgba(110, 231, 183, 0.52)'
+                      : texStyle === 'nebula_crystal'
+                        ? 'rgba(56, 189, 248, 0.62)'
+                        : 'rgba(2, 6, 23, 0.42)';
+        ctx.lineWidth = texStyle === 'basalt_lava' || texStyle === 'nebula_crystal' ? 3.0 : 2.4;
         ctx.beginPath();
         const cx0 = x + 16 + ((tile * 29) % 45);
         const cy0 = y + cell - 18 - ((tile * 17) % 35);
@@ -359,6 +367,22 @@ export function createBoardStonePbrSet(
           cornerGrad.addColorStop(0, 'rgba(253, 224, 71, 0.42)');
           cornerGrad.addColorStop(0.55, 'rgba(56, 189, 248, 0.2)');
           cornerGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        } else if (texStyle === 'sakura_lacquer') {
+          cornerGrad.addColorStop(0, 'rgba(244, 114, 182, 0.5)');
+          cornerGrad.addColorStop(0.55, 'rgba(190, 18, 60, 0.24)');
+          cornerGrad.addColorStop(1, 'rgba(190, 18, 60, 0)');
+        } else if (texStyle === 'brass_clockwork') {
+          cornerGrad.addColorStop(0, 'rgba(52, 211, 153, 0.46)');
+          cornerGrad.addColorStop(0.55, 'rgba(217, 119, 6, 0.24)');
+          cornerGrad.addColorStop(1, 'rgba(217, 119, 6, 0)');
+        } else if (texStyle === 'imperial_jade') {
+          cornerGrad.addColorStop(0, 'rgba(253, 224, 71, 0.44)');
+          cornerGrad.addColorStop(0.55, 'rgba(16, 185, 129, 0.26)');
+          cornerGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+        } else if (texStyle === 'nebula_crystal') {
+          cornerGrad.addColorStop(0, 'rgba(192, 132, 252, 0.56)');
+          cornerGrad.addColorStop(0.55, 'rgba(56, 189, 248, 0.28)');
+          cornerGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
         } else {
           cornerGrad.addColorStop(0, 'rgba(34, 139, 78, 0.46)');
           cornerGrad.addColorStop(0.55, 'rgba(22, 101, 52, 0.26)');
@@ -403,13 +427,20 @@ export function createBoardStonePbrSet(
       const frameStroke =
         tile === 100
           ? '#f59e0b'
-          : texStyle === 'temple_gold_inlay' || texStyle === 'celestial_marble'
-            ? 'rgba(251, 191, 36, 0.56)'
-            : texStyle === 'frosted_ice'
-              ? 'rgba(186, 230, 253, 0.52)'
-              : texStyle === 'basalt_lava'
-                ? 'rgba(249, 115, 22, 0.52)'
-                : 'rgba(226, 232, 240, 0.4)';
+          : texStyle === 'temple_gold_inlay' ||
+              texStyle === 'celestial_marble' ||
+              texStyle === 'imperial_jade' ||
+              texStyle === 'brass_clockwork'
+            ? 'rgba(251, 191, 36, 0.58)'
+            : texStyle === 'sakura_lacquer'
+              ? 'rgba(251, 113, 133, 0.58)'
+              : texStyle === 'nebula_crystal'
+                ? 'rgba(125, 211, 252, 0.62)'
+                : texStyle === 'frosted_ice'
+                  ? 'rgba(186, 230, 253, 0.52)'
+                  : texStyle === 'basalt_lava'
+                    ? 'rgba(249, 115, 22, 0.52)'
+                    : 'rgba(226, 232, 240, 0.4)';
       ctx.strokeStyle = frameStroke;
       ctx.lineWidth = tile === 100 ? 7.5 : 3.5;
       ctx.strokeRect(x + 9, y + 9, cell - 18, cell - 18);
@@ -618,11 +649,14 @@ export function createLadderMaterialPbrMaps(
   const isCrystal =
     materialStyle === 'glacier_crystal' ||
     materialStyle === 'celestial_marble' ||
-    materialStyle === 'coral_pearl';
+    materialStyle === 'coral_pearl' ||
+    materialStyle === 'imperial_jade_stone' ||
+    materialStyle === 'astral_prism';
   const isMetal =
     materialStyle === 'obsidian_iron' ||
     materialStyle === 'shadow_wrought' ||
-    materialStyle === 'temple_bronze';
+    materialStyle === 'temple_bronze' ||
+    materialStyle === 'gilded_brass';
 
   for (let y = 0; y < size; y++) {
     const v = y / size;

@@ -90,6 +90,16 @@ export async function loadProfileFromFirebase(user: User): Promise<Partial<Playe
           : null,
       tutorialCompleted: Boolean(data.tutorialCompleted),
       muted: Boolean(data.muted),
+      ...(typeof data.aetherCoins === 'number'
+        ? { aetherCoins: Math.max(0, Math.floor(data.aetherCoins)) }
+        : {}),
+      ...(Array.isArray(data.unlockedBoardIds)
+        ? {
+            unlockedBoardIds: data.unlockedBoardIds
+              .filter((v): v is string => typeof v === 'string')
+              .slice(0, 30),
+          }
+        : {}),
     };
   } catch (err) {
     handleFirestoreError(err, OperationType.GET, path);
@@ -116,6 +126,10 @@ export async function syncProfileToFirebase(
   const safeBoardId = sanitizeBoardId(selectedBoardId);
   const safeLoginStreak = Math.max(1, Math.floor(profile.loginStreak || 1));
   const safeLastLoginDate = (profile.lastLoginDate || new Date().toISOString().slice(0, 10)).slice(0, 16);
+  const safeAetherCoins = Math.max(0, Math.min(10000000, Math.floor(profile.aetherCoins ?? 250)));
+  const safeUnlockedBoards = (profile.unlockedBoardIds || [])
+    .filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 64)
+    .slice(0, 30);
 
   try {
     const existingSnap = await getDoc(userRef);
@@ -143,6 +157,8 @@ export async function syncProfileToFirebase(
         tutorialCompleted: Boolean(profile.tutorialCompleted),
         muted: Boolean(profile.muted),
         selectedBoardId: safeBoardId,
+        aetherCoins: safeAetherCoins,
+        unlockedBoardIds: safeUnlockedBoards,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -168,6 +184,8 @@ export async function syncProfileToFirebase(
         tutorialCompleted: Boolean(profile.tutorialCompleted),
         muted: Boolean(profile.muted),
         selectedBoardId: safeBoardId,
+        aetherCoins: safeAetherCoins,
+        unlockedBoardIds: safeUnlockedBoards,
         updatedAt: serverTimestamp(),
       });
     }

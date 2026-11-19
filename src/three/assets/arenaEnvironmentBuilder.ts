@@ -189,6 +189,54 @@ function getBiomePalette(themeId: BoardConfig['themeId']): {
         moatFoam: [0.94, 0.88, 0.62],
         moatBaseHex: 0x059669,
       };
+    case 'sakura_shogun':
+      return {
+        courtyard: 0x3d1c2b,
+        riverbed: 0x26101b,
+        primaryGround: 0x4f2336,
+        secondaryGround: 0x803754,
+        cliff: 0x4a2c38,
+        moatDeep: [0.18, 0.04, 0.14],
+        moatShallow: [0.58, 0.18, 0.34],
+        moatFoam: [1.0, 0.85, 0.92],
+        moatBaseHex: 0x9d174d,
+      };
+    case 'clockwork_aether':
+      return {
+        courtyard: 0x2e261f,
+        riverbed: 0x171412,
+        primaryGround: 0x3b2f24,
+        secondaryGround: 0x574430,
+        cliff: 0x44403c,
+        moatDeep: [0.03, 0.16, 0.14],
+        moatShallow: [0.08, 0.56, 0.44],
+        moatFoam: [0.98, 0.88, 0.52],
+        moatBaseHex: 0x047857,
+      };
+    case 'jade_palace':
+      return {
+        courtyard: 0x154238,
+        riverbed: 0x082620,
+        primaryGround: 0x145340,
+        secondaryGround: 0x1e7a5c,
+        cliff: 0x2c5e52,
+        moatDeep: [0.02, 0.24, 0.2],
+        moatShallow: [0.08, 0.62, 0.48],
+        moatFoam: [0.92, 0.99, 0.85],
+        moatBaseHex: 0x059669,
+      };
+    case 'cosmic_nebula':
+      return {
+        courtyard: 0x190e36,
+        riverbed: 0x0a041c,
+        primaryGround: 0x1e1042,
+        secondaryGround: 0x35186b,
+        cliff: 0x2b1a4d,
+        moatDeep: [0.09, 0.03, 0.26],
+        moatShallow: [0.22, 0.32, 0.82],
+        moatFoam: [0.82, 0.94, 1.0],
+        moatBaseHex: 0x4f46e5,
+      };
     case 'enchanted_forest':
     default:
       return {
@@ -223,6 +271,14 @@ function getParticleColors(
       return [0xfef08a, 0x93c5fd, 0xffffff];
     case 'golden_runes':
       return [0xfbbf24, 0x34d399, 0xfef08a];
+    case 'sakura_petals':
+      return [0xf9a8d4, 0xf472b6, 0xffe4e6];
+    case 'brass_sparks':
+      return [0xfbbf24, 0x34d399, 0xf59e0b];
+    case 'jade_lanterns':
+      return [0x6ee7b7, 0xfde047, 0xa7f3d0];
+    case 'cosmic_stardust':
+      return [0x38bdf8, 0xc084fc, 0xfef08a];
     case 'fireflies':
     default:
       return [0xfde68a, 0x6ee7b7, 0x93c5fd];
@@ -526,13 +582,21 @@ export function buildArenaEnvironment(
     color:
       decorationStyle === 'desert_pyramids'
         ? 0xd97706
-        : decorationStyle === 'shadow_monoliths' || decorationStyle === 'volcano_braziers'
+        : decorationStyle === 'shadow_monoliths' ||
+            decorationStyle === 'volcano_braziers' ||
+            decorationStyle === 'nebula_rings'
           ? 0x475569
-          : decorationStyle === 'atlantis_pillars' || decorationStyle === 'floating_islands'
-            ? 0xe2e8f0
-            : 0xb8c4d4,
-    roughness: 0.68,
-    metalness: 0.12,
+          : decorationStyle === 'sakura_torii'
+            ? 0xbe123c
+            : decorationStyle === 'clockwork_gears'
+              ? 0xb45309
+              : decorationStyle === 'jade_pagodas'
+                ? 0x10b981
+                : decorationStyle === 'atlantis_pillars' || decorationStyle === 'floating_islands'
+                  ? 0xe2e8f0
+                  : 0xb8c4d4,
+    roughness: decorationStyle === 'jade_pagodas' ? 0.36 : 0.68,
+    metalness: decorationStyle === 'clockwork_gears' ? 0.68 : 0.12,
   });
   const slateRoofMat = new THREE.MeshStandardMaterial({
     map: slatePbr.map,
@@ -542,15 +606,17 @@ export function buildArenaEnvironment(
     aoMap: isLowPbrTier ? null : slatePbr.aoMap,
     aoMapIntensity: 0.88,
     color:
-      themeId === 'dragon_volcano'
-        ? 0x7f1d1d
+      themeId === 'dragon_volcano' || themeId === 'sakura_shogun'
+        ? 0x881337
         : themeId === 'frozen_kingdom'
           ? 0x0284c7
-          : themeId === 'lost_desert' || themeId === 'ancient_temple'
+          : themeId === 'lost_desert' || themeId === 'ancient_temple' || themeId === 'clockwork_aether'
             ? 0xb45309
-            : themeId === 'shadow_realm'
-              ? 0x581c87
-              : 0x3b82f6,
+            : themeId === 'jade_palace'
+              ? 0x047857
+              : themeId === 'shadow_realm' || themeId === 'cosmic_nebula'
+                ? 0x581c87
+                : 0x3b82f6,
     roughness: 0.48,
     metalness: 0.18,
   });
@@ -561,17 +627,21 @@ export function buildArenaEnvironment(
     roughnessMap: isLowPbrTier ? null : timberPbr.roughnessMap,
     aoMap: isLowPbrTier ? null : timberPbr.aoMap,
     aoMapIntensity: 0.88,
-    color: 0xb47b48,
+    color: themeId === 'sakura_shogun' ? 0x9f1239 : 0xb47b48,
     roughness: 0.72,
     metalness: 0.05,
   });
   const bronzeMat = new THREE.MeshStandardMaterial({
     color:
-      decorationStyle === 'ice_crystals'
+      decorationStyle === 'ice_crystals' || decorationStyle === 'nebula_rings'
         ? 0x38bdf8
         : decorationStyle === 'shadow_monoliths'
           ? 0xa855f7
-          : 0xf59e0b,
+          : decorationStyle === 'sakura_torii'
+            ? 0xf43f5e
+            : decorationStyle === 'jade_pagodas'
+              ? 0xfde047
+              : 0xf59e0b,
     roughness: 0.25,
     metalness: 0.88,
   });
@@ -583,7 +653,13 @@ export function buildArenaEnvironment(
           ? 0x38bdf8
           : decorationStyle === 'shadow_monoliths'
             ? 0xc084fc
-            : 0xfef08a,
+            : decorationStyle === 'sakura_torii'
+              ? 0xf9a8d4
+              : decorationStyle === 'clockwork_gears' || decorationStyle === 'jade_pagodas'
+                ? 0x34d399
+                : decorationStyle === 'nebula_rings'
+                  ? 0x7dd3fc
+                  : 0xfef08a,
     emissive:
       decorationStyle === 'volcano_braziers'
         ? 0xea580c
@@ -591,8 +667,14 @@ export function buildArenaEnvironment(
           ? 0x0284c7
           : decorationStyle === 'shadow_monoliths'
             ? 0x9333ea
-            : 0xf59e0b,
-    emissiveIntensity: 0.88,
+            : decorationStyle === 'sakura_torii'
+              ? 0xe11d48
+              : decorationStyle === 'clockwork_gears' || decorationStyle === 'jade_pagodas'
+                ? 0x059669
+                : decorationStyle === 'nebula_rings'
+                  ? 0x6366f1
+                  : 0xf59e0b,
+    emissiveIntensity: 0.92,
     roughness: 0.16,
   });
   disposableMats.push(ashlarMat, slateRoofMat, timberBeamMat, bronzeMat, warmLanternMat);
@@ -1083,6 +1165,168 @@ export function buildArenaEnvironment(
       ring.position.set(ix, iy + 1.8, iz);
       ring.scale.setScalar(2.8);
       group.add(ring);
+    });
+  } else if (decorationStyle === 'sakura_torii') {
+    // Composite 3D Vermilion Torii Gates with double lintel beams & hanging lanterns
+    const pillarGeo = new THREE.CylinderGeometry(0.28, 0.34, 4.4, 10);
+    const kasagiGeo = new THREE.BoxGeometry(5.6, 0.36, 0.54);
+    const nukiGeo = new THREE.BoxGeometry(4.6, 0.24, 0.32);
+    const toriiLanternGeo = new THREE.SphereGeometry(0.32, 10, 8);
+    disposableGeos.push(pillarGeo, kasagiGeo, nukiGeo, toriiLanternGeo);
+
+    [
+      [0, -15.5, 0],
+      [-15.8, 0, Math.PI / 2],
+      [15.8, 0, Math.PI / 2],
+    ].forEach(([tx, tz, rotY]) => {
+      const torii = new THREE.Group();
+      torii.position.set(tx, arenaGroundHeightAt(tx, tz) - 0.1, tz);
+      torii.rotation.y = rotY;
+
+      [-1.7, 1.7].forEach((px) => {
+        const p = new THREE.Mesh(pillarGeo, ashlarMat);
+        p.position.set(px, 2.2, 0);
+        p.castShadow = shadows;
+        torii.add(p);
+      });
+
+      const topBeam = new THREE.Mesh(kasagiGeo, ashlarMat);
+      topBeam.position.set(0, 4.45, 0);
+      topBeam.castShadow = shadows;
+      torii.add(topBeam);
+
+      const capBeam = new THREE.Mesh(kasagiGeo, slateRoofMat);
+      capBeam.scale.set(1.06, 0.55, 1.15);
+      capBeam.position.set(0, 4.72, 0);
+      torii.add(capBeam);
+
+      const lowerBeam = new THREE.Mesh(nukiGeo, bronzeMat);
+      lowerBeam.position.set(0, 3.65, 0);
+      torii.add(lowerBeam);
+
+      const lantern = new THREE.Mesh(toriiLanternGeo, warmLanternMat);
+      lantern.scale.set(0.85, 1.25, 0.85);
+      lantern.position.set(0, 3.05, 0);
+      torii.add(lantern);
+
+      group.add(torii);
+    });
+  } else if (decorationStyle === 'clockwork_gears') {
+    // Composite Giant Interlocking Brass Clockwork Gears & Arcane Conduits
+    const gearRimGeo = new THREE.TorusGeometry(2.5, 0.24, 10, 24);
+    const gearHubGeo = new THREE.CylinderGeometry(0.75, 0.75, 0.42, 12);
+    const gearSpokeGeo = new THREE.BoxGeometry(4.8, 0.22, 0.22);
+    const toothGeo = new THREE.BoxGeometry(0.45, 0.42, 0.34);
+    disposableGeos.push(gearRimGeo, gearHubGeo, gearSpokeGeo, toothGeo);
+
+    [
+      [-17.5, 3.8, -14.5, 0.35, 1.15],
+      [18.2, 4.2, -13.5, -0.45, 1.05],
+      [-16.8, 3.2, 13.5, 0.72, 0.9],
+      [17.4, 3.5, 13.2, -0.68, 0.95],
+    ].forEach(([gx, gy, gz, rotY, sc]) => {
+      const gear = new THREE.Group();
+      gear.position.set(gx, gy, gz);
+      gear.rotation.set(0.18, rotY, 0.12);
+      gear.scale.setScalar(sc);
+
+      const rim = new THREE.Mesh(gearRimGeo, bronzeMat);
+      rim.castShadow = shadows;
+      gear.add(rim);
+
+      const hub = new THREE.Mesh(gearHubGeo, warmLanternMat);
+      hub.rotation.x = Math.PI / 2;
+      gear.add(hub);
+
+      for (let s = 0; s < 3; s++) {
+        const spoke = new THREE.Mesh(gearSpokeGeo, ashlarMat);
+        spoke.rotation.z = (s * Math.PI) / 3;
+        gear.add(spoke);
+      }
+      for (let t = 0; t < 10; t++) {
+        const ang = (t / 10) * Math.PI * 2;
+        const tooth = new THREE.Mesh(toothGeo, bronzeMat);
+        tooth.position.set(Math.cos(ang) * 2.85, Math.sin(ang) * 2.85, 0);
+        tooth.rotation.z = ang;
+        gear.add(tooth);
+      }
+
+      group.add(gear);
+    });
+  } else if (decorationStyle === 'jade_pagodas') {
+    // Composite Multi-Tiered Imperial Jade Pagodas with Golden Spires
+    const tierBaseGeo = new THREE.CylinderGeometry(1.5, 1.75, 1.5, 6);
+    const roofTierGeo = new THREE.ConeGeometry(2.55, 0.95, 6);
+    const finialGeo = new THREE.ConeGeometry(0.18, 1.3, 6);
+    disposableGeos.push(tierBaseGeo, roofTierGeo, finialGeo);
+
+    [
+      [-17.5, -15.5, 1.1],
+      [17.5, -15.5, 1.1],
+      [-17.2, 13.8, 0.92],
+      [17.2, 13.8, 0.92],
+    ].forEach(([px, pz, sc]) => {
+      const pag = new THREE.Group();
+      pag.position.set(px, arenaGroundHeightAt(px, pz) - 0.1, pz);
+      pag.scale.setScalar(sc);
+
+      for (let level = 0; level < 3; level++) {
+        const shrink = 1 - level * 0.22;
+        const yOff = level * 1.85;
+        const body = new THREE.Mesh(tierBaseGeo, ashlarMat);
+        body.scale.set(shrink, 1, shrink);
+        body.position.y = yOff + 0.75;
+        body.castShadow = shadows;
+        pag.add(body);
+
+        const roof = new THREE.Mesh(roofTierGeo, slateRoofMat);
+        roof.scale.set(shrink, 1, shrink);
+        roof.position.y = yOff + 1.82;
+        roof.castShadow = shadows;
+        pag.add(roof);
+
+        const trim = new THREE.Mesh(collarGeo, bronzeMat);
+        trim.scale.setScalar(shrink * 2.4);
+        trim.position.y = yOff + 1.45;
+        pag.add(trim);
+      }
+
+      const spireTop = new THREE.Mesh(finialGeo, warmLanternMat);
+      spireTop.position.y = 6.2;
+      pag.add(spireTop);
+
+      group.add(pag);
+    });
+  } else if (decorationStyle === 'nebula_rings') {
+    // Composite Floating Astral Monoliths Encircled by Tilted Glowing Astrolabe Rings
+    const crystalCoreGeo = new THREE.OctahedronGeometry(1.45, 0);
+    const outerRingGeo = new THREE.TorusGeometry(2.65, 0.09, 10, 36);
+    const innerRingGeo = new THREE.TorusGeometry(2.0, 0.065, 8, 28);
+    disposableGeos.push(crystalCoreGeo, outerRingGeo, innerRingGeo);
+
+    [
+      [-17.5, 5.2, -15.2, 1.15],
+      [18.0, 5.8, -14.8, 1.08],
+      [-16.8, 4.6, 13.2, 0.95],
+      [17.2, 5.0, 12.8, 1.0],
+    ].forEach(([nx, ny, nz, sc], idx) => {
+      const astro = new THREE.Group();
+      astro.position.set(nx, ny, nz);
+      astro.scale.setScalar(sc);
+
+      const core = new THREE.Mesh(crystalCoreGeo, warmLanternMat);
+      core.scale.set(0.75, 1.45, 0.75);
+      astro.add(core);
+
+      const r1 = new THREE.Mesh(outerRingGeo, bronzeMat);
+      r1.rotation.set(Math.PI * 0.34, idx * 0.6, 0.25);
+      astro.add(r1);
+
+      const r2 = new THREE.Mesh(innerRingGeo, warmLanternMat);
+      r2.rotation.set(-Math.PI * 0.28, -idx * 0.5, 0.45);
+      astro.add(r2);
+
+      group.add(astro);
     });
   }
 

@@ -13,9 +13,57 @@ export type BoardThemeId =
   | 'atlantis_ocean'
   | 'shadow_realm'
   | 'celestial_sky'
-  | 'ancient_temple';
+  | 'ancient_temple'
+  | 'sakura_shogun'
+  | 'clockwork_aether'
+  | 'jade_palace'
+  | 'cosmic_nebula';
 
 export type BoardSelectionMode = 'manual' | 'random' | 'custom';
+
+export type BoardUnlockType = 'free' | 'mission' | 'premium';
+export type BoardRarity = 'starter' | 'rare' | 'epic' | 'legendary' | 'mythic';
+export type BoardMissionMetric =
+  | 'totalGames'
+  | 'wins'
+  | 'laddersClimbed'
+  | 'bestScore'
+  | 'onlineWins'
+  | 'specialTilesHit'
+  | 'loginStreak';
+
+export interface BoardUnlockRule {
+  boardId: string;
+  unlockType: BoardUnlockType;
+  rarity: BoardRarity;
+  mission?: {
+    title: string;
+    description: string;
+    metric: BoardMissionMetric;
+    target: number;
+    metricUnit: string;
+    altMetric?: BoardMissionMetric;
+    altTarget?: number;
+    altLabel?: string;
+    rewardCoins: number;
+  };
+  premium?: {
+    priceCoins: number;
+    priceIdr: string;
+    tierLabel: string;
+    perks: string;
+  };
+}
+
+export interface AetherCoinPack {
+  id: string;
+  name: string;
+  coins: number;
+  bonusCoins: number;
+  priceIdr: string;
+  tagline: string;
+  unlockAllPremium?: boolean;
+}
 
 export type BoardShapeStyle = 'classic_square' | 'octagon_bastion' | 'citadel_terrace';
 export type BoardMaterialPreset = 'matte' | 'satin' | 'glossy' | 'metallic';
@@ -34,7 +82,11 @@ export type TileTextureStyle =
   | 'coral_mosaic'
   | 'obsidian_runes'
   | 'celestial_marble'
-  | 'temple_gold_inlay';
+  | 'temple_gold_inlay'
+  | 'sakura_lacquer'
+  | 'brass_clockwork'
+  | 'imperial_jade'
+  | 'nebula_crystal';
 
 export type TileMaterialFinish = 'matte' | 'satin' | 'glossy' | 'metallic';
 
@@ -72,7 +124,11 @@ export type LadderMaterialStyle =
   | 'coral_pearl'
   | 'shadow_wrought'
   | 'celestial_marble'
-  | 'temple_bronze';
+  | 'temple_bronze'
+  | 'lacquer_gold'
+  | 'gilded_brass'
+  | 'imperial_jade_stone'
+  | 'astral_prism';
 
 export type LadderModelStyle =
   | 'arch_bridge'
@@ -90,7 +146,11 @@ export type SkyPresetStyle =
   | 'astral_dawn'
   | 'temple_sunset'
   | 'radiant_day'
-  | 'starlit_night';
+  | 'starlit_night'
+  | 'sakura_dusk'
+  | 'aether_twilight'
+  | 'jade_mist'
+  | 'cosmic_nebula_sky';
 
 export type EnvironmentDecorationStyle =
   | 'runic_obelisks'
@@ -100,7 +160,11 @@ export type EnvironmentDecorationStyle =
   | 'atlantis_pillars'
   | 'shadow_monoliths'
   | 'floating_islands'
-  | 'temple_columns';
+  | 'temple_columns'
+  | 'sakura_torii'
+  | 'clockwork_gears'
+  | 'jade_pagodas'
+  | 'nebula_rings';
 
 export type LightingPreset =
   | 'emerald_canopy'
@@ -110,7 +174,11 @@ export type LightingPreset =
   | 'bioluminescent'
   | 'shadow_moon'
   | 'divine_radiance'
-  | 'torchlit_sanctum';
+  | 'torchlit_sanctum'
+  | 'blossom_lantern'
+  | 'brass_atelier'
+  | 'jade_sanctuary'
+  | 'nebula_aurora';
 
 export type MagicalParticleStyle =
   | 'fireflies'
@@ -120,7 +188,11 @@ export type MagicalParticleStyle =
   | 'sea_bubbles'
   | 'shadow_wisps'
   | 'starlight'
-  | 'golden_runes';
+  | 'golden_runes'
+  | 'sakura_petals'
+  | 'brass_sparks'
+  | 'jade_lanterns'
+  | 'cosmic_stardust';
 
 export interface BoardConfig {
   id: string;
@@ -196,7 +268,198 @@ export const BOARD_THEME_LABELS: Record<BoardThemeId, string> = {
   shadow_realm: 'Shadow Realm',
   celestial_sky: 'Celestial Sky',
   ancient_temple: 'Ancient Temple',
+  sakura_shogun: 'Sakura Shogunate',
+  clockwork_aether: 'Clockwork Aether',
+  jade_palace: 'Jade Dragon Palace',
+  cosmic_nebula: 'Cosmic Nebula',
 };
+
+export const STARTER_UNLOCKED_BOARD_IDS: string[] = [
+  'default_enchanted_forest',
+  'default_lost_desert',
+];
+
+export const BOARD_UNLOCK_RULES: Record<string, BoardUnlockRule> = {
+  default_enchanted_forest: {
+    boardId: 'default_enchanted_forest',
+    unlockType: 'free',
+    rarity: 'starter',
+  },
+  default_lost_desert: {
+    boardId: 'default_lost_desert',
+    unlockType: 'free',
+    rarity: 'starter',
+  },
+  default_frozen_kingdom: {
+    boardId: 'default_frozen_kingdom',
+    unlockType: 'mission',
+    rarity: 'rare',
+    mission: {
+      title: 'Penjelajah Kutub',
+      description: 'Selesaikan 2 pertandingan di mode apa saja.',
+      metric: 'totalGames',
+      target: 2,
+      metricUnit: 'Laga',
+      rewardCoins: 120,
+    },
+  },
+  default_atlantis_ocean: {
+    boardId: 'default_atlantis_ocean',
+    unlockType: 'mission',
+    rarity: 'rare',
+    mission: {
+      title: 'Pendaki Samudra',
+      description: 'Naiki total 8 tangga suci sepanjang kariermu.',
+      metric: 'laddersClimbed',
+      target: 8,
+      metricUnit: 'Tangga',
+      rewardCoins: 150,
+    },
+  },
+  default_ancient_temple: {
+    boardId: 'default_ancient_temple',
+    unlockType: 'mission',
+    rarity: 'epic',
+    mission: {
+      title: 'Penakluk Kuil Kuno',
+      description: 'Raih 3 kemenangan di Solo maupun Multiplayer.',
+      metric: 'wins',
+      target: 3,
+      metricUnit: 'Menang',
+      rewardCoins: 200,
+    },
+  },
+  default_dragon_volcano: {
+    boardId: 'default_dragon_volcano',
+    unlockType: 'mission',
+    rarity: 'epic',
+    mission: {
+      title: 'Penempa Kaldera',
+      description: 'Capai skor terbaik minimal 1.500 dalam satu laga.',
+      metric: 'bestScore',
+      target: 1500,
+      metricUnit: 'Skor',
+      rewardCoins: 250,
+    },
+  },
+  default_sakura_shogun: {
+    boardId: 'default_sakura_shogun',
+    unlockType: 'mission',
+    rarity: 'legendary',
+    mission: {
+      title: 'Kehormatan Shogun',
+      description: 'Raih 5 kemenangan total atau 1 kemenangan Multiplayer Online.',
+      metric: 'wins',
+      target: 5,
+      metricUnit: 'Menang',
+      altMetric: 'onlineWins',
+      altTarget: 1,
+      altLabel: '1 Menang Online',
+      rewardCoins: 350,
+    },
+  },
+  default_shadow_realm: {
+    boardId: 'default_shadow_realm',
+    unlockType: 'premium',
+    rarity: 'epic',
+    premium: {
+      priceCoins: 500,
+      priceIdr: 'Rp 15.000',
+      tierLabel: 'Premium Eksklusif',
+      perks: 'Atmosfer gerhana ungu, monolit obsidian, dan ular bayangan.',
+    },
+  },
+  default_celestial_sky: {
+    boardId: 'default_celestial_sky',
+    unlockType: 'premium',
+    rarity: 'epic',
+    premium: {
+      priceCoins: 800,
+      priceIdr: 'Rp 19.000',
+      tierLabel: 'Premium Eksklusif',
+      perks: 'Pulau melayang angkasa, marmer astral, dan pelangi surgawi.',
+    },
+  },
+  default_clockwork_aether: {
+    boardId: 'default_clockwork_aether',
+    unlockType: 'premium',
+    rarity: 'legendary',
+    premium: {
+      priceCoins: 1200,
+      priceIdr: 'Rp 25.000',
+      tierLabel: 'Premium Legendaris',
+      perks: 'Roda gigi kuningan 3D, percikan aether, dan tangga kuningan tempa.',
+    },
+  },
+  default_jade_palace: {
+    boardId: 'default_jade_palace',
+    unlockType: 'premium',
+    rarity: 'legendary',
+    premium: {
+      priceCoins: 1600,
+      priceIdr: 'Rp 29.000',
+      tierLabel: 'Premium Legendaris',
+      perks: 'Pagoda giok bertingkat, lentera melayang, dan naga kaisar giok.',
+    },
+  },
+  default_cosmic_nebula: {
+    boardId: 'default_cosmic_nebula',
+    unlockType: 'premium',
+    rarity: 'mythic',
+    premium: {
+      priceCoins: 2400,
+      priceIdr: 'Rp 39.000',
+      tierLabel: 'Edisi Mitik',
+      perks: 'Observatorium galaksi, cincin astrolab berputar, dan debu bintang.',
+    },
+  },
+};
+
+export const AETHER_COIN_PACKS: AetherCoinPack[] = [
+  {
+    id: 'pack_pouch',
+    name: 'Kantong Koin Aether',
+    coins: 600,
+    bonusCoins: 100,
+    priceIdr: 'Rp 15.000',
+    tagline: 'Cukup untuk membuka 1 papan Eksklusif',
+  },
+  {
+    id: 'pack_chest',
+    name: 'Peti Harta Penjelajah',
+    coins: 1500,
+    bonusCoins: 350,
+    priceIdr: 'Rp 35.000',
+    tagline: 'Paling populer · Buka papan Legendaris',
+  },
+  {
+    id: 'pack_vault',
+    name: 'Brankas Kaisar Naga',
+    coins: 3200,
+    bonusCoins: 800,
+    priceIdr: 'Rp 69.000',
+    tagline: 'Bonus +25% Koin untuk koleksi papan Mitik',
+  },
+  {
+    id: 'pack_royal_pass',
+    name: 'Royal Pass — Buka Semua Papan Premium',
+    coins: 1000,
+    bonusCoins: 0,
+    priceIdr: 'Rp 89.000',
+    tagline: 'Buka instan seluruh 5 papan Premium + 1.000 Koin Aether',
+    unlockAllPremium: true,
+  },
+];
+
+export function getBoardUnlockRule(boardId: string): BoardUnlockRule {
+  return (
+    BOARD_UNLOCK_RULES[boardId] ?? {
+      boardId,
+      unlockType: 'free',
+      rarity: 'starter',
+    }
+  );
+}
 
 export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
   {
@@ -836,6 +1099,326 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
       particleDensity: 0.85,
       particleStyle: 'golden_runes',
       ambientIntensity: 1.0,
+      shadowsEnabled: true,
+    },
+  },
+  {
+    id: 'default_sakura_shogun',
+    name: 'Sakura Shogunate',
+    subtitle: 'Istana Kelopak Crimson',
+    description:
+      'Kastil shogun bermandikan senja merah jambu, gerbang Torii vermilion, kelopak sakura melayang, dan naga kaisar crimson.',
+    themeId: 'sakura_shogun',
+    previewSwatches: ['#f472b6', '#881337', '#fbbf24'],
+    isCustom: false,
+    createdAt: 1735689608000,
+    updatedAt: 1735689608000,
+    ladders: [
+      { id: 'L1', from: 3, to: 24, name: 'Jembatan Torii Timur', type: 'ladder' },
+      { id: 'L2', from: 11, to: 42, name: 'Tangga Kelopak Hanami', type: 'ladder' },
+      { id: 'L3', from: 26, to: 57, name: 'Jalur Lentera Shogun', type: 'ladder' },
+      { id: 'L4', from: 39, to: 73, name: 'Tangga Pagoda Crimson', type: 'ladder' },
+      { id: 'L5', from: 54, to: 85, name: 'Gerbang Angin Sakura', type: 'ladder' },
+      { id: 'L6', from: 70, to: 92, name: 'Tangga Kaisar Fajar', type: 'ladder' },
+      { id: 'L7', from: 81, to: 98, name: 'Puncak Kuil Bunga', type: 'ladder' },
+    ],
+    snakes: [
+      { id: 'S1', from: 28, to: 7, name: 'Ryu Merah Muda', type: 'snake' },
+      { id: 'S2', from: 46, to: 18, name: 'Ular Kipas Kabuki', type: 'snake' },
+      { id: 'S3', from: 60, to: 31, name: 'Naga Awan Senja', type: 'snake' },
+      { id: 'S4', from: 68, to: 37, name: 'Penjaga Sungai Koi', type: 'snake' },
+      { id: 'S5', from: 86, to: 52, name: 'Ular Pedang Ronin', type: 'snake' },
+      { id: 'S6', from: 94, to: 65, name: 'Ryu Gerhana Sakura', type: 'snake' },
+      { id: 'S7', from: 99, to: 77, name: 'Shogun Ryu Abadi', type: 'snake' },
+    ],
+    boardSettings: {
+      shape: 'citadel_terrace',
+      sizeScale: 1.04,
+      material: 'glossy',
+      primaryColor: '#260b16',
+      secondaryColor: '#f43f5e',
+    },
+    tileConfig: {
+      shape: 'rounded_tablet',
+      primaryColor: '#3b1224',
+      alternateColor: '#541a32',
+      textureStyle: 'sakura_lacquer',
+      material: 'glossy',
+      numeralStyle: 'cinzel_royal',
+      visualEffect: 'subtle_rune_glow',
+    },
+    snakeConfig: {
+      primaryColor: '#be123c',
+      stripeColor: '#fda4af',
+      bellyColor: '#fef3c7',
+      hornColor: '#f59e0b',
+      headModel: 'oriental_dragon',
+      scalePattern: 'royal_hex',
+      sizeScale: 1.08,
+      materialFinish: 'glossy_scales',
+    },
+    ladderConfig: {
+      materialStyle: 'lacquer_gold',
+      primaryColor: '#b91c1c',
+      accentColor: '#fbbf24',
+      modelStyle: 'arch_bridge',
+      widthScale: 1.04,
+    },
+    environmentConfig: {
+      skyPreset: 'sakura_dusk',
+      showTrees: true,
+      showRocks: true,
+      showCastle: true,
+      showWaterfall: true,
+      decorations: 'sakura_torii',
+      fogIntensity: 0.36,
+      lightingPreset: 'blossom_lantern',
+    },
+    visualEffects: {
+      glowIntensity: 0.88,
+      particleDensity: 0.92,
+      particleStyle: 'sakura_petals',
+      ambientIntensity: 1.04,
+      shadowsEnabled: true,
+    },
+  },
+  {
+    id: 'default_clockwork_aether',
+    name: 'Clockwork Aether',
+    subtitle: 'Menara Kronos Steampunk',
+    description:
+      'Observatorium mekanis berlapis kuningan tempa, roda gigi raksasa berputar, saluran energi zamrud, dan naga mekanis aether.',
+    themeId: 'clockwork_aether',
+    previewSwatches: ['#d97706', '#10b981', '#292524'],
+    isCustom: false,
+    createdAt: 1735689609000,
+    updatedAt: 1735689609000,
+    ladders: [
+      { id: 'L1', from: 5, to: 29, name: 'Lift Piston Kronos', type: 'ladder' },
+      { id: 'L2', from: 15, to: 44, name: 'Tangga Roda Gigi', type: 'ladder' },
+      { id: 'L3', from: 27, to: 61, name: 'Rel Uap Kuningan', type: 'ladder' },
+      { id: 'L4', from: 41, to: 74, name: 'Jembatan Pendulum', type: 'ladder' },
+      { id: 'L5', from: 53, to: 83, name: 'Menara Dinamo Aether', type: 'ladder' },
+      { id: 'L6', from: 69, to: 91, name: 'Tangga Kompas Emas', type: 'ladder' },
+      { id: 'L7', from: 79, to: 97, name: 'Poros Waktu Agung', type: 'ladder' },
+    ],
+    snakes: [
+      { id: 'S1', from: 32, to: 10, name: 'Kobra Tembaga', type: 'snake' },
+      { id: 'S2', from: 48, to: 21, name: 'Ular Pegas Baja', type: 'snake' },
+      { id: 'S3', from: 63, to: 33, name: 'Viper Voltase', type: 'snake' },
+      { id: 'S4', from: 72, to: 40, name: 'Naga Mesin Uap', type: 'snake' },
+      { id: 'S5', from: 84, to: 49, name: 'Automaton Wyrm', type: 'snake' },
+      { id: 'S6', from: 93, to: 62, name: 'Ular Kronometer', type: 'snake' },
+      { id: 'S7', from: 98, to: 76, name: 'Leviathan Kronos', type: 'snake' },
+    ],
+    boardSettings: {
+      shape: 'octagon_bastion',
+      sizeScale: 1.05,
+      material: 'metallic',
+      primaryColor: '#1c1917',
+      secondaryColor: '#f59e0b',
+    },
+    tileConfig: {
+      shape: 'octagon_cut',
+      primaryColor: '#29231e',
+      alternateColor: '#3d3228',
+      textureStyle: 'brass_clockwork',
+      material: 'metallic',
+      numeralStyle: 'mono_bold',
+      visualEffect: 'corner_sparks',
+    },
+    snakeConfig: {
+      primaryColor: '#b45309',
+      stripeColor: '#34d399',
+      bellyColor: '#fde68a',
+      hornColor: '#f59e0b',
+      headModel: 'horned_viper',
+      scalePattern: 'draconic_plate',
+      sizeScale: 1.06,
+      materialFinish: 'metallic_drake',
+    },
+    ladderConfig: {
+      materialStyle: 'gilded_brass',
+      primaryColor: '#d97706',
+      accentColor: '#34d399',
+      modelStyle: 'chain_link',
+      widthScale: 1.05,
+    },
+    environmentConfig: {
+      skyPreset: 'aether_twilight',
+      showTrees: false,
+      showRocks: true,
+      showCastle: true,
+      showWaterfall: false,
+      decorations: 'clockwork_gears',
+      fogIntensity: 0.42,
+      lightingPreset: 'brass_atelier',
+    },
+    visualEffects: {
+      glowIntensity: 0.9,
+      particleDensity: 0.86,
+      particleStyle: 'brass_sparks',
+      ambientIntensity: 0.98,
+      shadowsEnabled: true,
+    },
+  },
+  {
+    id: 'default_jade_palace',
+    name: 'Jade Dragon Palace',
+    subtitle: 'Kahyangan Naga Giok',
+    description:
+      'Istana marmer giok kekaisaran di puncak tebing berkabut, pagoda emas bercahaya, lentera giok melayang, dan naga pusaka.',
+    themeId: 'jade_palace',
+    previewSwatches: ['#10b981', '#065f46', '#fde047'],
+    isCustom: false,
+    createdAt: 1735689610000,
+    updatedAt: 1735689610000,
+    ladders: [
+      { id: 'L1', from: 2, to: 23, name: 'Tangga Gerbang Giok', type: 'ladder' },
+      { id: 'L2', from: 14, to: 47, name: 'Jembatan Kabut Awan', type: 'ladder' },
+      { id: 'L3', from: 29, to: 59, name: 'Tangga Pagoda Langit', type: 'ladder' },
+      { id: 'L4', from: 43, to: 76, name: 'Jalur Lentera Kaisar', type: 'ladder' },
+      { id: 'L5', from: 56, to: 86, name: 'Tangga Teratai Emas', type: 'ladder' },
+      { id: 'L6', from: 72, to: 93, name: 'Pilar Naga Timur', type: 'ladder' },
+      { id: 'L7', from: 82, to: 98, name: 'Takhta Giok Abadi', type: 'ladder' },
+    ],
+    snakes: [
+      { id: 'S1', from: 30, to: 8, name: 'Naga Embun Giok', type: 'snake' },
+      { id: 'S2', from: 49, to: 17, name: 'Ular Bambu Suci', type: 'snake' },
+      { id: 'S3', from: 61, to: 26, name: 'Ryu Kabut Lembah', type: 'snake' },
+      { id: 'S4', from: 71, to: 38, name: 'Penjaga Kolam Teratai', type: 'snake' },
+      { id: 'S5', from: 88, to: 55, name: 'Naga Awan Zamrud', type: 'snake' },
+      { id: 'S6', from: 95, to: 66, name: 'Kaisar Ular Emas', type: 'snake' },
+      { id: 'S7', from: 99, to: 79, name: 'Shenlong Langit Giok', type: 'snake' },
+    ],
+    boardSettings: {
+      shape: 'citadel_terrace',
+      sizeScale: 1.06,
+      material: 'glossy',
+      primaryColor: '#052e23',
+      secondaryColor: '#fbbf24',
+    },
+    tileConfig: {
+      shape: 'beveled_square',
+      primaryColor: '#0b4a3a',
+      alternateColor: '#115e4b',
+      textureStyle: 'imperial_jade',
+      material: 'glossy',
+      numeralStyle: 'cinzel_royal',
+      visualEffect: 'edge_pulse',
+    },
+    snakeConfig: {
+      primaryColor: '#059669',
+      stripeColor: '#fde047',
+      bellyColor: '#ecfdf5',
+      hornColor: '#fbbf24',
+      headModel: 'oriental_dragon',
+      scalePattern: 'royal_hex',
+      sizeScale: 1.12,
+      materialFinish: 'crystalline',
+    },
+    ladderConfig: {
+      materialStyle: 'imperial_jade_stone',
+      primaryColor: '#34d399',
+      accentColor: '#fde047',
+      modelStyle: 'royal_steps',
+      widthScale: 1.06,
+    },
+    environmentConfig: {
+      skyPreset: 'jade_mist',
+      showTrees: true,
+      showRocks: true,
+      showCastle: true,
+      showWaterfall: true,
+      decorations: 'jade_pagodas',
+      fogIntensity: 0.34,
+      lightingPreset: 'jade_sanctuary',
+    },
+    visualEffects: {
+      glowIntensity: 0.92,
+      particleDensity: 0.9,
+      particleStyle: 'jade_lanterns',
+      ambientIntensity: 1.06,
+      shadowsEnabled: true,
+    },
+  },
+  {
+    id: 'default_cosmic_nebula',
+    name: 'Cosmic Nebula',
+    subtitle: 'Observatorium Galaksi Astral',
+    description:
+      'Arena kristal antariksa di tengah pusaran nebula violet-emas, cincin astrolab mengorbit, dan naga bintang kosmik legendaris.',
+    themeId: 'cosmic_nebula',
+    previewSwatches: ['#a855f7', '#38bdf8', '#fde047'],
+    isCustom: false,
+    createdAt: 1735689611000,
+    updatedAt: 1735689611000,
+    ladders: [
+      { id: 'L1', from: 4, to: 26, name: 'Gerbang Warp Orion', type: 'ladder' },
+      { id: 'L2', from: 12, to: 45, name: 'Jembatan Cahaya Pulsar', type: 'ladder' },
+      { id: 'L3', from: 25, to: 58, name: 'Tangga Konstelasi Lyra', type: 'ladder' },
+      { id: 'L4', from: 40, to: 75, name: 'Cincin Orbit Saturnus', type: 'ladder' },
+      { id: 'L5', from: 55, to: 87, name: 'Tangga Supernova', type: 'ladder' },
+      { id: 'L6', from: 71, to: 94, name: 'Jalur Bima Sakti', type: 'ladder' },
+      { id: 'L7', from: 83, to: 99, name: 'Portal Singularitas', type: 'ladder' },
+    ],
+    snakes: [
+      { id: 'S1', from: 31, to: 9, name: 'Komet Ekor Ungu', type: 'snake' },
+      { id: 'S2', from: 47, to: 16, name: 'Ular Lubang Hitam', type: 'snake' },
+      { id: 'S3', from: 62, to: 28, name: 'Wyrm Sabuk Asteroid', type: 'snake' },
+      { id: 'S4', from: 73, to: 36, name: 'Naga Gerhana Nova', type: 'snake' },
+      { id: 'S5', from: 85, to: 50, name: 'Serpent Quasar', type: 'snake' },
+      { id: 'S6', from: 92, to: 63, name: 'Naga Nebula Andromeda', type: 'snake' },
+      { id: 'S7', from: 97, to: 72, name: 'Aurelion Penguasa Bintang', type: 'snake' },
+    ],
+    boardSettings: {
+      shape: 'octagon_bastion',
+      sizeScale: 1.08,
+      material: 'glossy',
+      primaryColor: '#090418',
+      secondaryColor: '#38bdf8',
+    },
+    tileConfig: {
+      shape: 'crystal_facet',
+      primaryColor: '#140b2e',
+      alternateColor: '#1f1247',
+      textureStyle: 'nebula_crystal',
+      material: 'glossy',
+      numeralStyle: 'cinzel_royal',
+      visualEffect: 'edge_pulse',
+    },
+    snakeConfig: {
+      primaryColor: '#7c3aed',
+      stripeColor: '#38bdf8',
+      bellyColor: '#fef08a',
+      hornColor: '#fde047',
+      headModel: 'abyssal_wyrm',
+      scalePattern: 'frost_shard',
+      sizeScale: 1.14,
+      materialFinish: 'crystalline',
+    },
+    ladderConfig: {
+      materialStyle: 'astral_prism',
+      primaryColor: '#38bdf8',
+      accentColor: '#f472b6',
+      modelStyle: 'crystal_spire',
+      widthScale: 1.08,
+    },
+    environmentConfig: {
+      skyPreset: 'cosmic_nebula_sky',
+      showTrees: false,
+      showRocks: true,
+      showCastle: false,
+      showWaterfall: false,
+      decorations: 'nebula_rings',
+      fogIntensity: 0.28,
+      lightingPreset: 'nebula_aurora',
+    },
+    visualEffects: {
+      glowIntensity: 1.0,
+      particleDensity: 1.0,
+      particleStyle: 'cosmic_stardust',
+      ambientIntensity: 1.02,
       shadowsEnabled: true,
     },
   },

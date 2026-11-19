@@ -22,7 +22,12 @@ import {
   type TeamId,
   type TurnResolution,
 } from '../shared/gameConfig';
-import { soundEngine } from './audio/soundEngine';
+import {
+  loadSoundSettings,
+  saveSoundSettings,
+  soundEngine,
+  type SoundSettings,
+} from './audio/soundEngine';
 import { AchievementsDailyModal } from './components/AchievementsDailyModal';
 import { AdminPortalView } from './components/AdminPortalView';
 import { AetherOracleChatDrawer } from './components/AetherOracleChatDrawer';
@@ -34,6 +39,7 @@ import { CameraSettingsModal } from './components/CameraSettingsModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
 import { ArchetypeEmblem } from './components/FantasyIcons';
 import { GameConfigView } from './components/GameConfigView';
+import { GiftCoinsOverlay } from './components/GiftCoinsOverlay';
 import { HUDTopBar } from './components/HUDTopBar';
 import { InteractiveTutorialModal } from './components/InteractiveTutorialModal';
 import { LandingPage } from './components/LandingPage';
@@ -46,6 +52,7 @@ import {
   type OnlineLobbyState,
 } from './components/MultiplayerLobbyView';
 import { PerfOverlay } from './components/PerfOverlay';
+import { PWAStatusBanner } from './components/PWAStatusBanner';
 import { VictoryModal } from './components/VictoryModal';
 import { useAuth } from './contexts/AuthContext';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -58,11 +65,18 @@ import {
 } from './services/firebaseAccountService';
 import { isAdminAccount } from './services/adminService';
 import {
+  acknowledgeCoinGift,
+  subscribeToPendingCoinGifts,
+  subscribeToUserWalletSync,
+  type CoinGiftEvent,
+} from './services/topUpChatService';
+import {
   checkAndTriggerDailyReminder,
   dispatchAppNotification,
 } from './services/notificationService';
 import {
   appendLocalScore,
+  calculateMatchCoinReward,
   evaluateAchievements,
   flushPendingLeaderboard,
   loadLocalScores,
@@ -80,6 +94,7 @@ import {
   type BoardConfig,
 } from '../shared/boardThemes';
 import {
+  getClaimableMissionBoards,
   resolveBoardForMatch,
   saveCustomBoard,
   selectBoard,
@@ -233,6 +248,89 @@ export default function App() {
   activeBoardRef.current = activeBoardConfig;
   const loadingTimerRef = useRef<number>(0);
 
+  // Coordinated 3D camera fly-through state between MainMenuView <-> MultiplayerLobbyView
+  const [menuLobbyTransition, setMenuLobbyTransition] = useState<{
+    direction: 'to_lobby' | 'to_menu';
+    phase: 'leaving' | 'flying' | 'entering';
+  } | null>(null);
+  const menuLobbyTimersRef = useRef<number[]>([]);
+  const clearMenuLobbyTimers = useCallback(() => {
+    menuLobbyTimersRef.current.forEach((id) => window.clearTimeout(id));
+    menuLobbyTimersRef.current = [];
+  }, []);
+
+  useEffect(() => clearMenuLobbyTimers, [clearMenuLobbyTimers]);
+
+  const navigateMenuLobby = useCallback(
+    (target: 'main_menu' | 'multiplayer_lobby', opts?: { tab?: 'create' | 'join' }) => {
+      if (opts?.tab) {
+        setMultiplayerTabIntent(opts.tab);
+      }
+      clearMenuLobbyTimers();
+
+      const engine = menuEngineRef.current;
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      if (!engine || prefersReducedMotion) {
+        setMenuLobbyTransition(null);
+        setScreen(target);
+        engine?.transitionToView(target, { instant: true });
+        return;
+      }
+
+      const direction: 'to_lobby' | 'to_menu' =
+        target === 'multiplayer_lobby' ? 'to_lobby' : 'to_menu';
+      let midpointApplied = false;
+      let finished = false;
+
+      const applyMidpoint = () => {
+        if (midpointApplied) return;
+        midpointApplied = true;
+        setScreen(target);
+        setMenuLobbyTransition({ direction, phase: 'entering' });
+      };
+
+      const finishTransition = () => {
+        if (finished) return;
+        finished = true;
+        clearMenuLobbyTimers();
+        if (!midpointApplied) {
+          applyMidpoint();
+        }
+        setMenuLobbyTransition(null);
+      };
+
+      setMenuLobbyTransition({ direction, phase: 'leaving' });
+
+      // Briefly reveal the unobstructed 3D architectural archway sweep at peak camera velocity
+      const hideTimer = window.setTimeout(() => {
+        if (!midpointApplied) {
+          setMenuLobbyTransition({ direction, phase: 'flying' });
+        }
+      }, 220);
+
+      // Safety fallback timers so UI always completes even if backgrounded or on software WebGL
+      const midpointFallback = window.setTimeout(applyMidpoint, 560);
+      const completeFallback = window.setTimeout(finishTransition, 1260);
+      menuLobbyTimersRef.current.push(hideTimer, midpointFallback, completeFallback);
+
+      engine.transitionToView(target, {
+        durationSec: 1.06,
+        midpointRatio: 0.46,
+        onMidpoint: applyMidpoint,
+        onComplete: () => {
+          // Wait briefly for the incoming UI glide-in to finish cleanly
+          const settleTimer = window.setTimeout(finishTransition, 120);
+          menuLobbyTimersRef.current.push(settleTimer);
+        },
+      });
+    },
+    [clearMenuLobbyTimers],
+  );
+
   // Core game state
   const [mode, setMode] = useState<ConnectionMode>('solo');
   const [boardMode, setBoardMode] = useState<BoardGameMode>('classic');
@@ -264,6 +362,7 @@ export default function App() {
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => loadCameraSettings());
   const [cameraSettingsOpen, setCameraSettingsOpen] = useState(false);
+  const [soundSettings, setSoundSettings] = useState<SoundSettings>(() => loadSoundSettings());
   const [graphicsPrefs, setGraphicsPrefs] = useState<GraphicsPreferences>(() =>
     loadGraphicsPreferences(),
   );
@@ -384,10 +483,19 @@ export default function App() {
     };
   }, []);
 
-  // Sync mute state with soundEngine
+  // Attach Web Audio unlock & visibility listeners once
+  useEffect(() => {
+    return soundEngine.attachUnlockListeners();
+  }, []);
+
+  // Sync mute & sound category settings with soundEngine
   useEffect(() => {
     soundEngine.setMuted(profile.muted);
   }, [profile.muted]);
+
+  useEffect(() => {
+    soundEngine.setSettings(soundSettings);
+  }, [soundSettings]);
 
   // Flush offline queue & check daily reminder when online
   useEffect(() => {
@@ -405,6 +513,110 @@ export default function App() {
       });
     });
   }, [profile.notificationsEnabled, profile.notificationHour]);
+
+  // Real-time Firestore Wallet & Unlocked Boards sync (reflects Admin coin top-ups/deductions & Royal Pass instantly)
+  const lastSyncedWalletRef = useRef<{ coins: number; boardsKey: string } | null>(null);
+  const profileWalletRef = useRef(profile);
+  profileWalletRef.current = profile;
+  const [pendingCoinGifts, setPendingCoinGifts] = useState<CoinGiftEvent[]>([]);
+  const seenGiftIdsRef = useRef<Set<string>>(new Set());
+  const activeGiftNoticeRef = useRef<{ amount: number; at: number } | null>(null);
+
+  useEffect(() => {
+    if (!user?.emailVerified) {
+      setPendingCoinGifts([]);
+      seenGiftIdsRef.current.clear();
+      return;
+    }
+    return subscribeToPendingCoinGifts(user, (gifts) => {
+      const fresh = gifts.filter((g) => !seenGiftIdsRef.current.has(g.id));
+      if (fresh.length === 0) return;
+      fresh.forEach((g) => seenGiftIdsRef.current.add(g.id));
+      activeGiftNoticeRef.current = {
+        amount: fresh[fresh.length - 1].amount,
+        at: Date.now(),
+      };
+      soundEngine.playVictory();
+      setPendingCoinGifts((prev) => [...prev, ...fresh]);
+    });
+  }, [user]);
+
+  const handleDismissGiftCoinsOverlay = useCallback(() => {
+    setPendingCoinGifts((prev) => {
+      const [current, ...rest] = prev;
+      if (current && user?.emailVerified) {
+        void acknowledgeCoinGift(user, current.id);
+      }
+      return rest;
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.emailVerified) {
+      lastSyncedWalletRef.current = null;
+      return;
+    }
+    return subscribeToUserWalletSync(user, ({ aetherCoins, unlockedBoardIds }) => {
+      const current = profileWalletRef.current;
+      const prevCoins = current.aetherCoins ?? 0;
+      const mergedUnlocked = Array.from(
+        new Set([...(current.unlockedBoardIds ?? []), ...unlockedBoardIds]),
+      );
+      const prevBoardsKey = [...(current.unlockedBoardIds ?? [])].sort().join(',');
+      const nextBoardsKey = [...mergedUnlocked].sort().join(',');
+      const coinsChanged = aetherCoins !== prevCoins;
+      const boardsAdded = mergedUnlocked.length > (current.unlockedBoardIds?.length ?? 0);
+
+      // Initialize baseline on first snapshot so initial load doesn't fire a spurious toast
+      if (!lastSyncedWalletRef.current) {
+        lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
+        if (coinsChanged || prevBoardsKey !== nextBoardsKey) {
+          const next = { ...current, aetherCoins, unlockedBoardIds: mergedUnlocked };
+          saveProfile(next);
+          setProfile(next);
+        }
+        return;
+      }
+
+      const prevSnapCoins = lastSyncedWalletRef.current.coins;
+      const prevSnapBoardsKey = lastSyncedWalletRef.current.boardsKey;
+      lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
+
+      if (!coinsChanged && prevBoardsKey === nextBoardsKey) return;
+
+      const next = { ...current, aetherCoins, unlockedBoardIds: mergedUnlocked };
+      saveProfile(next);
+      setProfile(next);
+
+      const delta = aetherCoins - prevSnapCoins;
+      const recentGift = activeGiftNoticeRef.current;
+      const isCoveredByGiftOverlay =
+        recentGift !== null &&
+        Date.now() - recentGift.at < 4500 &&
+        delta === recentGift.amount;
+
+      if (delta !== 0 && !isCoveredByGiftOverlay) {
+        if (delta > 0) {
+          soundEngine.playVictory();
+          showToast(
+            `+${delta.toLocaleString('id-ID')} Koin Aether Masuk!`,
+            `Saldo kamu sekarang ${aetherCoins.toLocaleString('id-ID')} Koin.`,
+          );
+        } else {
+          showToast(
+            `Saldo Koin Diperbarui (${delta.toLocaleString('id-ID')})`,
+            `Saldo kamu sekarang ${aetherCoins.toLocaleString('id-ID')} Koin.`,
+          );
+        }
+      } else if (boardsAdded && prevSnapBoardsKey !== nextBoardsKey) {
+        soundEngine.playVictory();
+        showToast(
+          'Akses Papan Premium Diaktifkan!',
+          'Koleksi papan barumu sudah tersedia di Studio Papan.',
+        );
+      }
+    });
+  }, [showToast, user]);
 
   // Hard Authentication & Admin Route Guard
   useEffect(() => {
@@ -435,6 +647,41 @@ export default function App() {
       showToast('Login Diperlukan', 'Masuk terlebih dahulu untuk bergabung ke room.');
     }
   }, [authLoading, hasInitialRoom, showToast, user]);
+
+  // Handle native PWA home-screen shortcut launches (/?action=play|online|boards)
+  const handledPwaShortcutRef = useRef(false);
+  useEffect(() => {
+    if (handledPwaShortcutRef.current || authLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    if (!action) return;
+    handledPwaShortcutRef.current = true;
+
+    if (action === 'play') {
+      setScreen('mode_selection');
+    } else if (action === 'boards') {
+      setBoardManagerTab('collection');
+      setBoardManagerReturnScreen('main_menu');
+      setScreen('board_manager');
+    } else if (action === 'online') {
+      if (user) {
+        setMultiplayerTabIntent('create');
+        setScreen('multiplayer_lobby');
+      } else {
+        pendingPostAuthActionRef.current = () => {
+          setMultiplayerTabIntent('create');
+          setScreen('multiplayer_lobby');
+        };
+        setAuthModalTab('login');
+        setAuthModalOpen(true);
+      }
+    }
+
+    // Clean query parameter from URL without reload
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('action');
+    window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+  }, [authLoading, user]);
 
   const requireAuth = useCallback(
     (action: () => void, reason = 'Silakan masuk atau daftar akun terlebih dahulu.') => {
@@ -545,6 +792,23 @@ export default function App() {
     engineRef.current?.updateCameraSettings(next);
   }, []);
 
+  const handleUpdateSoundSettings = useCallback((next: SoundSettings) => {
+    setSoundSettings(next);
+    saveSoundSettings(next);
+    soundEngine.setSettings(next);
+  }, []);
+
+  const handleToggleMasterMute = useCallback(() => {
+    const nextMuted = !profile.muted;
+    const next = { ...profile, muted: nextMuted };
+    saveProfile(next);
+    setProfile(next);
+    soundEngine.setMuted(nextMuted);
+    if (!nextMuted) {
+      soundEngine.playUiToggle(true);
+    }
+  }, [profile]);
+
   const handleUpdateGraphicsPrefs = useCallback((next: GraphicsPreferences) => {
     setGraphicsPrefs(next);
     saveGraphicsPreferences(next);
@@ -601,7 +865,12 @@ export default function App() {
     if (!mount || menuEngineRef.current) return;
 
     const menuEngine = new MainMenuEngine(mount, graphicsPrefsRef.current);
-    menuEngine.setBackgroundThrottled(screenRef.current !== 'main_menu');
+    const initialCamView =
+      screenRef.current === 'multiplayer_lobby' ? 'multiplayer_lobby' : 'main_menu';
+    menuEngine.transitionToView(initialCamView, { instant: true });
+    menuEngine.setBackgroundThrottled(
+      screenRef.current !== 'main_menu' && screenRef.current !== 'multiplayer_lobby',
+    );
     menuEngineRef.current = menuEngine;
 
     return () => {
@@ -610,9 +879,17 @@ export default function App() {
     };
   }, [isMenuBackdropMounted]);
 
-  // Throttle 3D menu background when covered by Mode Selection, Game Config, or Multiplayer Lobby
+  // Keep 3D sanctuary/citadel backdrop fluid on Main Menu & Multiplayer Lobby, and sync camera view on external route jumps
   useEffect(() => {
-    menuEngineRef.current?.setBackgroundThrottled(screen !== 'main_menu');
+    const engine = menuEngineRef.current;
+    if (!engine) return;
+    const isActive3DMenuView = screen === 'main_menu' || screen === 'multiplayer_lobby';
+    engine.setBackgroundThrottled(!isActive3DMenuView);
+    if (screen === 'multiplayer_lobby' && engine.getActiveView() !== 'multiplayer_lobby') {
+      engine.transitionToView('multiplayer_lobby');
+    } else if (screen === 'main_menu' && engine.getActiveView() !== 'main_menu') {
+      engine.transitionToView('main_menu');
+    }
   }, [screen]);
 
   // 2. Mount FantasyBoardEngine during Loading & Arena (staged progressive build)
@@ -743,8 +1020,12 @@ export default function App() {
       });
       setLocalScores(updatedScores);
 
-      // Update profile stats, daily challenge, and achievements
+      // Update profile stats, Aether Coins, daily challenge, and achievements
       let nextProfile = loadProfile();
+      const prevClaimableBoardIds = new Set(
+        getClaimableMissionBoards(nextProfile).map((b) => b.id),
+      );
+
       nextProfile = {
         ...nextProfile,
         totalGames: nextProfile.totalGames + 1,
@@ -783,13 +1064,36 @@ export default function App() {
         difficulty: matchDifficulty,
       });
       nextProfile = achRes.updatedProfile;
+
+      const coinReward = calculateMatchCoinReward({
+        won: didHumanWin,
+        laddersClimbed: localHero.laddersClimbed,
+        mode: matchMode,
+        dailyCompleted: dailyRes.challengeJustCompleted,
+        newAchievementCount: achRes.newlyUnlocked.length,
+      });
+      nextProfile = {
+        ...nextProfile,
+        aetherCoins: (nextProfile.aetherCoins ?? 0) + coinReward.total,
+      };
+
       saveProfile(nextProfile);
       setProfile(nextProfile);
 
-      if (dailyRes.challengeJustCompleted) {
+      const newlyClaimableBoards = getClaimableMissionBoards(nextProfile).filter(
+        (b) => !prevClaimableBoardIds.has(b.id),
+      );
+
+      if (newlyClaimableBoards.length > 0) {
+        const firstBoard = newlyClaimableBoards[0];
+        showToast(
+          `Misi Papan Siap Diklaim: ${firstBoard.name}!`,
+          `+${coinReward.total} Koin Aether · Buka Studio Papan untuk klaim & membuka arena baru.`,
+        );
+      } else if (dailyRes.challengeJustCompleted) {
         showToast(
           'Tantangan Harian Selesai!',
-          `+${dailyRes.bonusAwarded} poin bonus · Streak ${nextProfile.dailyStreak} hari`,
+          `+${dailyRes.bonusAwarded} poin bonus · +${coinReward.total} Koin Aether · Streak ${nextProfile.dailyStreak} hari`,
         );
       } else if (achRes.newlyUnlocked.length > 0) {
         const firstAch = ACHIEVEMENTS.find((a) => a.id === achRes.newlyUnlocked[0]);
@@ -800,10 +1104,15 @@ export default function App() {
           showToast(
             `Pencapaian Terbuka: ${firstAch.title}`,
             rewardSkin
-              ? `Skin Dadu 3D baru terbuka: ${rewardSkin.name}!`
-              : firstAch.description,
+              ? `Skin Dadu 3D baru terbuka: ${rewardSkin.name}! (+${coinReward.total} Koin)`
+              : `${firstAch.description} (+${coinReward.total} Koin Aether)`,
           );
         }
+      } else {
+        showToast(
+          `+${coinReward.total} Koin Aether`,
+          `${coinReward.breakdown} · Saldo: ${(nextProfile.aetherCoins ?? 0).toLocaleString('id-ID')} Koin.`,
+        );
       }
 
       // Submit to global leaderboard (or queue offline)
@@ -925,7 +1234,9 @@ export default function App() {
       if (!actor || isAnimating || winner || screen !== 'arena') return;
 
       setIsAnimating(true);
-      soundEngine.playDiceRoll();
+      if (!engineRef.current) {
+        soundEngine.playDiceRoll();
+      }
 
       const activeJumpMap = buildJumpMap(
         activeBoardRef.current.ladders,
@@ -1111,7 +1422,9 @@ export default function App() {
       const actorPlayer = room.players.find((p) => p.id === actorId);
 
       setIsAnimating(true);
-      soundEngine.playDiceRoll();
+      if (!engineRef.current) {
+        soundEngine.playDiceRoll();
+      }
       if (autoRolled) {
         showToast(
           'Waktu Giliran Habis',
@@ -2123,7 +2436,7 @@ export default function App() {
       setTimeEndsAt(null);
       setTimeLeftSec(null);
     }
-    const resolvedBoard = resolveBoardForMatch();
+    const resolvedBoard = resolveBoardForMatch(profile);
     setActiveBoardConfig(resolvedBoard);
     activeBoardRef.current = resolvedBoard;
 
@@ -2165,7 +2478,7 @@ export default function App() {
       setTimeLeftSec(null);
     }
 
-    const resolvedBoard = resolveBoardForMatch();
+    const resolvedBoard = resolveBoardForMatch(profile);
     setActiveBoardConfig(resolvedBoard);
     activeBoardRef.current = resolvedBoard;
 
@@ -2180,7 +2493,7 @@ export default function App() {
   const handleRematch = () => {
     if (mode === 'online') {
       if (onlineLobby.hostId === onlineLobby.myPlayerId) {
-        const nextOnlineBoard = resolveBoardForMatch();
+        const nextOnlineBoard = resolveBoardForMatch(profile);
         void sendMultiplayerAction({ type: 'room:rematch', boardConfig: nextOnlineBoard });
       }
       setVictoryOpen(false);
@@ -2198,7 +2511,7 @@ export default function App() {
       shieldsUsed: 0,
       battleHits: 0,
     }));
-    const nextBoard = resolveBoardForMatch();
+    const nextBoard = resolveBoardForMatch(profile);
     setActiveBoardConfig(nextBoard);
     activeBoardRef.current = nextBoard;
     engineRef.current?.updateBoardConfig(nextBoard);
@@ -2300,71 +2613,80 @@ export default function App() {
         />
       )}
 
-      {screen === 'main_menu' && (
-        <MainMenuView
-          profile={profile}
-          user={user}
-          isOnline={isOnline}
-          onUpdateProfile={(name, archetypeIndex) => {
-            const next = { ...profile, name, archetypeIndex };
-            saveProfile(next);
-            setProfile(next);
-            if (user?.emailVerified) {
-              void syncProfileToFirebase(user, next, activeBoardRef.current.id);
-            }
-            showToast('Profil Disimpan', name);
-          }}
-          onToggleMute={() => {
-            soundEngine.playUiClick();
-            const next = { ...profile, muted: !profile.muted };
-            saveProfile(next);
-            setProfile(next);
-          }}
-          onOpenCameraSettings={() => setCameraSettingsOpen(true)}
-          onOpenAuth={(tab) => {
-            soundEngine.playUiClick();
-            setAuthModalTab(tab);
-            setAuthModalOpen(true);
-          }}
-          onBackToLanding={() => {
-            soundEngine.playUiClick();
-            setScreen('landing');
-          }}
-          onLogout={handleLogout}
-          onNavigateModeSelection={() => {
-            soundEngine.playUiClick();
-            setScreen('mode_selection');
-          }}
-          onQuickSelectMode={(chosen) => {
-            soundEngine.playUiClick();
-            setSelectedBoardMode(chosen);
-            setScreen('game_config');
-          }}
-          onOpenMultiplayer={(tab) => {
-            soundEngine.playUiClick();
-            setMultiplayerTabIntent(tab);
-            setScreen('multiplayer_lobby');
-          }}
-          onOpenTutorial={() => setTutorialOpen(true)}
-          onOpenLeaderboard={() => setLeaderboardOpen(true)}
-          onOpenAchievements={() => setAchievementsOpen(true)}
-          onOpenCloud={() => setCloudOpen(true)}
-          onOpenBoardManager={(tab = 'collection') => {
-            soundEngine.playUiClick();
-            setBoardManagerTab(tab);
-            setBoardManagerReturnScreen('main_menu');
-            setScreen('board_manager');
-          }}
-          onOpenOracleAI={() => {
-            soundEngine.playUiClick();
-            setOracleAiOpen(true);
-          }}
-          isAdmin={isAdminUser}
-          onOpenAdmin={() => {
-            soundEngine.playUiClick();
-            setScreen('admin');
-          }}
-        />
+      {screen === 'main_menu' && !(menuLobbyTransition?.direction === 'to_lobby' && menuLobbyTransition.phase === 'flying') && (
+        <div
+          className={`relative z-10 w-full h-full ${
+            menuLobbyTransition?.direction === 'to_lobby' && menuLobbyTransition.phase === 'leaving'
+              ? 'animate-fly-out-forward'
+              : menuLobbyTransition?.direction === 'to_menu' && menuLobbyTransition.phase === 'entering'
+                ? 'animate-fly-in-back'
+                : ''
+          }`}
+        >
+          <MainMenuView
+            profile={profile}
+            user={user}
+            isOnline={isOnline}
+            onUpdateProfile={(name, archetypeIndex) => {
+              const next = { ...profile, name, archetypeIndex };
+              saveProfile(next);
+              setProfile(next);
+              if (user?.emailVerified) {
+                void syncProfileToFirebase(user, next, activeBoardRef.current.id);
+              }
+              showToast('Profil Disimpan', name);
+            }}
+            onToggleMute={() => {
+              soundEngine.playUiClick();
+              const next = { ...profile, muted: !profile.muted };
+              saveProfile(next);
+              setProfile(next);
+            }}
+            onOpenCameraSettings={() => setCameraSettingsOpen(true)}
+            onOpenAuth={(tab) => {
+              soundEngine.playUiClick();
+              setAuthModalTab(tab);
+              setAuthModalOpen(true);
+            }}
+            onBackToLanding={() => {
+              soundEngine.playUiClick();
+              setScreen('landing');
+            }}
+            onLogout={handleLogout}
+            onNavigateModeSelection={() => {
+              soundEngine.playUiClick();
+              setScreen('mode_selection');
+            }}
+            onQuickSelectMode={(chosen) => {
+              soundEngine.playUiClick();
+              setSelectedBoardMode(chosen);
+              setScreen('game_config');
+            }}
+            onOpenMultiplayer={(tab) => {
+              soundEngine.playUiClick();
+              navigateMenuLobby('multiplayer_lobby', { tab });
+            }}
+            onOpenTutorial={() => setTutorialOpen(true)}
+            onOpenLeaderboard={() => setLeaderboardOpen(true)}
+            onOpenAchievements={() => setAchievementsOpen(true)}
+            onOpenCloud={() => setCloudOpen(true)}
+            onOpenBoardManager={(tab = 'collection') => {
+              soundEngine.playUiClick();
+              setBoardManagerTab(tab);
+              setBoardManagerReturnScreen('main_menu');
+              setScreen('board_manager');
+            }}
+            onOpenOracleAI={() => {
+              soundEngine.playUiClick();
+              setOracleAiOpen(true);
+            }}
+            isAdmin={isAdminUser}
+            onOpenAdmin={() => {
+              soundEngine.playUiClick();
+              setScreen('admin');
+            }}
+          />
+        </div>
       )}
 
       {screen === 'admin' && user && isAdminUser && (
@@ -2383,6 +2705,20 @@ export default function App() {
           initialTab={boardManagerTab}
           graphicsPrefs={graphicsPrefs}
           diceSkinId={profile.diceSkinId}
+          profile={profile}
+          user={user}
+          onOpenAuth={() => {
+            setAuthModalTab('login');
+            setAuthModalOpen(true);
+          }}
+          onUpdateProfile={(next) => {
+            saveProfile(next);
+            setProfile(next);
+            if (user?.emailVerified) {
+              void syncProfileToFirebase(user, next, activeBoardRef.current.id);
+            }
+          }}
+          onNotify={showToast}
           onBack={() => {
             soundEngine.playUiClick();
             setScreen(boardManagerReturnScreen);
@@ -2434,6 +2770,7 @@ export default function App() {
 
       {screen === 'game_config' && (
         <GameConfigView
+          profile={profile}
           boardMode={selectedBoardMode}
           defaultPlayerName={profile.name}
           defaultArchetypeIndex={profile.archetypeIndex}
@@ -2468,80 +2805,90 @@ export default function App() {
         />
       )}
 
-      {screen === 'multiplayer_lobby' && (
-        <MultiplayerLobbyView
-          initialTab={multiplayerTabIntent}
-          defaultBoardMode={selectedBoardMode}
-          defaultPlayerName={profile.name}
-          defaultArchetypeIndex={profile.archetypeIndex}
-          isOnlineNetwork={isOnline}
-          muted={profile.muted}
-          onlineLobby={onlineLobby}
-          onBack={() => {
-            soundEngine.playUiClick();
-            setScreen('main_menu');
-          }}
-          onToggleMute={() => {
-            soundEngine.playUiClick();
-            const next = { ...profile, muted: !profile.muted };
-            saveProfile(next);
-            setProfile(next);
-          }}
-          onOpenCameraSettings={() => setCameraSettingsOpen(true)}
-          onOnlineCreateRoom={(opts) => {
-            const chosenBoard = resolveBoardForMatch();
-            setActiveBoardConfig(chosenBoard);
-            activeBoardRef.current = chosenBoard;
-            void sendMultiplayerAction({
-              type: 'room:create',
-              playerName: opts.playerName,
-              playerId: profile.playerId,
-              archetypeIndex: opts.archetypeIndex,
-              roomName: opts.roomName,
-              isPublic: opts.isPublic,
-              boardMode: opts.boardMode,
-              timeLimitSec: opts.timeLimitSec,
-              boardConfig: chosenBoard,
-            });
-          }}
-          onOnlineJoinRoom={(code, name, arch) => {
-            void sendMultiplayerAction({
-              type: 'room:join',
-              code,
-              playerName: name,
-              playerId: profile.playerId,
-              archetypeIndex: arch,
-            });
-          }}
-          onOnlineReady={(ready, targetId) => {
-            void sendMultiplayerAction({ type: 'room:ready', ready, targetId });
-          }}
-          onOnlineReadyAll={() => {
-            void sendMultiplayerAction({ type: 'room:ready_all' });
-          }}
-          onOnlineStart={() => {
-            const chosenBoard = resolveBoardForMatch();
-            setActiveBoardConfig(chosenBoard);
-            activeBoardRef.current = chosenBoard;
-            void sendMultiplayerAction({ type: 'room:start', boardConfig: chosenBoard });
-          }}
-          onOnlineLeave={leaveOnlineRoomIfAny}
-          onOnlineChat={(text) => {
-            void sendMultiplayerAction({ type: 'room:chat', text });
-          }}
-          onOnlineUpdateSettings={(settings) => {
-            void sendMultiplayerAction({ type: 'room:update_settings', ...settings });
-          }}
-          onOnlineSetTeam={(targetId, team) => {
-            void sendMultiplayerAction({ type: 'room:set_team', targetId, team });
-          }}
-          onOnlineKick={(targetId) => {
-            void sendMultiplayerAction({ type: 'room:kick', targetId });
-          }}
-          onOnlineTransferHost={(targetId) => {
-            void sendMultiplayerAction({ type: 'room:transfer_host', targetId });
-          }}
-        />
+      {screen === 'multiplayer_lobby' && !(menuLobbyTransition?.direction === 'to_menu' && menuLobbyTransition.phase === 'flying') && (
+        <div
+          className={`relative z-10 w-full h-full ${
+            menuLobbyTransition?.direction === 'to_menu' && menuLobbyTransition.phase === 'leaving'
+              ? 'animate-fly-out-back'
+              : menuLobbyTransition?.direction === 'to_lobby' && menuLobbyTransition.phase === 'entering'
+                ? 'animate-fly-in-forward'
+                : ''
+          }`}
+        >
+          <MultiplayerLobbyView
+            initialTab={multiplayerTabIntent}
+            defaultBoardMode={selectedBoardMode}
+            defaultPlayerName={profile.name}
+            defaultArchetypeIndex={profile.archetypeIndex}
+            isOnlineNetwork={isOnline}
+            muted={profile.muted}
+            onlineLobby={onlineLobby}
+            onBack={() => {
+              soundEngine.playUiClick();
+              navigateMenuLobby('main_menu');
+            }}
+            onToggleMute={() => {
+              soundEngine.playUiClick();
+              const next = { ...profile, muted: !profile.muted };
+              saveProfile(next);
+              setProfile(next);
+            }}
+            onOpenCameraSettings={() => setCameraSettingsOpen(true)}
+            onOnlineCreateRoom={(opts) => {
+              const chosenBoard = resolveBoardForMatch(profile);
+              setActiveBoardConfig(chosenBoard);
+              activeBoardRef.current = chosenBoard;
+              void sendMultiplayerAction({
+                type: 'room:create',
+                playerName: opts.playerName,
+                playerId: profile.playerId,
+                archetypeIndex: opts.archetypeIndex,
+                roomName: opts.roomName,
+                isPublic: opts.isPublic,
+                boardMode: opts.boardMode,
+                timeLimitSec: opts.timeLimitSec,
+                boardConfig: chosenBoard,
+              });
+            }}
+            onOnlineJoinRoom={(code, name, arch) => {
+              void sendMultiplayerAction({
+                type: 'room:join',
+                code,
+                playerName: name,
+                playerId: profile.playerId,
+                archetypeIndex: arch,
+              });
+            }}
+            onOnlineReady={(ready, targetId) => {
+              void sendMultiplayerAction({ type: 'room:ready', ready, targetId });
+            }}
+            onOnlineReadyAll={() => {
+              void sendMultiplayerAction({ type: 'room:ready_all' });
+            }}
+            onOnlineStart={() => {
+              const chosenBoard = resolveBoardForMatch(profile);
+              setActiveBoardConfig(chosenBoard);
+              activeBoardRef.current = chosenBoard;
+              void sendMultiplayerAction({ type: 'room:start', boardConfig: chosenBoard });
+            }}
+            onOnlineLeave={leaveOnlineRoomIfAny}
+            onOnlineChat={(text) => {
+              void sendMultiplayerAction({ type: 'room:chat', text });
+            }}
+            onOnlineUpdateSettings={(settings) => {
+              void sendMultiplayerAction({ type: 'room:update_settings', ...settings });
+            }}
+            onOnlineSetTeam={(targetId, team) => {
+              void sendMultiplayerAction({ type: 'room:set_team', targetId, team });
+            }}
+            onOnlineKick={(targetId) => {
+              void sendMultiplayerAction({ type: 'room:kick', targetId });
+            }}
+            onOnlineTransferHost={(targetId) => {
+              void sendMultiplayerAction({ type: 'room:transfer_host', targetId });
+            }}
+          />
+        </div>
       )}
 
       {screen === 'loading_arena' && (
@@ -2895,6 +3242,10 @@ export default function App() {
         graphicsPrefs={graphicsPrefs}
         onGraphicsChange={handleUpdateGraphicsPrefs}
         deviceCaps={deviceCaps}
+        soundSettings={soundSettings}
+        muted={profile.muted}
+        onSoundChange={handleUpdateSoundSettings}
+        onToggleMute={handleToggleMasterMute}
       />
 
       <AetherOracleChatDrawer
@@ -2927,6 +3278,16 @@ export default function App() {
         }}
         onLogout={handleLogout}
       />
+
+      {pendingCoinGifts[0] && (
+        <GiftCoinsOverlay
+          gift={pendingCoinGifts[0]}
+          newBalance={profile.aetherCoins ?? 0}
+          onDismiss={handleDismissGiftCoinsOverlay}
+        />
+      )}
+
+      <PWAStatusBanner />
     </div>
   );
 }

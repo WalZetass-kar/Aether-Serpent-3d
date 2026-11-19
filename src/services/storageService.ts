@@ -10,6 +10,7 @@ import {
   type DiceSkinId,
   type DifficultyMode,
 } from '../../shared/gameConfig';
+import { STARTER_UNLOCKED_BOARD_IDS } from '../../shared/boardThemes';
 
 export interface LocalScoreEntry {
   id: string;
@@ -70,6 +71,8 @@ export interface PlayerProfile {
   lastNotifiedDate: string | null;
   tutorialCompleted: boolean;
   muted: boolean;
+  aetherCoins: number;
+  unlockedBoardIds: string[];
 }
 
 const PROFILE_KEY = 'aether_serpent_profile_v1';
@@ -220,6 +223,8 @@ function createDefaultProfile(): PlayerProfile {
     lastNotifiedDate: null,
     tutorialCompleted: false,
     muted: false,
+    aetherCoins: 250,
+    unlockedBoardIds: [...STARTER_UNLOCKED_BOARD_IDS],
   };
 }
 
@@ -269,6 +274,18 @@ export function loadProfile(): PlayerProfile {
       },
       unlockedAchievements,
       recentResults: Array.isArray(parsed.recentResults) ? parsed.recentResults : [],
+      aetherCoins:
+        typeof parsed.aetherCoins === 'number' && Number.isFinite(parsed.aetherCoins)
+          ? Math.max(0, Math.floor(parsed.aetherCoins))
+          : base.aetherCoins,
+      unlockedBoardIds: Array.from(
+        new Set([
+          ...STARTER_UNLOCKED_BOARD_IDS,
+          ...(Array.isArray(parsed.unlockedBoardIds)
+            ? parsed.unlockedBoardIds.filter((id): id is string => typeof id === 'string')
+            : []),
+        ]),
+      ),
     };
     const today = getTodayDateString();
     let dirty = isGenericName;
@@ -480,4 +497,27 @@ export function updateDailyChallengeProgress(
     challengeJustCompleted,
     bonusAwarded,
   };
+}
+
+export function calculateMatchCoinReward(params: {
+  won: boolean;
+  laddersClimbed: number;
+  mode: ConnectionMode;
+  dailyCompleted: boolean;
+  newAchievementCount: number;
+}): { total: number; breakdown: string } {
+  const baseCoins = 45;
+  const winBonus = params.won ? (params.mode === 'online' ? 120 : 85) : 0;
+  const ladderBonus = Math.min(90, Math.max(0, params.laddersClimbed) * 15);
+  const dailyBonus = params.dailyCompleted ? 120 : 0;
+  const achBonus = Math.max(0, params.newAchievementCount) * 80;
+  const total = baseCoins + winBonus + ladderBonus + dailyBonus + achBonus;
+
+  const parts: string[] = [`+${baseCoins} laga`];
+  if (winBonus > 0) parts.push(`+${winBonus} menang`);
+  if (ladderBonus > 0) parts.push(`+${ladderBonus} tangga`);
+  if (dailyBonus > 0) parts.push(`+${dailyBonus} harian`);
+  if (achBonus > 0) parts.push(`+${achBonus} pencapaian`);
+
+  return { total, breakdown: parts.join(' · ') };
 }

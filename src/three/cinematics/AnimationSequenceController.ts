@@ -8,12 +8,12 @@ import {
 } from '../../../shared/gameConfig';
 import { DynamicCameraController } from '../DynamicCameraController';
 import {
-  getDiceTargetQuaternion,
   type LadderBuildResult,
   type PawnModelHandle,
   type SerpentBuildResult,
 } from '../models';
 import { VfxPool } from './VfxPool';
+import { createDicePhysicsRoll, type DicePhysicsSample } from './DicePhysicsRoll';
 import type { AnimationStateName, CinematicEvent, CinematicSkillType } from './types';
 
 export interface SequenceHostContext {
@@ -40,6 +40,10 @@ export interface SequenceHostContext {
     reduced: boolean,
   ) => void;
   triggerBoardShake?: (intensity?: number, durationSec?: number) => void;
+  onDiceToss?: () => void;
+  onDiceBounce?: (intensity: number, isRimHit: boolean) => void;
+  onDiceSettle?: (faceValue: number) => void;
+  onDicePoseUpdated?: () => void;
   getReducedEffects: () => boolean;
 }
 
@@ -69,7 +73,12 @@ const _quatGulp = new THREE.Quaternion();
 const _lookMat = new THREE.Matrix4();
 const _upAxis = new THREE.Vector3(0, 1, 0);
 const _rightAxis = new THREE.Vector3(1, 0, 0);
-const _spinAxis = new THREE.Vector3(1, 0.85, 0.55).normalize();
+const _diceSample: DicePhysicsSample = {
+  position: new THREE.Vector3(),
+  quaternion: new THREE.Quaternion(),
+  scale: new THREE.Vector3(1, 1, 1),
+  done: false,
+};
 
 export class AnimationSequenceController {
   private host: SequenceHostContext;
@@ -901,72 +910,118 @@ export class AnimationSequenceController {
     reduced: boolean,
   ): Promise<void> {
     return new Promise((resolve) => {
-      const duration = 680;
-      const start = performance.now();
-      _quatStart.copy(this.host.diceGroup.quaternion);
-      const targetQuat = getDiceTargetQuaternion(targetFace);
-      let lastShakeEmit = 0;
+      const sim = createDicePhysicsRoll(
+        this.host.diceGroup.position,
+        this.host.diceGroup.quaternion,
+        this.host.diceBasePos,
+        targetFace,
+        reduced,
+      );
+
+      const startMs = performance.now();
+      let nextImpactIdx = 0;
+      let tossTriggered = false;
+      let lastTrailMs = 0;
+      let heavyFloorHits = 0;
 
       const step = (now: number) => {
         if (this.host.isDisposed()) return resolve();
-        const elapsed = now - start;
-        const t = Math.min(1, elapsed / duration);
-        const ease = 1 - Math.pow(1 - t, 3);
+        const elapsedMs = now - startMs;
+        const elapsedSec = elapsedMs / 1000;
 
-        const bounce = Math.abs(Math.sin(t * Math.PI * 2.4)) * (1 - t) * 2.4;
-        this.host.diceGroup.position.set(
-          this.host.diceBasePos.x,
-          this.host.diceBasePos.y + bounce,
-          this.host.diceBasePos.z,
-        );
+        // Fire toss sound & launch burst right as wind-up transitions into airborne launch
+        if (!tossTriggered && elapsedSec >= sim.windupSec) {
+          tossTriggered = true;
+          this.host.onDiceToss?.();
+          if (!reduced) {
+            _vecA.set(
+              this.host.diceGroup.position.x,
+              this.host.diceBasePos.y - 0.35,
+              this.host.diceGroup.position.z,
+            );
+            this.host.spawnParticleBurst(_vecA, accentColorHex, 7, 0.55);
+          }
+        }
 
-        if (!reduced && t < 0.76 && elapsed - lastShakeEmit >= 75) {
-          lastShakeEmit = elapsed;
+        // Sample rigid-body physics pose (zero GC)
+        sim.sample(elapsedSec, _diceSample);
+        this.host.diceGroup.position.copy(_diceSample.position);
+        this.host.diceGroup.quaternion.copy(_diceSample.quaternion);
+        this.host.diceGroup.scale.copy(_diceSample.scale);
+        this.host.onDicePoseUpdated?.();
+
+        // Dispatch any physical collision impacts reached on this frame
+        while (nextImpactIdx < sim.impacts.length && sim.impacts[nextImpactIdx].timeSec <= elapsedSec) {
+          const imp = sim.impacts[nextImpactIdx];
+          nextImpactIdx++;
+
+          this.host.onDiceBounce?.(imp.intensity, imp.isRimHit);
+
+          _vecB.set(imp.x, imp.y + 0.06, imp.z);
+          const sparkCount = reduced
+            ? Math.max(3, Math.round(imp.intensity * 6))
+            : Math.max(5, Math.round(imp.intensity * 14));
+          const sparkColor = imp.isRimHit
+            ? 0xfbbf24
+            : imp.intensity > 0.55
+              ? archetypeColorHex
+              : accentColorHex;
+          this.host.spawnParticleBurst(_vecB, sparkColor, sparkCount, 0.45 + imp.intensity * 0.55);
+
+          if (!imp.isRimHit && imp.intensity > 0.32) {
+            heavyFloorHits++;
+            this.host.vfxPool.playAetherStepWake(_vecB, archetypeColorHex, reduced);
+            if (!reduced && heavyFloorHits === 1 && imp.intensity > 0.45) {
+              this.host.triggerBoardShake?.(0.26 * imp.intensity, 0.16);
+            }
+          }
+        }
+
+        // Subtle mid-air energy trail while cube is high off the altar
+        const altitude = _diceSample.position.y - this.host.diceBasePos.y;
+        if (!reduced && altitude > 0.45 && elapsedMs - lastTrailMs >= 58) {
+          lastTrailMs = elapsedMs;
+          _vecA.set(
+            _diceSample.position.x + (Math.random() - 0.5) * 0.35,
+            _diceSample.position.y,
+            _diceSample.position.z + (Math.random() - 0.5) * 0.35,
+          );
           this.host.spawnParticleBurst(
-            new THREE.Vector3(
-              this.host.diceBasePos.x + (Math.random() - 0.5) * 0.6,
-              this.host.diceBasePos.y + bounce + 0.25,
-              this.host.diceBasePos.z + (Math.random() - 0.5) * 0.6,
-            ),
-            Math.random() > 0.35 ? archetypeColorHex : accentColorHex,
-            5,
-            0.45,
+            _vecA,
+            Math.random() > 0.4 ? archetypeColorHex : accentColorHex,
+            3,
+            0.35,
           );
         }
 
-        if (t < 0.72) {
-          _quatSpin.setFromAxisAngle(_spinAxis, ease * Math.PI * 6);
-          this.host.diceGroup.quaternion.copy(_quatStart).multiply(_quatSpin);
-        } else {
-          const settleT = (t - 0.72) / 0.28;
-          this.host.diceGroup.quaternion.slerp(targetQuat, settleT);
-        }
-
-        if (t < 1) {
+        if (!_diceSample.done && elapsedSec < sim.durationSec + 0.06) {
           requestAnimationFrame(step);
         } else {
-          this.host.diceGroup.position.copy(this.host.diceBasePos);
-          this.host.diceGroup.quaternion.copy(targetQuat);
+          // Lock exact settled physics position & target face orientation
+          this.host.diceGroup.position.copy(sim.finalPosition);
+          this.host.diceGroup.quaternion.copy(sim.finalQuaternion);
+          this.host.diceGroup.scale.set(1, 1, 1);
+          this.host.onDicePoseUpdated?.();
+          this.host.onDiceSettle?.(targetFace);
+
+          _vecC.set(sim.finalPosition.x, sim.finalPosition.y + 0.32, sim.finalPosition.z);
           this.host.spawnParticleBurst(
-            new THREE.Vector3(
-              this.host.diceBasePos.x,
-              this.host.diceBasePos.y + 0.45,
-              this.host.diceBasePos.z,
-            ),
-            archetypeColorHex,
-            reduced ? 9 : 18,
-            0.9,
+            _vecC,
+            targetFace === 6 ? 0xfbbf24 : archetypeColorHex,
+            reduced ? 8 : targetFace === 6 ? 24 : 16,
+            targetFace === 6 ? 1.05 : 0.85,
           );
           if (!reduced) {
             this.host.spawnParticleBurst(
-              new THREE.Vector3(
-                this.host.diceBasePos.x,
-                this.host.diceBasePos.y + 0.5,
-                this.host.diceBasePos.z,
-              ),
+              _vecC,
               accentColorHex,
-              10,
-              0.85,
+              targetFace === 6 ? 14 : 9,
+              0.82,
+            );
+            this.host.vfxPool.playAetherStepWake(
+              _vecC,
+              targetFace === 6 ? 0xfbbf24 : accentColorHex,
+              false,
             );
           }
           resolve();

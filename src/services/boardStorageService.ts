@@ -1,11 +1,19 @@
 import {
+  AETHER_COIN_PACKS,
+  BOARD_UNLOCK_RULES,
   BoardConfig,
+  BoardMissionMetric,
   BoardSelectionMode,
+  BoardThemeId,
+  BoardUnlockRule,
   DEFAULT_BOARD_CONFIGS,
+  STARTER_UNLOCKED_BOARD_IDS,
   cloneBoardConfig,
+  getBoardUnlockRule,
   getDefaultBoardByTheme,
   pickRandomBoardConfig,
 } from '../../shared/boardThemes';
+import { loadProfile, saveProfile, type PlayerProfile } from './storageService';
 
 const STORAGE_KEY = 'aether_serpent_board_collection_v1';
 
@@ -18,14 +26,213 @@ export interface BoardCollectionState {
   lastRandomBoardId: string | null;
 }
 
+export interface BoardUnlockStatus {
+  unlocked: boolean;
+  canClaimMission: boolean;
+  currentProgress: number;
+  targetProgress: number;
+  altCurrentProgress?: number;
+  altTargetProgress?: number;
+  progressPct: number;
+  rule: BoardUnlockRule;
+}
+
 const DEFAULT_COLLECTION_STATE: BoardCollectionState = {
   selectedBoardId: DEFAULT_BOARD_CONFIGS[0].id,
   defaultBoardId: DEFAULT_BOARD_CONFIGS[0].id,
   selectionMode: 'manual',
-  favoriteBoardIds: ['default_enchanted_forest', 'default_dragon_volcano', 'default_celestial_sky'],
+  favoriteBoardIds: [...STARTER_UNLOCKED_BOARD_IDS],
   customBoards: [],
   lastRandomBoardId: null,
 };
+
+function readMissionMetric(profile: PlayerProfile, metric: BoardMissionMetric): number {
+  switch (metric) {
+    case 'totalGames':
+      return profile.totalGames;
+    case 'wins':
+      return profile.wins;
+    case 'laddersClimbed':
+      return profile.laddersClimbed;
+    case 'bestScore':
+      return profile.bestScore;
+    case 'onlineWins':
+      return profile.onlineWins;
+    case 'specialTilesHit':
+      return profile.specialTilesHit;
+    case 'loginStreak':
+      return profile.loginStreak;
+  }
+}
+
+export function getBoardUnlockStatus(
+  boardId: string,
+  profileArg?: PlayerProfile,
+): BoardUnlockStatus {
+  const profile = profileArg ?? loadProfile();
+  if (!boardId.startsWith('default_')) {
+    return {
+      unlocked: true,
+      canClaimMission: false,
+      currentProgress: 1,
+      targetProgress: 1,
+      progressPct: 100,
+      rule: getBoardUnlockRule(boardId),
+    };
+  }
+
+  const rule = getBoardUnlockRule(boardId);
+  const ownedSet = new Set([...STARTER_UNLOCKED_BOARD_IDS, ...(profile.unlockedBoardIds || [])]);
+  if (rule.unlockType === 'free' || ownedSet.has(boardId)) {
+    return {
+      unlocked: true,
+      canClaimMission: false,
+      currentProgress: rule.mission?.target ?? 1,
+      targetProgress: rule.mission?.target ?? 1,
+      progressPct: 100,
+      rule,
+    };
+  }
+
+  if (rule.unlockType === 'mission' && rule.mission) {
+    const cur = readMissionMetric(profile, rule.mission.metric);
+    const target = rule.mission.target;
+    const primaryMet = cur >= target;
+    let altCur: number | undefined;
+    let altTarget: number | undefined;
+    let altMet = false;
+    if (rule.mission.altMetric && rule.mission.altTarget) {
+      altCur = readMissionMetric(profile, rule.mission.altMetric);
+      altTarget = rule.mission.altTarget;
+      altMet = altCur >= altTarget;
+    }
+    const met = primaryMet || altMet;
+    const pct = met ? 100 : Math.min(99, Math.round((cur / Math.max(1, target)) * 100));
+    return {
+      unlocked: false,
+      canClaimMission: met,
+      currentProgress: cur,
+      targetProgress: target,
+      altCurrentProgress: altCur,
+      altTargetProgress: altTarget,
+      progressPct: pct,
+      rule,
+    };
+  }
+
+  return {
+    unlocked: false,
+    canClaimMission: false,
+    currentProgress: 0,
+    targetProgress: 1,
+    progressPct: 0,
+    rule,
+  };
+}
+
+export function isBoardUnlocked(boardId: string, profileArg?: PlayerProfile): boolean {
+  return getBoardUnlockStatus(boardId, profileArg).unlocked;
+}
+
+export function isThemeUnlocked(themeId: BoardThemeId, profileArg?: PlayerProfile): boolean {
+  const defaultBoard = DEFAULT_BOARD_CONFIGS.find((b) => b.themeId === themeId);
+  if (!defaultBoard) return true;
+  return isBoardUnlocked(defaultBoard.id, profileArg);
+}
+
+export function getClaimableMissionBoards(profileArg?: PlayerProfile): BoardConfig[] {
+  const profile = profileArg ?? loadProfile();
+  return DEFAULT_BOARD_CONFIGS.filter((b) => getBoardUnlockStatus(b.id, profile).canClaimMission);
+}
+
+export function claimBoardMission(
+  boardId: string,
+  profileArg?: PlayerProfile,
+): { ok: boolean; profile: PlayerProfile; rewardCoins: number; reason?: string } {
+  const profile = profileArg ?? loadProfile();
+  const status = getBoardUnlockStatus(boardId, profile);
+  if (status.unlocked) {
+    return { ok: false, profile, rewardCoins: 0, reason: 'Papan sudah terbuka.' };
+  }
+  if (!status.canClaimMission || !status.rule.mission) {
+    return { ok: false, profile, rewardCoins: 0, reason: 'Misi papan ini belum selesai.' };
+  }
+  const rewardCoins = status.rule.mission.rewardCoins;
+  const nextProfile: PlayerProfile = {
+    ...profile,
+    aetherCoins: (profile.aetherCoins ?? 0) + rewardCoins,
+    unlockedBoardIds: Array.from(
+      new Set([...STARTER_UNLOCKED_BOARD_IDS, ...(profile.unlockedBoardIds || []), boardId]),
+    ),
+  };
+  saveProfile(nextProfile);
+  return { ok: true, profile: nextProfile, rewardCoins };
+}
+
+export function purchasePremiumBoard(
+  boardId: string,
+  profileArg?: PlayerProfile,
+): { ok: boolean; profile: PlayerProfile; spentCoins: number; reason?: string } {
+  const profile = profileArg ?? loadProfile();
+  const status = getBoardUnlockStatus(boardId, profile);
+  if (status.unlocked) {
+    return { ok: false, profile, spentCoins: 0, reason: 'Papan ini sudah kamu miliki.' };
+  }
+  if (status.rule.unlockType !== 'premium' || !status.rule.premium) {
+    return { ok: false, profile, spentCoins: 0, reason: 'Papan ini bukan papan berbayar.' };
+  }
+  const price = status.rule.premium.priceCoins;
+  const currentCoins = profile.aetherCoins ?? 0;
+  if (currentCoins < price) {
+    return {
+      ok: false,
+      profile,
+      spentCoins: 0,
+      reason: `Koin Aether belum cukup (butuh ${price.toLocaleString('id-ID')} Koin).`,
+    };
+  }
+  const nextProfile: PlayerProfile = {
+    ...profile,
+    aetherCoins: currentCoins - price,
+    unlockedBoardIds: Array.from(
+      new Set([...STARTER_UNLOCKED_BOARD_IDS, ...(profile.unlockedBoardIds || []), boardId]),
+    ),
+  };
+  saveProfile(nextProfile);
+  return { ok: true, profile: nextProfile, spentCoins: price };
+}
+
+export function applyAetherCoinPack(
+  packId: string,
+  profileArg?: PlayerProfile,
+): { ok: boolean; profile: PlayerProfile; addedCoins: number; unlockedCount: number } {
+  const profile = profileArg ?? loadProfile();
+  const pack = AETHER_COIN_PACKS.find((p) => p.id === packId);
+  if (!pack) {
+    return { ok: false, profile, addedCoins: 0, unlockedCount: 0 };
+  }
+  const addedCoins = pack.coins + pack.bonusCoins;
+  const currentUnlocked = new Set([
+    ...STARTER_UNLOCKED_BOARD_IDS,
+    ...(profile.unlockedBoardIds || []),
+  ]);
+  let unlockedCount = 0;
+  if (pack.unlockAllPremium) {
+    Object.values(BOARD_UNLOCK_RULES).forEach((rule) => {
+      if (rule.unlockType === 'premium' && !currentUnlocked.has(rule.boardId)) {
+        currentUnlocked.add(rule.boardId);
+        unlockedCount += 1;
+      }
+    });
+  }
+  const nextProfile: PlayerProfile = {
+    ...profile,
+    aetherCoins: (profile.aetherCoins ?? 0) + addedCoins,
+    unlockedBoardIds: Array.from(currentUnlocked),
+  };
+  saveProfile(nextProfile);
+  return { ok: true, profile: nextProfile, addedCoins, unlockedCount };
+}
 
 export function loadBoardCollection(): BoardCollectionState {
   try {
@@ -214,12 +421,15 @@ export function renameCustomBoard(boardId: string, newName: string): BoardCollec
  * - 'custom': Uses the selected custom board (or first custom board if none selected)
  * - 'manual': Uses the currently selected board (or default board)
  */
-export function resolveBoardForMatch(): BoardConfig {
+export function resolveBoardForMatch(profileArg?: PlayerProfile): BoardConfig {
+  const profile = profileArg ?? loadProfile();
   const state = loadBoardCollection();
   const allBoards = getAllAvailableBoards(state);
+  const unlockedBoards = allBoards.filter((b) => isBoardUnlocked(b.id, profile));
+  const safePool = unlockedBoards.length > 0 ? unlockedBoards : [cloneBoardConfig(DEFAULT_BOARD_CONFIGS[0])];
 
   if (state.selectionMode === 'random') {
-    const chosen = pickRandomBoardConfig(allBoards, state.lastRandomBoardId);
+    const chosen = pickRandomBoardConfig(safePool, state.lastRandomBoardId);
     state.lastRandomBoardId = chosen.id;
     state.selectedBoardId = chosen.id;
     saveBoardCollection(state);
@@ -232,7 +442,14 @@ export function resolveBoardForMatch(): BoardConfig {
     return cloneBoardConfig(chosen);
   }
 
-  return getBoardById(state.selectedBoardId || state.defaultBoardId, state);
+  const candidateId = state.selectedBoardId || state.defaultBoardId;
+  if (isBoardUnlocked(candidateId, profile)) {
+    return getBoardById(candidateId, state);
+  }
+  const fallback = safePool[0];
+  state.selectedBoardId = fallback.id;
+  saveBoardCollection(state);
+  return cloneBoardConfig(fallback);
 }
 
 export function createTemplateFromTheme(themeId: BoardConfig['themeId'], customName?: string): BoardConfig {

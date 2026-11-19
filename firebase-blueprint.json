@@ -107,6 +107,14 @@
           "minLength": 1,
           "maxLength": 80
         },
+        "aetherCoins": {
+          "type": "integer",
+          "description": "In-game Aether Coins balance used to unlock premium 3D boards."
+        },
+        "unlockedBoardIds": {
+          "type": "array",
+          "description": "Bounded list of unlocked 3D board IDs (max 30)."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -424,6 +432,222 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "TopUpChatThread": {
+      "title": "TopUpChatThread",
+      "description": "Private 1-to-1 paid Aether Coin top-up conversation thread between a verified member and the administrator.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Member Firebase Auth UID matching the document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email of the member requesting top-up.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the member.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "status": {
+          "type": "string",
+          "description": "Order conversation status.",
+          "enum": ["open", "pending_payment", "completed"]
+        },
+        "requestedPackName": {
+          "type": "string",
+          "description": "Most recently selected Aether Coin pack or Royal Pass label.",
+          "maxLength": 80
+        },
+        "lastMessageText": {
+          "type": "string",
+          "description": "Preview snippet of the latest message.",
+          "maxLength": 300
+        },
+        "lastSenderRole": {
+          "type": "string",
+          "description": "Role of the sender of the latest message.",
+          "enum": ["member", "admin"]
+        },
+        "unreadByAdmin": {
+          "type": "integer",
+          "description": "Count of unread member messages awaiting admin reply."
+        },
+        "unreadByMember": {
+          "type": "integer",
+          "description": "Count of unread admin messages awaiting member view."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "displayName",
+        "status",
+        "requestedPackName",
+        "lastMessageText",
+        "lastSenderRole",
+        "unreadByAdmin",
+        "unreadByMember",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TopUpChatMessage": {
+      "title": "TopUpChatMessage",
+      "description": "Individual immutable message inside a member's top-up chat subcollection, optionally recording an admin coin adjustment.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Message document ID matching path messageId.",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "threadUid": {
+          "type": "string",
+          "description": "Owning member UID matching parent userId.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "senderUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the message author.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of the sender.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "senderRole": {
+          "type": "string",
+          "description": "Whether sent by member or administrator.",
+          "enum": ["member", "admin"]
+        },
+        "text": {
+          "type": "string",
+          "description": "Chat message content.",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "packId": {
+          "type": "string",
+          "description": "Optional package ID referenced in an order request.",
+          "maxLength": 40
+        },
+        "coinDelta": {
+          "type": "integer",
+          "description": "Signed Aether Coin delta applied by admin (0 for regular messages)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "threadUid",
+        "senderUid",
+        "senderName",
+        "senderRole",
+        "text",
+        "packId",
+        "coinDelta",
+        "createdAt"
+      ]
+    },
+    "CoinGift": {
+      "title": "CoinGift",
+      "description": "Administrator-issued Aether Coin gift delivered to a specific user ID to trigger a real-time celebratory coin animation on the recipient's screen.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Gift document ID matching path giftId.",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "recipientUid": {
+          "type": "string",
+          "description": "Recipient Firebase Auth UID matching parent userId.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "senderUid": {
+          "type": "string",
+          "description": "Administrator Firebase Auth UID who sent the gift.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display label of the gifting administrator.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Positive number of Aether Coins gifted."
+        },
+        "message": {
+          "type": "string",
+          "description": "Optional celebratory note shown in the recipient's gift animation.",
+          "maxLength": 200
+        },
+        "acknowledged": {
+          "type": "boolean",
+          "description": "Whether the recipient has viewed and dismissed the gift animation."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "recipientUid",
+        "senderUid",
+        "senderName",
+        "amount",
+        "message",
+        "acknowledged",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -431,13 +655,19 @@
       "schema": {
         "$ref": "#/entities/UserProfile"
       },
-      "description": "Owner-isolated player account document storing email (PII), game progression, achievements, and preferences."
+      "description": "Owner-isolated player account document storing email (PII), game progression, Aether Coins balance, unlocked boards, achievements, and preferences."
     },
     "/users/{userId}/boards/{boardId}": {
       "schema": {
         "$ref": "#/entities/CustomBoard"
       },
       "description": "Owner-only subcollection of custom 3D boards created by the user."
+    },
+    "/users/{userId}/coinGifts/{giftId}": {
+      "schema": {
+        "$ref": "#/entities/CoinGift"
+      },
+      "description": "Admin-issued coin gift notifications owned by the recipient for real-time gift animations."
     },
     "/publicProfiles/{userId}": {
       "schema": {
@@ -456,6 +686,18 @@
         "$ref": "#/entities/ActiveRoom"
       },
       "description": "Live multiplayer rooms synced by the room host for cross-instance Admin Portal monitoring and public lobby discovery."
+    },
+    "/topupChats/{userId}": {
+      "schema": {
+        "$ref": "#/entities/TopUpChatThread"
+      },
+      "description": "Private 1-to-1 paid top-up chat thread between a verified member and the administrator."
+    },
+    "/topupChats/{userId}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/TopUpChatMessage"
+      },
+      "description": "Immutable chat messages and admin coin adjustment logs inside a member's top-up thread."
     }
   }
 }

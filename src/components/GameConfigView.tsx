@@ -35,14 +35,18 @@ import {
 } from '../../shared/boardThemes';
 import {
   getAllAvailableBoards,
+  getBoardUnlockStatus,
+  isBoardUnlocked,
   loadBoardCollection,
   selectBoard,
   setBoardSelectionMode,
 } from '../services/boardStorageService';
+import type { PlayerProfile } from '../services/storageService';
 import type { CameraMode, CameraSettings } from '../three/DynamicCameraController';
 import { ArchetypeEmblem, DiceSkinCubePreview, SerpentCrestEmblem } from './FantasyIcons';
 
 interface GameConfigViewProps {
+  profile: PlayerProfile;
   boardMode: BoardGameMode;
   defaultPlayerName: string;
   defaultArchetypeIndex: number;
@@ -87,6 +91,7 @@ const MODE_ICON: Record<BoardGameMode, React.ReactNode> = {
 };
 
 export const GameConfigView: React.FC<GameConfigViewProps> = ({
+  profile,
   boardMode,
   defaultPlayerName,
   defaultArchetypeIndex,
@@ -107,6 +112,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   const [playStyle, setPlayStyle] = useState<'solo' | 'local'>('solo');
   const [boardCollection, setBoardCollection] = useState(() => loadBoardCollection());
   const availableBoards = getAllAvailableBoards(boardCollection);
+  const unlockedBoardCount = availableBoards.filter((b) => isBoardUnlocked(b.id, profile)).length;
 
   // Solo config
   const [soloName, setSoloName] = useState(defaultPlayerName);
@@ -128,6 +134,10 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   const [timeLimitSec, setTimeLimitSec] = useState(TIME_ATTACK_DEFAULT_SEC);
 
   const handleQuickSelectBoard = (board: BoardConfig) => {
+    if (!isBoardUnlocked(board.id, profile)) {
+      onOpenBoardManager?.('collection');
+      return;
+    }
     const next = selectBoard(board.id, board.isCustom ? 'custom' : 'manual');
     setBoardCollection({ ...next });
   };
@@ -461,12 +471,16 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
             <div>
               <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300">
                 <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                Pilih Dunia Papan 3D ({availableBoards.length} Papan)
+                Pilih Dunia Papan 3D ({unlockedBoardCount}/{availableBoards.length} Terbuka)
               </div>
               <p className="text-[11px] text-slate-400">
                 Mode aktif:{' '}
                 <span className="font-bold text-amber-300 uppercase">
                   {boardCollection.selectionMode} mode
+                </span>
+                {' · '}
+                <span className="font-mono-num text-amber-200">
+                  {(profile.aetherCoins ?? 0).toLocaleString('id-ID')} Koin Aether
                 </span>
               </p>
             </div>
@@ -483,7 +497,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   key={m.id}
                   type="button"
                   onClick={() => handleQuickModeChange(m.id)}
-                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer whitespace-nowrap ${
                     boardCollection.selectionMode === m.id
                       ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
                       : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-white'
@@ -497,19 +511,22 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
               {onOpenBoardManager && (
                 <button
                   type="button"
-                  onClick={() => onOpenBoardManager('creator')}
-                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25 cursor-pointer"
+                  onClick={() => onOpenBoardManager('collection')}
+                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25 cursor-pointer whitespace-nowrap"
                 >
                   <Wand2 className="w-3 h-3" />
-                  3D Board Creator
+                  Buka Studio Papan
                 </button>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-44 overflow-y-auto pr-1 custom-scroll">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1 custom-scroll">
             {availableBoards.map((b) => {
+              const unlockStatus = getBoardUnlockStatus(b.id, profile);
+              const unlocked = unlockStatus.unlocked;
               const isSelected =
+                unlocked &&
                 boardCollection.selectionMode !== 'random' &&
                 boardCollection.selectedBoardId === b.id;
               return (
@@ -517,10 +534,21 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   key={b.id}
                   type="button"
                   onClick={() => handleQuickSelectBoard(b)}
+                  title={
+                    unlocked
+                      ? `${b.name} — ${b.subtitle}`
+                      : unlockStatus.rule.unlockType === 'mission'
+                        ? `Terkunci (Misi): ${unlockStatus.rule.mission?.description ?? ''}`
+                        : `Terkunci (Premium): ${unlockStatus.rule.premium?.priceCoins.toLocaleString('id-ID') ?? 0} Koin Aether`
+                  }
                   className={`min-w-0 overflow-hidden rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
                     isSelected
                       ? 'border-amber-400 bg-amber-500/15 text-white shadow'
-                      : 'border-slate-800 bg-slate-900/75 text-slate-300 hover:border-slate-700'
+                      : !unlocked
+                        ? unlockStatus.canClaimMission
+                          ? 'border-emerald-400/60 bg-emerald-950/25 text-emerald-100 hover:border-emerald-300'
+                          : 'border-slate-800/80 bg-slate-950/70 text-slate-400 hover:border-slate-700'
+                        : 'border-slate-800 bg-slate-900/75 text-slate-300 hover:border-slate-700'
                   }`}
                 >
                   <div className="flex items-center gap-1 mb-1 min-w-0">
@@ -531,14 +559,33 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                         style={{ backgroundColor: hex }}
                       />
                     ))}
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 ml-auto truncate">
-                      {b.isCustom ? 'Custom' : BOARD_THEME_LABELS[b.themeId].split(' ')[0]}
-                    </span>
+                    {!unlocked ? (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider ml-auto truncate">
+                        <Lock className="w-2.5 h-2.5 shrink-0" />
+                        {unlockStatus.canClaimMission ? (
+                          <span className="text-emerald-300">Klaim!</span>
+                        ) : unlockStatus.rule.unlockType === 'mission' ? (
+                          <span className="text-sky-300">Misi {unlockStatus.progressPct}%</span>
+                        ) : (
+                          <span className="text-amber-300">
+                            {unlockStatus.rule.premium?.priceCoins.toLocaleString('id-ID')} Koin
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 ml-auto truncate">
+                        {b.isCustom ? 'Custom' : BOARD_THEME_LABELS[b.themeId].split(' ')[0]}
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs font-bold truncate">{b.name}</div>
                   <div className="text-[10px] text-slate-400 truncate">{b.subtitle}</div>
                   <div className="text-[9px] text-amber-300/90 truncate mt-0.5 font-mono-num">
-                    ↑{b.ladders[0]?.from}→{b.ladders[0]?.to} · ↓{b.snakes[0]?.from}→{b.snakes[0]?.to}
+                    {!unlocked
+                      ? unlockStatus.rule.unlockType === 'mission'
+                        ? unlockStatus.rule.mission?.title
+                        : `Buka di Studio (${unlockStatus.rule.premium?.priceIdr})`
+                      : `↑${b.ladders[0]?.from}→${b.ladders[0]?.to} · ↓${b.snakes[0]?.from}→${b.snakes[0]?.to}`}
                   </div>
                 </button>
               );

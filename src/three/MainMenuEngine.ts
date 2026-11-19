@@ -31,6 +31,10 @@ import {
   buildWaterAndEnvironment,
   type WaterEnvHandle,
 } from './assets/waterEnvironmentBuilder';
+import {
+  buildSanctuaryArchCorridor,
+  type SanctuaryArchCorridorHandle,
+} from './assets/sanctuaryArchBuilder';
 import { MenuAssetPipeline, probeKtx2Capabilities } from './assets/assetPipeline';
 import {
   AdaptivePerformanceManager,
@@ -42,6 +46,16 @@ import {
   type GraphicsPreferences,
   type QualityConfig,
 } from './perf/qualityPresets';
+
+export type MenuCameraView = 'main_menu' | 'multiplayer_lobby';
+
+export interface MenuCameraTransitionOptions {
+  instant?: boolean;
+  durationSec?: number;
+  midpointRatio?: number;
+  onMidpoint?: () => void;
+  onComplete?: () => void;
+}
 
 const CinematicVignetteShader = {
   uniforms: {
@@ -98,13 +112,50 @@ export class MainMenuEngine {
   private dragon!: DragonHandle;
   private vegetation!: VegetationHandle;
   private waterEnv!: WaterEnvHandle;
+  private archCorridor!: SanctuaryArchCorridorHandle;
   private assetPipeline: MenuAssetPipeline;
   private pbrSets: PbrTextureSet[] = [];
   private envMap: THREE.Texture;
 
   private pointerNorm = { x: 0, y: 0 };
+  private prefersReducedMotion = false;
+  private activeView: MenuCameraView = 'main_menu';
+  private baseFov = 42;
   private baseCamPos = new THREE.Vector3(0.55, 4.15, 13.7);
   private baseLookAt = new THREE.Vector3(-0.35, 2.75, -1.6);
+  private currentLookAt = new THREE.Vector3(-0.35, 2.75, -1.6);
+  private currentBankRoll = 0;
+  private transitionBoost = 0;
+
+  // Dynamic 3D Architectural Fly-Through State (zero per-frame GC allocations)
+  private camTransition: {
+    active: boolean;
+    from: MenuCameraView;
+    to: MenuCameraView;
+    elapsed: number;
+    duration: number;
+    midpointRatio: number;
+    midpointFired: boolean;
+    posCurve: THREE.CatmullRomCurve3 | null;
+    lookCurve: THREE.CatmullRomCurve3 | null;
+    onMidpoint?: () => void;
+    onComplete?: () => void;
+  } = {
+    active: false,
+    from: 'main_menu',
+    to: 'main_menu',
+    elapsed: 0,
+    duration: 1.05,
+    midpointRatio: 0.48,
+    midpointFired: false,
+    posCurve: null,
+    lookCurve: null,
+  };
+
+  private readonly scratchPos = new THREE.Vector3();
+  private readonly scratchLook = new THREE.Vector3();
+  private readonly scratchTargetPos = new THREE.Vector3();
+  private readonly scratchTargetLook = new THREE.Vector3();
   private resizeObserver: ResizeObserver | null = null;
 
   constructor(
@@ -148,6 +199,10 @@ export class MainMenuEngine {
     this.scene.environmentIntensity = 0.72;
     pmrem.dispose();
 
+    this.prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.camera = new THREE.PerspectiveCamera(42, width / height, 0.25, 130);
     this.updateCameraFraming(width, height);
 
@@ -189,6 +244,13 @@ export class MainMenuEngine {
 
     this.dragon = createOrientalDragon(maxAniso);
     this.scene.add(this.dragon.root);
+
+    // Sculpted Fantasy Stone Archway Corridor & Waystone Obelisks bridging Sanctuary -> Citadel
+    this.archCorridor = buildSanctuaryArchCorridor(
+      { stonePbr, slatePbr },
+      { shadowsEnabled: cfg.shadowsEnabled && !this.isSoftwareGl },
+    );
+    this.scene.add(this.archCorridor.group);
 
     // Load Baked Binary .GLB Structures (or lightweight procedural vista on Potato)
     this.assetPipeline = new MenuAssetPipeline();
@@ -242,21 +304,160 @@ export class MainMenuEngine {
     this.scene.add(castle);
   }
 
-  private updateCameraFraming(width: number, height: number) {
+  private computeViewpoint(
+    view: MenuCameraView,
+    width: number,
+    height: number,
+    posOut: THREE.Vector3,
+    lookOut: THREE.Vector3,
+  ) {
     const aspect = width / Math.max(1, height);
+    if (view === 'multiplayer_lobby') {
+      if (aspect < 0.65) {
+        // Mobile portrait: pulled back slightly so the illuminated Citadel towers crown the upper vista
+        posOut.set(4.15, 6.75, -1.95);
+        lookOut.set(7.45, 6.45, -11.2);
+      } else if (aspect < 0.95) {
+        posOut.set(4.65, 6.45, -3.15);
+        lookOut.set(7.55, 6.65, -11.2);
+      } else {
+        // Desktop: grand elevated courtyard vista facing the Fantasy Citadel Keep & golden beacon
+        posOut.set(5.35, 6.25, -4.45);
+        lookOut.set(7.65, 6.85, -11.2);
+      }
+      return;
+    }
+
     if (aspect < 0.65) {
       // Narrow mobile portrait: frame the dragon & waterfall cleanly in upper half above the menu card
-      this.baseCamPos.set(-1.35, 4.85, 18.2);
-      this.baseLookAt.set(-1.85, 2.45, -1.8);
+      posOut.set(-1.35, 4.85, 18.2);
+      lookOut.set(-1.85, 2.45, -1.8);
     } else if (aspect < 0.95) {
-      this.baseCamPos.set(-1.1, 4.65, 16.5);
-      this.baseLookAt.set(-1.6, 2.85, -1.8);
+      posOut.set(-1.1, 4.65, 16.5);
+      lookOut.set(-1.6, 2.85, -1.8);
     } else {
-      this.baseCamPos.set(0.55, 4.15, 13.7);
-      this.baseLookAt.set(-0.35, 2.75, -1.6);
+      posOut.set(0.55, 4.15, 13.7);
+      lookOut.set(-0.35, 2.75, -1.6);
     }
-    this.camera.position.copy(this.baseCamPos);
-    this.camera.lookAt(this.baseLookAt);
+  }
+
+  private updateCameraFraming(width: number, height: number, snapCamera = true) {
+    this.computeViewpoint(this.activeView, width, height, this.baseCamPos, this.baseLookAt);
+    if (snapCamera && !this.camTransition.active) {
+      this.camera.position.copy(this.baseCamPos);
+      this.currentLookAt.copy(this.baseLookAt);
+      this.camera.up.set(0, 1, 0);
+      this.camera.lookAt(this.currentLookAt);
+    }
+  }
+
+  public getActiveView(): MenuCameraView {
+    return this.activeView;
+  }
+
+  /**
+   * Smoothly flies the 3D camera along a CatmullRomCurve3 architectural spline
+   * directly through the Twin Fantasy Stone Archways between the Dragon Sanctuary
+   * (`main_menu`) and the elevated Fantasy Citadel (`multiplayer_lobby`).
+   */
+  public transitionToView(target: MenuCameraView, options: MenuCameraTransitionOptions = {}) {
+    if (this.disposed) return;
+
+    const width = this.container.clientWidth || window.innerWidth;
+    const height = this.container.clientHeight || window.innerHeight;
+    const prevView = this.activeView;
+    this.prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const prefersReducedMotion = this.prefersReducedMotion;
+
+    this.activeView = target;
+    this.computeViewpoint(target, width, height, this.scratchTargetPos, this.scratchTargetLook);
+    this.baseCamPos.copy(this.scratchTargetPos);
+    this.baseLookAt.copy(this.scratchTargetLook);
+
+    const shouldSnap = Boolean(options.instant) || (prevView === target && !this.camTransition.active);
+    if (shouldSnap) {
+      this.camTransition.active = false;
+      this.camTransition.posCurve = null;
+      this.camTransition.lookCurve = null;
+      this.camTransition.onMidpoint = undefined;
+      this.camTransition.onComplete = undefined;
+      this.transitionBoost = 0;
+      this.currentBankRoll = 0;
+      this.camera.up.set(0, 1, 0);
+      if (Math.abs(this.camera.fov - this.baseFov) > 0.01) {
+        this.camera.fov = this.baseFov;
+        this.camera.updateProjectionMatrix();
+      }
+      this.camera.position.copy(this.baseCamPos);
+      this.currentLookAt.copy(this.baseLookAt);
+      this.camera.lookAt(this.currentLookAt);
+      options.onMidpoint?.();
+      options.onComplete?.();
+      return;
+    }
+
+    const startPos = this.camera.position.clone();
+    const startLook = this.currentLookAt.clone();
+    const endPos = this.baseCamPos.clone();
+    const endLook = this.baseLookAt.clone();
+
+    let posWaypoints: THREE.Vector3[];
+    let lookWaypoints: THREE.Vector3[];
+
+    if (prefersReducedMotion) {
+      // Gentle direct glide without dramatic swoop for reduced-motion accessibility
+      posWaypoints = [startPos, startPos.clone().lerp(endPos, 0.5), endPos];
+      lookWaypoints = [startLook, startLook.clone().lerp(endLook, 0.5), endLook];
+    } else if (target === 'multiplayer_lobby') {
+      // Forward cinematic fly-through: sweep right -> glide straight THROUGH Archway #1 -> climb THROUGH Archway #2 -> Citadel Vista
+      posWaypoints = [
+        startPos,
+        new THREE.Vector3(2.35, 3.65, 7.6),
+        new THREE.Vector3(3.15, 3.45, 3.65),
+        new THREE.Vector3(4.58, 4.75, -1.35),
+        endPos,
+      ];
+      lookWaypoints = [
+        startLook,
+        new THREE.Vector3(2.85, 3.55, 1.4),
+        new THREE.Vector3(5.2, 4.95, -4.8),
+        new THREE.Vector3(7.15, 6.45, -10.4),
+        endLook,
+      ];
+    } else {
+      // Return flight: pull gracefully back THROUGH Archway #2 -> Archway #1 -> sweep open onto Dragon Sanctuary & Waterfall
+      posWaypoints = [
+        startPos,
+        new THREE.Vector3(4.58, 4.95, -1.35),
+        new THREE.Vector3(3.15, 3.65, 3.65),
+        new THREE.Vector3(1.85, 4.05, 8.8),
+        endPos,
+      ];
+      lookWaypoints = [
+        startLook,
+        new THREE.Vector3(4.2, 4.35, -3.4),
+        new THREE.Vector3(1.5, 3.25, -0.6),
+        new THREE.Vector3(-0.6, 2.85, -1.5),
+        endLook,
+      ];
+    }
+
+    this.camTransition = {
+      active: true,
+      from: prevView,
+      to: target,
+      elapsed: 0,
+      duration: prefersReducedMotion ? 0.28 : (options.durationSec ?? 1.08),
+      midpointRatio: options.midpointRatio ?? 0.46,
+      midpointFired: false,
+      posCurve: new THREE.CatmullRomCurve3(posWaypoints, false, 'centripetal', 0.45),
+      lookCurve: new THREE.CatmullRomCurve3(lookWaypoints, false, 'centripetal', 0.45),
+      onMidpoint: options.onMidpoint,
+      onComplete: options.onComplete,
+    };
   }
 
   private setupLighting(cfg: QualityConfig) {
@@ -366,6 +567,7 @@ export class MainMenuEngine {
       lodBias: cfg.lodBias,
       shadowsEnabled: shadows,
     });
+    this.archCorridor.setShadowsEnabled(shadows);
     applyLodBiasToGroup(this.scene, cfg.lodBias);
     this.syncPostProcessingPipeline(cfg, width, height);
   }
@@ -415,7 +617,7 @@ export class MainMenuEngine {
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(this.perf.getEffectivePixelRatio());
     this.renderer.setSize(width, height);
-    this.updateCameraFraming(width, height);
+    this.updateCameraFraming(width, height, !this.camTransition.active);
 
     if (this.composer) {
       this.composer.setPixelRatio(this.perf.getEffectivePixelRatio());
@@ -484,7 +686,7 @@ export class MainMenuEngine {
       const tier = this.perf.getQualityConfig().tier;
       if (this.isSoftwareGl) {
         afterDraw(tick);
-      } else if (this.backgroundThrottled) {
+      } else if (this.backgroundThrottled && !this.camTransition.active) {
         this.frameId = window.setTimeout(tick, 90);
       } else if (tier === 'potato') {
         this.frameId = window.setTimeout(tick, 32);
@@ -507,11 +709,112 @@ export class MainMenuEngine {
     this.vegetation.updateWind(elapsed);
     this.waterEnv.update(elapsed);
 
-    const targetCamX = this.baseCamPos.x + this.pointerNorm.x * 0.62;
-    const targetCamY = this.baseCamPos.y - this.pointerNorm.y * 0.34;
-    this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 3.5, dt);
-    this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 3.5, dt);
-    this.camera.lookAt(this.baseLookAt);
+    const prefersReducedMotion = this.prefersReducedMotion;
+
+    if (this.camTransition.active && this.camTransition.posCurve && this.camTransition.lookCurve) {
+      this.camTransition.elapsed += dt;
+      const rawT = THREE.MathUtils.clamp(
+        this.camTransition.elapsed / Math.max(0.05, this.camTransition.duration),
+        0,
+        1,
+      );
+
+      // Silky smootherstep easing (zero jerk at launch & arrival, exhilarating glide through archways)
+      const easedT = rawT * rawT * rawT * (rawT * (rawT * 6 - 15) + 10);
+      const speedEnvelope = Math.sin(Math.PI * rawT);
+      this.transitionBoost = speedEnvelope;
+
+      this.camTransition.posCurve.getPoint(easedT, this.scratchPos);
+      this.camTransition.lookCurve.getPoint(easedT, this.scratchLook);
+
+      this.camera.position.copy(this.scratchPos);
+      this.currentLookAt.copy(this.scratchLook);
+
+      // Subtle steadicam bank roll & dynamic speed-sense FOV during architectural fly-through
+      if (!prefersReducedMotion) {
+        const bankSign = this.camTransition.to === 'multiplayer_lobby' ? -1 : 1;
+        this.currentBankRoll = bankSign * 0.042 * speedEnvelope;
+        const targetFov = this.baseFov + 5.2 * speedEnvelope;
+        if (Math.abs(this.camera.fov - targetFov) > 0.01) {
+          this.camera.fov = targetFov;
+          this.camera.updateProjectionMatrix();
+        }
+      } else {
+        this.currentBankRoll = 0;
+      }
+
+      this.camera.up.set(Math.sin(this.currentBankRoll), Math.cos(this.currentBankRoll), 0);
+      this.camera.lookAt(this.currentLookAt);
+
+      if (!this.camTransition.midpointFired && rawT >= this.camTransition.midpointRatio) {
+        this.camTransition.midpointFired = true;
+        const cb = this.camTransition.onMidpoint;
+        this.camTransition.onMidpoint = undefined;
+        cb?.();
+      }
+
+      if (rawT >= 1) {
+        const doneCb = this.camTransition.onComplete;
+        this.camTransition.active = false;
+        this.camTransition.posCurve = null;
+        this.camTransition.lookCurve = null;
+        this.camTransition.onComplete = undefined;
+        this.transitionBoost = 0;
+        this.currentBankRoll = 0;
+        this.camera.up.set(0, 1, 0);
+        if (Math.abs(this.camera.fov - this.baseFov) > 0.01) {
+          this.camera.fov = this.baseFov;
+          this.camera.updateProjectionMatrix();
+        }
+        doneCb?.();
+      }
+    } else {
+      this.transitionBoost = THREE.MathUtils.damp(this.transitionBoost, 0, 6, dt);
+      this.currentBankRoll = THREE.MathUtils.damp(this.currentBankRoll, 0, 7, dt);
+
+      const parallaxScale = this.activeView === 'multiplayer_lobby' ? 0.44 : 0.62;
+      const targetCamX = this.baseCamPos.x + this.pointerNorm.x * parallaxScale;
+      const targetCamY = this.baseCamPos.y - this.pointerNorm.y * (parallaxScale * 0.54);
+      const targetCamZ = this.baseCamPos.z;
+
+      this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 3.5, dt);
+      this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 3.5, dt);
+      this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 3.5, dt);
+
+      this.currentLookAt.x = THREE.MathUtils.damp(this.currentLookAt.x, this.baseLookAt.x, 4.2, dt);
+      this.currentLookAt.y = THREE.MathUtils.damp(this.currentLookAt.y, this.baseLookAt.y, 4.2, dt);
+      this.currentLookAt.z = THREE.MathUtils.damp(this.currentLookAt.z, this.baseLookAt.z, 4.2, dt);
+
+      this.camera.up.set(Math.sin(this.currentBankRoll), Math.cos(this.currentBankRoll), 0);
+      this.camera.lookAt(this.currentLookAt);
+
+      if (Math.abs(this.camera.fov - this.baseFov) > 0.01) {
+        this.camera.fov = THREE.MathUtils.damp(this.camera.fov, this.baseFov, 6, dt);
+        this.camera.updateProjectionMatrix();
+      }
+    }
+
+    this.archCorridor.update(elapsed, this.transitionBoost);
+
+    // Subtle atmospheric vignette & golden warmth breathing during flight and Citadel arrival
+    if (this.vignettePass) {
+      const targetWarmth =
+        (this.activeView === 'multiplayer_lobby' ? 0.062 : 0.04) + this.transitionBoost * 0.045;
+      const targetDarkness =
+        (this.activeView === 'multiplayer_lobby' ? 0.3 : 0.34) + this.transitionBoost * 0.1;
+      const uniforms = this.vignettePass.uniforms as Record<string, { value: number }>;
+      if (uniforms.uWarmth) {
+        uniforms.uWarmth.value = THREE.MathUtils.damp(uniforms.uWarmth.value, targetWarmth, 5, dt);
+      }
+      if (uniforms.uDarkness) {
+        uniforms.uDarkness.value = THREE.MathUtils.damp(
+          uniforms.uDarkness.value,
+          targetDarkness,
+          5,
+          dt,
+        );
+      }
+    }
 
     if (this.bokehPass && this.bokehPass.enabled) {
       const uniforms = this.bokehPass.uniforms as Record<string, { value: number }>;
@@ -535,6 +838,7 @@ export class MainMenuEngine {
     this.dragon.dispose();
     this.vegetation.dispose();
     this.waterEnv.dispose();
+    this.archCorridor.dispose();
     this.pbrSets.forEach(disposePbrTextureSet);
     this.envMap.dispose();
     this.composer?.dispose();

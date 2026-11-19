@@ -24,6 +24,7 @@ import {
 } from '../services/firebaseAccountService';
 import type { PlayerProfile } from '../services/storageService';
 import { ArchetypeEmblem, SerpentCrestEmblem } from './FantasyIcons';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface LandingPageProps {
   profile: PlayerProfile;
@@ -186,11 +187,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
 
               {/* Primary + Secondary CTA Row */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-1">
                 <button
                   type="button"
                   onClick={onEnterGame}
-                  className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-6 py-3 text-sm sm:text-base font-bold text-slate-950 shadow-xl hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-6 py-3 text-sm sm:text-base font-bold text-slate-950 shadow-xl hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap"
                 >
                   <span>Masuk ke Menu Game</span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
@@ -215,6 +216,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     <span>Daftar / Login Akun</span>
                   </button>
                 )}
+                <PWAInstallButton
+                  variant="button"
+                  className="min-h-[48px] rounded-2xl"
+                />
               </div>
 
               {/* Grounded Numeric Snapshot */}
@@ -224,8 +229,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <div className="text-[11px] sm:text-xs text-slate-400">Classic, Battle, 2v2, Timer</div>
                 </div>
                 <div>
-                  <div className="font-mono-num text-lg sm:text-xl font-bold text-white">8 Tema</div>
-                  <div className="text-[11px] sm:text-xs text-slate-400">Arena 3D + Editor Papan</div>
+                  <div className="font-mono-num text-lg sm:text-xl font-bold text-white">12 Tema</div>
+                  <div className="text-[11px] sm:text-xs text-slate-400">Arena 3D, Misi & Editor</div>
                 </div>
                 <div>
                   <div className="font-mono-num text-lg sm:text-xl font-bold text-white">2–4 Pemain</div>

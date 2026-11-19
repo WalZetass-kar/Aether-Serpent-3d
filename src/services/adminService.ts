@@ -10,9 +10,12 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import type { BoardGameMode, DiceSkinId, DifficultyMode } from '../../shared/gameConfig';
+import { BOARD_UNLOCK_RULES, STARTER_UNLOCKED_BOARD_IDS } from '../../shared/boardThemes';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { sendAdminTopUpReply } from './topUpChatService';
 
 export const ADMIN_EMAIL = 'ihwalmaulana09@gmail.com';
 
@@ -48,6 +51,8 @@ export interface AdminMemberRecord {
   tutorialCompleted: boolean;
   muted: boolean;
   selectedBoardId: string;
+  aetherCoins: number;
+  unlockedBoardIds: string[];
   isPublic: boolean | null;
   createdAtMs: number;
   updatedAtMs: number;
@@ -189,6 +194,10 @@ export async function fetchAdminMembers(user: User): Promise<AdminMembersResult>
         tutorialCompleted: Boolean(d.tutorialCompleted),
         muted: Boolean(d.muted),
         selectedBoardId: typeof d.selectedBoardId === 'string' ? d.selectedBoardId : '-',
+        aetherCoins: typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250,
+        unlockedBoardIds: Array.isArray(d.unlockedBoardIds)
+          ? d.unlockedBoardIds.filter((v): v is string => typeof v === 'string')
+          : [...STARTER_UNLOCKED_BOARD_IDS],
         isPublic: pubData ? Boolean(pubData.isPublic) : null,
         createdAtMs: toEpochMs(d.createdAt),
         updatedAtMs: toEpochMs(d.updatedAt),
@@ -223,6 +232,8 @@ export async function fetchAdminMembers(user: User): Promise<AdminMembersResult>
         tutorialCompleted: false,
         muted: false,
         selectedBoardId: '-',
+        aetherCoins: 250,
+        unlockedBoardIds: [...STARTER_UNLOCKED_BOARD_IDS],
         isPublic: Boolean(pubData.isPublic),
         createdAtMs: toEpochMs(pubData.createdAt),
         updatedAtMs: toEpochMs(pubData.updatedAt),
@@ -292,6 +303,256 @@ export async function setMemberPublicVisibility(
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, path);
   }
+}
+
+export async function adminAdjustMemberCoins(
+  adminUser: User,
+  targetMember: { uid: string; email: string; displayName: string },
+  deltaCoins: number,
+  note?: string,
+  postToChat = true,
+): Promise<{ previousCoins: number; nextCoins: number; appliedDelta: number }> {
+  if (!isAdminAccount(adminUser)) {
+    throw new Error('Akses admin diperlukan untuk mengubah Koin Aether member.');
+  }
+  const cleanDelta = Math.trunc(deltaCoins);
+  if (!cleanDelta || !Number.isFinite(cleanDelta)) {
+    throw new Error('Nominal perubahan koin harus berupa angka selain 0.');
+  }
+  const path = `users/${targetMember.uid}`;
+  const ref = doc(db, 'users', targetMember.uid);
+  let previousCoins = 250;
+  let nextCoins = 250;
+
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      throw new Error('Dokumen akun member belum terdaftar di Firestore.');
+    }
+    const d = snap.data();
+    previousCoins =
+      typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250;
+    nextCoins = Math.max(0, Math.min(10000000, previousCoins + cleanDelta));
+    await updateDoc(ref, {
+      aetherCoins: nextCoins,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+
+  const appliedDelta = nextCoins - previousCoins;
+  if (postToChat && appliedDelta !== 0) {
+    const notePart = note?.trim() ? ` Catatan: ${note.trim()}` : '';
+    const summaryText =
+      appliedDelta > 0
+        ? `Pembayaran diverifikasi! Admin menambahkan +${appliedDelta.toLocaleString('id-ID')} Koin Aether ke akunmu. Saldo baru: ${nextCoins.toLocaleString('id-ID')} Koin.${notePart}`
+        : `Admin menyesuaikan saldo sebesar ${appliedDelta.toLocaleString('id-ID')} Koin Aether. Saldo baru: ${nextCoins.toLocaleString('id-ID')} Koin.${notePart}`;
+    try {
+      await sendAdminTopUpReply(adminUser, targetMember, summaryText, {
+        coinDelta: appliedDelta,
+        status: appliedDelta > 0 ? 'completed' : 'open',
+      });
+    } catch {
+      // Balance update already succeeded; chat receipt is best-effort
+    }
+  }
+
+  return { previousCoins, nextCoins, appliedDelta };
+}
+
+export async function adminGrantAllPremiumBoards(
+  adminUser: User,
+  targetMember: { uid: string; email: string; displayName: string },
+  bonusCoins = 1000,
+  note?: string,
+): Promise<{ nextCoins: number; unlockedBoardIds: string[] }> {
+  if (!isAdminAccount(adminUser)) {
+    throw new Error('Akses admin diperlukan untuk mengaktifkan Royal Pass member.');
+  }
+  const path = `users/${targetMember.uid}`;
+  const ref = doc(db, 'users', targetMember.uid);
+  const safeBonus = Math.max(0, Math.min(1000000, Math.trunc(bonusCoins)));
+  let nextCoins = 250;
+  let nextUnlocked: string[] = [];
+
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      throw new Error('Dokumen akun member belum terdaftar di Firestore.');
+    }
+    const d = snap.data();
+    const prevCoins =
+      typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250;
+    const prevUnlocked = Array.isArray(d.unlockedBoardIds)
+      ? d.unlockedBoardIds.filter((v): v is string => typeof v === 'string')
+      : [];
+    const mergedSet = new Set<string>([...STARTER_UNLOCKED_BOARD_IDS, ...prevUnlocked]);
+    Object.values(BOARD_UNLOCK_RULES).forEach((rule) => {
+      if (rule.unlockType === 'premium') {
+        mergedSet.add(rule.boardId);
+      }
+    });
+    nextUnlocked = Array.from(mergedSet).slice(0, 30);
+    nextCoins = Math.max(0, Math.min(10000000, prevCoins + safeBonus));
+
+    await updateDoc(ref, {
+      aetherCoins: nextCoins,
+      unlockedBoardIds: nextUnlocked,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+
+  const notePart = note?.trim() ? ` Catatan: ${note.trim()}` : '';
+  try {
+    await sendAdminTopUpReply(
+      adminUser,
+      targetMember,
+      `Royal Pass Aktif! Admin telah membuka seluruh 5 papan Premium + menambahkan +${safeBonus.toLocaleString('id-ID')} Koin Aether ke akunmu (Saldo: ${nextCoins.toLocaleString('id-ID')} Koin).${notePart}`,
+      { coinDelta: safeBonus, status: 'completed' },
+    );
+  } catch {
+    // Non-critical
+  }
+
+  return { nextCoins, unlockedBoardIds: nextUnlocked };
+}
+
+export interface AdminCoinGiftRecipientInfo {
+  uid: string;
+  displayName: string;
+  email: string;
+  aetherCoins: number;
+  archetypeIndex: number;
+}
+
+export interface AdminCoinGiftResult {
+  giftId: string;
+  recipientUid: string;
+  recipientName: string;
+  recipientEmail: string;
+  previousCoins: number;
+  nextCoins: number;
+  appliedAmount: number;
+  message: string;
+  sentAtMs: number;
+}
+
+const VALID_UID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+
+export async function adminLookupMemberByUid(
+  adminUser: User,
+  rawUid: string,
+): Promise<AdminCoinGiftRecipientInfo | null> {
+  if (!isAdminAccount(adminUser)) {
+    throw new Error('Akses admin diperlukan untuk mencari akun member.');
+  }
+  const cleanUid = rawUid.trim();
+  if (!VALID_UID_REGEX.test(cleanUid)) {
+    throw new Error('Format ID Pengguna (UID) tidak valid. Gunakan huruf, angka, tanda _ atau -.');
+  }
+  const path = `users/${cleanUid}`;
+  try {
+    const snap = await getDoc(doc(db, 'users', cleanUid));
+    if (!snap.exists()) return null;
+    const d = snap.data();
+    return {
+      uid: cleanUid,
+      displayName: String(d.displayName || 'Penjelajah Aether'),
+      email: String(d.email || '—'),
+      aetherCoins:
+        typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250,
+      archetypeIndex: typeof d.archetypeIndex === 'number' ? d.archetypeIndex : 0,
+    };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+  }
+}
+
+export async function adminSendGiftCoins(
+  adminUser: User,
+  targetUid: string,
+  amount: number,
+  message?: string,
+): Promise<AdminCoinGiftResult> {
+  if (!isAdminAccount(adminUser)) {
+    throw new Error('Akses admin diperlukan untuk mengirim Gift Coins.');
+  }
+  const cleanUid = targetUid.trim();
+  if (!VALID_UID_REGEX.test(cleanUid)) {
+    throw new Error('ID Pengguna (UID) tidak valid.');
+  }
+  const cleanAmount = Math.trunc(amount);
+  if (!Number.isFinite(cleanAmount) || cleanAmount < 1 || cleanAmount > 10000000) {
+    throw new Error('Jumlah Gift Coins harus antara 1 hingga 10.000.000 Koin.');
+  }
+  const safeMessage = (message ?? '').trim().slice(0, 200);
+  const userPath = `users/${cleanUid}`;
+  const userRef = doc(db, 'users', cleanUid);
+
+  let recipientName = 'Penjelajah Aether';
+  let recipientEmail = '—';
+  let previousCoins = 250;
+  let nextCoins = 250;
+  let appliedAmount = 0;
+
+  const giftId = `gift_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const giftRef = doc(db, 'users', cleanUid, 'coinGifts', giftId);
+
+  try {
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      throw new Error(`Pemain dengan ID "${cleanUid}" tidak ditemukan di database.`);
+    }
+    const d = snap.data();
+    recipientName = String(d.displayName || 'Penjelajah Aether');
+    recipientEmail = String(d.email || '—');
+    previousCoins =
+      typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250;
+    nextCoins = Math.min(10000000, previousCoins + cleanAmount);
+    appliedAmount = nextCoins - previousCoins;
+
+    if (appliedAmount <= 0) {
+      throw new Error('Saldo koin pemain sudah mencapai batas maksimum (10.000.000 Koin).');
+    }
+
+    const batch = writeBatch(db);
+    batch.update(userRef, {
+      aetherCoins: nextCoins,
+      updatedAt: serverTimestamp(),
+    });
+    batch.set(giftRef, {
+      id: giftId,
+      recipientUid: cleanUid,
+      senderUid: adminUser.uid,
+      senderName: 'Admin Resmi',
+      amount: appliedAmount,
+      message: safeMessage,
+      acknowledged: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+  } catch (err) {
+    if (err instanceof Error && (err.message.includes('tidak ditemukan') || err.message.includes('batas maksimum'))) {
+      throw err;
+    }
+    handleFirestoreError(err, OperationType.WRITE, userPath);
+  }
+
+  return {
+    giftId,
+    recipientUid: cleanUid,
+    recipientName,
+    recipientEmail,
+    previousCoins,
+    nextCoins,
+    appliedAmount,
+    message: safeMessage,
+    sentAtMs: Date.now(),
+  };
 }
 
 export async function fetchAdminServerOverview(user: User): Promise<AdminServerOverview> {

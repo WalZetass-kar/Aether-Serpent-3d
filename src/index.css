@@ -289,6 +289,81 @@
   }
 }
 
+/* Coordinated 3D Architectural Fly-Through UI Transitions (compositor-only transform + opacity) */
+.glass-panel-lobby {
+  background: linear-gradient(160deg, rgba(13, 21, 40, 0.78) 0%, rgba(7, 11, 24, 0.85) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  box-shadow:
+    0 24px 52px -12px rgba(2, 6, 23, 0.74),
+    inset 0 1px 0 rgba(253, 230, 138, 0.16);
+}
+
+@keyframes flyOutForward {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -10px, 0) scale(1.045);
+  }
+}
+
+@keyframes flyInForward {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.955);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes flyOutBack {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.96);
+  }
+}
+
+@keyframes flyInBack {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0) scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.animate-fly-out-forward {
+  animation: flyOutForward 0.25s cubic-bezier(0.4, 0, 0.9, 0.4) forwards;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+.animate-fly-in-forward {
+  animation: flyInForward 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-fly-out-back {
+  animation: flyOutBack 0.24s cubic-bezier(0.4, 0, 0.9, 0.4) forwards;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+.animate-fly-in-back {
+  animation: flyInBack 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
 .animate-astrolabe-cw {
   animation: astrolabeSpinCW 22s linear infinite;
 }
@@ -315,7 +390,11 @@
   .animate-astrolabe-cw,
   .animate-astrolabe-ccw,
   .animate-shimmer-sweep,
-  .animate-portal-float {
+  .animate-portal-float,
+  .animate-fly-out-forward,
+  .animate-fly-in-forward,
+  .animate-fly-out-back,
+  .animate-fly-in-back {
     animation: none;
   }
 }

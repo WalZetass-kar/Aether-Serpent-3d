@@ -1011,9 +1011,16 @@ export function createEnchantedLadder(
   const primaryLadderColor = new THREE.Color(primaryHex);
   const accentLadderColor = new THREE.Color(accentHex);
   const isCrystalOrMarble =
-    matStyle === 'glacier_crystal' || matStyle === 'celestial_marble' || matStyle === 'coral_pearl';
+    matStyle === 'glacier_crystal' ||
+    matStyle === 'celestial_marble' ||
+    matStyle === 'coral_pearl' ||
+    matStyle === 'imperial_jade_stone' ||
+    matStyle === 'astral_prism';
   const isMetallicLadder =
-    matStyle === 'obsidian_iron' || matStyle === 'shadow_wrought' || matStyle === 'temple_bronze';
+    matStyle === 'obsidian_iron' ||
+    matStyle === 'shadow_wrought' ||
+    matStyle === 'temple_bronze' ||
+    matStyle === 'gilded_brass';
 
   const railMat = new THREE.MeshStandardMaterial({
     map: ladderPbr.map,

@@ -69,7 +69,9 @@ import {
   AnimationSequenceController,
   type TurnAnimationCallbacks,
 } from './cinematics/AnimationSequenceController';
+import { AetherSparkleSystem } from './cinematics/AetherSparkleSystem';
 import type { CinematicEvent, CinematicSkillType } from './cinematics/types';
+import { soundEngine } from '../audio/soundEngine';
 
 export type { CameraMode, CameraSettings, CinematicEvent, CinematicSkillType };
 export { DEFAULT_CAMERA_SETTINGS };
@@ -277,6 +279,11 @@ export class FantasyBoardEngine {
   private diceGroup: THREE.Group | null = null;
   private diceBasePos = new THREE.Vector3(0, 0.9, 10.75);
   private diceCollider: THREE.Mesh | null = null;
+  private diceShadowMesh: THREE.Mesh | null = null;
+  private diceShadowMat: THREE.MeshBasicMaterial | null = null;
+  private diceShadowTex: THREE.CanvasTexture | null = null;
+  private daisRuneRingMat: THREE.MeshStandardMaterial | null = null;
+  private daisPulseStrength = 0;
   private boardCollider: THREE.Mesh | null = null;
   private tileHighlightMesh: THREE.Mesh | null = null;
   private arenaEnv: ArenaEnvironmentHandle | null = null;
@@ -294,6 +301,7 @@ export class FantasyBoardEngine {
   private pendingHighlightTile: number | null = null;
   private cameraController: DynamicCameraController;
   private vfxPool: VfxPool;
+  private aetherSparkles: AetherSparkleSystem | null = null;
   private sequenceController: AnimationSequenceController | null = null;
 
   // Depth-of-Field, Bloom, SSAO & Anti-Aliased Post-Processing Pipeline
@@ -508,6 +516,33 @@ export class FantasyBoardEngine {
         this.spawnAetherTrail(origin, primaryColorHex, accentColorHex, reduced),
       triggerBoardShake: (intensity, durationSec) =>
         this.triggerBoardShake(intensity, durationSec),
+      onDiceToss: () => {
+        soundEngine.playDiceToss();
+        this.daisPulseStrength = Math.max(this.daisPulseStrength, 0.55);
+      },
+      onDiceBounce: (intensity, isRimHit) => {
+        soundEngine.playDiceBounce(intensity, isRimHit);
+        this.daisPulseStrength = Math.max(
+          this.daisPulseStrength,
+          isRimHit ? 0.65 * intensity : 0.95 * intensity,
+        );
+      },
+      onDiceSettle: (faceValue) => {
+        soundEngine.playDiceSettle(faceValue);
+        this.daisPulseStrength = faceValue === 6 ? 1.35 : 0.7;
+        if (this.diceGroup) {
+          const reducedFx =
+            this.cameraController.getSettings().reducedEffects ||
+            this.perf.getQualityConfig().tier === 'potato';
+          this.aetherSparkles?.emitFromDice(this.diceGroup.position, faceValue, reducedFx);
+          if (this.diceCollider) {
+            this.diceCollider.position.copy(this.diceGroup.position);
+          }
+        }
+      },
+      onDicePoseUpdated: () => {
+        this.syncDiceContactVisuals();
+      },
       getReducedEffects: () =>
         this.cameraController.getSettings().reducedEffects ||
         this.perf.getQualityConfig().tier === 'potato',
@@ -574,6 +609,8 @@ export class FantasyBoardEngine {
     this.particleMesh.instanceMatrix.needsUpdate = true;
     if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
     this.scene.add(this.particleMesh);
+
+    this.aetherSparkles = new AetherSparkleSystem(this.scene, this.perf.getEffectivePixelRatio());
   }
 
   private disposePostProcessing() {
@@ -740,6 +777,50 @@ export class FantasyBoardEngine {
           bgColor: isDaySky ? skySpec.bgColor : isSunsetSky ? skySpec.bgColor : 0x0a1712,
           baseKeyIntensity: isSunsetSky ? 2.38 : 2.25,
           baseHemiIntensity: isSunsetSky ? 1.02 : 0.96,
+        };
+      case 'blossom_lantern':
+        return {
+          hemiSky: 0xfbcfe8,
+          hemiGround: 0x4c1d2f,
+          keyColor: 0xffe4d6,
+          rimColor: 0xf43f5e,
+          fogColor: isDaySky || isSunsetSky ? skySpec.fogColor : 0x4d172e,
+          bgColor: isDaySky || isSunsetSky ? skySpec.bgColor : 0x240a16,
+          baseKeyIntensity: 2.38,
+          baseHemiIntensity: 1.04,
+        };
+      case 'brass_atelier':
+        return {
+          hemiSky: 0xfde68a,
+          hemiGround: 0x292524,
+          keyColor: 0xffedd5,
+          rimColor: 0x10b981,
+          fogColor: isDaySky || isSunsetSky ? skySpec.fogColor : 0x2e1f14,
+          bgColor: isDaySky || isSunsetSky ? skySpec.bgColor : 0x17110d,
+          baseKeyIntensity: 2.35,
+          baseHemiIntensity: 0.98,
+        };
+      case 'jade_sanctuary':
+        return {
+          hemiSky: 0xd1fae5,
+          hemiGround: 0x14532d,
+          keyColor: 0xfffbeb,
+          rimColor: 0xfbbf24,
+          fogColor: isDaySky || isSunsetSky ? skySpec.fogColor : 0x0f3b32,
+          bgColor: isDaySky || isSunsetSky ? skySpec.bgColor : 0x08211c,
+          baseKeyIntensity: 2.55,
+          baseHemiIntensity: 1.1,
+        };
+      case 'nebula_aurora':
+        return {
+          hemiSky: 0x7dd3fc,
+          hemiGround: 0x1e0b38,
+          keyColor: 0xf5f3ff,
+          rimColor: 0xc084fc,
+          fogColor: isDaySky ? skySpec.fogColor : 0x1a0b3b,
+          bgColor: isDaySky ? skySpec.bgColor : 0x070217,
+          baseKeyIntensity: 2.22,
+          baseHemiIntensity: 0.96,
         };
       case 'emerald_canopy':
       default:
@@ -1040,7 +1121,55 @@ export class FantasyBoardEngine {
     tipGeos.forEach((g) => g.dispose());
     daisGroup.add(new THREE.Mesh(mergedTips, arcaneMat));
 
+    this.daisRuneRingMat = arcaneMat;
     this.scene.add(daisGroup);
+
+    // Dynamic soft contact shadow directly on the Dice Dais slate surface (altitude-reactive)
+    const shadowCanvas = document.createElement('canvas');
+    shadowCanvas.width = 128;
+    shadowCanvas.height = 128;
+    const sCtx = shadowCanvas.getContext('2d');
+    if (sCtx) {
+      const grad = sCtx.createRadialGradient(64, 64, 8, 64, 64, 60);
+      grad.addColorStop(0, 'rgba(2, 6, 23, 0.82)');
+      grad.addColorStop(0.55, 'rgba(2, 6, 23, 0.42)');
+      grad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+      sCtx.fillStyle = grad;
+      sCtx.fillRect(0, 0, 128, 128);
+    }
+    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      opacity: 0.54,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const shadowGeo = new THREE.PlaneGeometry(1.55, 1.55);
+    shadowGeo.rotateX(-Math.PI / 2);
+    const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowMesh.position.set(this.diceBasePos.x, 0.332, this.diceBasePos.z);
+    shadowMesh.renderOrder = 2;
+    this.scene.add(shadowMesh);
+
+    this.diceShadowTex = shadowTex;
+    this.diceShadowMat = shadowMat;
+    this.diceShadowMesh = shadowMesh;
+  }
+
+  private syncDiceContactVisuals() {
+    if (!this.diceGroup || !this.diceShadowMesh || !this.diceShadowMat) return;
+    const altitude = Math.max(0, this.diceGroup.position.y - this.diceBasePos.y);
+    const scale = 1.0 + Math.min(0.68, altitude * 0.24);
+    this.diceShadowMesh.position.set(
+      this.diceGroup.position.x,
+      0.332,
+      this.diceGroup.position.z,
+    );
+    this.diceShadowMesh.scale.set(scale, 1, scale);
+    this.diceShadowMat.opacity = THREE.MathUtils.clamp(0.56 - altitude * 0.14, 0.12, 0.58);
   }
 
   // ---------------------------------------------------------------------------
@@ -1056,6 +1185,7 @@ export class FantasyBoardEngine {
     const pr = this.perf.getEffectivePixelRatio();
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(width, height);
+    this.aetherSparkles?.setPixelRatio(pr);
 
     if (cfg.tier === 'potato' || this.isSoftwareGl) {
       this.scene.environment = null;
@@ -1550,6 +1680,7 @@ export class FantasyBoardEngine {
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(width, height);
+    this.aetherSparkles?.setPixelRatio(pr);
 
     if (this.composer) {
       this.composer.setPixelRatio(pr);
@@ -1882,8 +2013,21 @@ export class FantasyBoardEngine {
       pawnIdx++;
     }
 
-    // Pooled 3D Skill VFX Update
+    // Smoothly decay Dice Dais arcane glow pulse after physical impacts & keep contact shadow synced
+    if (this.daisRuneRingMat) {
+      if (this.daisPulseStrength > 0.005) {
+        this.daisPulseStrength = THREE.MathUtils.damp(this.daisPulseStrength, 0, 5.5, dt);
+        this.daisRuneRingMat.emissiveIntensity = 0.55 + this.daisPulseStrength * 1.45;
+      } else if (this.daisRuneRingMat.emissiveIntensity !== 0.55) {
+        this.daisPulseStrength = 0;
+        this.daisRuneRingMat.emissiveIntensity = 0.55;
+      }
+    }
+    this.syncDiceContactVisuals();
+
+    // Pooled 3D Skill VFX & Golden Aether Sparkle Update
     this.vfxPool.update(dt);
+    this.aetherSparkles?.update(dt, elapsed);
 
     // Pooled particles update (zero per-frame allocations)
     if (this.particleMesh) {
@@ -1942,10 +2086,14 @@ export class FantasyBoardEngine {
     this.sequenceController = null;
     this.arenaEnv?.dispose();
     this.vfxPool.dispose();
+    this.aetherSparkles?.dispose();
+    this.aetherSparkles = null;
     this.cameraController.dispose();
     this.controls.dispose();
     this.disposePostProcessing();
     this.envMap?.dispose();
+    this.diceShadowTex?.dispose();
+    this.diceShadowTex = null;
 
     if (this.keyLight?.shadow?.map) {
       this.keyLight.shadow.map.dispose();
