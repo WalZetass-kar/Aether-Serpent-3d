@@ -21,6 +21,7 @@ import {
 } from '../../shared/gameConfig';
 import type { CameraMode } from '../three/DynamicCameraController';
 import { AnimatedProgressRing } from './AnimatedProgressRing';
+import { useEmoteLongPress, type EmoteWheelAnchor } from './EmoteWheel';
 import { ArchetypeEmblem, FacetedDiceIcon } from './FantasyIcons';
 
 export interface QuickEmoteItem {
@@ -73,6 +74,8 @@ interface BottomControlDockProps {
   onOpenCameraSettings: () => void;
   onRollDice: () => void;
   onSendEmote?: (emoji: string) => void;
+  localPlayerId?: string;
+  onOpenEmoteWheel?: (anchor: EmoteWheelAnchor) => void;
   onOpenLeaderboard: () => void;
   onOpenAchievements: () => void;
   onOpenCloud: () => void;
@@ -96,6 +99,8 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
   onOpenCameraSettings,
   onRollDice,
   onSendEmote,
+  localPlayerId,
+  onOpenEmoteWheel,
   onOpenLeaderboard,
   onOpenAchievements,
   onOpenCloud,
@@ -149,7 +154,18 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
     }
   };
 
+  const isActiveOwnAvatar = Boolean(
+    active &&
+      !active.isAI &&
+      (mode === 'online' ? active.id === localPlayerId : true),
+  );
+  const avatarLongPress = useEmoteLongPress({
+    enabled: Boolean(onOpenEmoteWheel && isActiveOwnAvatar),
+    onLongPress: (anchor) => onOpenEmoteWheel?.(anchor),
+  });
+
   const showEmoteButton = mode === 'online' && Boolean(onSendEmote);
+  const showRadialEmoteTrigger = Boolean(onOpenEmoteWheel) || showEmoteButton;
   const showTurnProgress = mode === 'online' && turnTimeLeftSec !== null && !isAnimating;
   const turnProgress = showTurnProgress
     ? Math.max(0, Math.min(1, (turnTimeLeftSec ?? 0) / ONLINE_TURN_TIMEOUT_SEC))
@@ -278,9 +294,17 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
           </div>
         ) : (
           <>
-            {/* Compact Active Turn Pill Card */}
+            {/* Compact Active Turn Pill Card (Long-press own avatar for Emote Wheel) */}
             {active && (
-              <div className="flex items-center gap-1.5 rounded-xl border border-amber-500/25 bg-slate-950/78 backdrop-blur-md px-2 py-1 shadow-md max-w-[152px]">
+              <div
+                {...(isActiveOwnAvatar ? avatarLongPress.bind : {})}
+                title={isActiveOwnAvatar ? 'Tahan avatar untuk Emote Wheel' : undefined}
+                className={`flex items-center gap-1.5 rounded-xl border backdrop-blur-md px-2 py-1 shadow-md max-w-[152px] transition-all select-none ${
+                  isActiveOwnAvatar && avatarLongPress.isHolding
+                    ? 'border-amber-400 bg-amber-500/20 scale-95 ring-2 ring-amber-400/50'
+                    : 'border-amber-500/25 bg-slate-950/78'
+                } ${isActiveOwnAvatar ? 'cursor-pointer' : ''}`}
+              >
                 {showTurnProgress ? (
                   <AnimatedProgressRing
                     progress={turnProgress}
@@ -480,10 +504,10 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                 </button>
               </div>
 
-              {/* Multiplayer Emote Picker Trigger (Mobile Right Rail) */}
-              {showEmoteButton && (
+              {/* Emote Wheel Trigger (Mobile Right Rail — all Arena modes) */}
+              {showRadialEmoteTrigger && (
                 <div ref={emoteRootMobileRef} className="relative flex items-center">
-                  {emoteMenuOpen && (
+                  {!onOpenEmoteWheel && emoteMenuOpen && (
                     <div
                       role="menu"
                       aria-label="Pilih Emote Multiplayer"
@@ -511,17 +535,26 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
                       setMobileToolsOpen(false);
-                      setEmoteMenuOpen((o) => !o);
+                      if (onOpenEmoteWheel) {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        onOpenEmoteWheel({
+                          x: rect.left - 80,
+                          y: rect.top - 40,
+                          openedByHold: false,
+                        });
+                      } else {
+                        setEmoteMenuOpen((o) => !o);
+                      }
                     }}
                     className={`inline-flex items-center justify-center rounded-xl border backdrop-blur-md w-10 h-10 shadow-md transition-colors cursor-pointer ${
                       emoteMenuOpen
                         ? 'border-amber-400 bg-amber-500/20 text-amber-200'
-                        : 'border-slate-700/80 bg-slate-950/80 text-slate-200 hover:border-amber-400/50'
+                        : 'border-amber-500/35 bg-slate-950/80 text-amber-200 hover:border-amber-400/70'
                     }`}
-                    aria-label="Kirim Emote"
-                    title="Kirim Emote"
+                    aria-label="Buka Emote Wheel"
+                    title="Buka Emote Wheel"
                   >
                     <Smile className="w-4 h-4" />
                   </button>
@@ -598,8 +631,18 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
           )}
 
           <div className="pointer-events-auto glass-panel rounded-2xl px-4 py-2.5 shadow-2xl flex items-center justify-between gap-3">
-            {/* Active Turn Info */}
-            <div className="flex items-center gap-2.5 min-w-0">
+            {/* Active Turn Info (Long-press own avatar for Emote Wheel) */}
+            <div
+              {...(isActiveOwnAvatar ? avatarLongPress.bind : {})}
+              title={isActiveOwnAvatar ? 'Tahan avatar untuk Emote Wheel' : undefined}
+              className={`flex items-center gap-2.5 min-w-0 rounded-xl px-1.5 py-1 -mx-1.5 transition-all select-none ${
+                isActiveOwnAvatar && avatarLongPress.isHolding
+                  ? 'bg-amber-500/20 ring-2 ring-amber-400/60 scale-95'
+                  : isActiveOwnAvatar
+                    ? 'hover:bg-slate-800/45 cursor-pointer'
+                    : ''
+              }`}
+            >
               {active && (
                 <>
                   {showTurnProgress ? (
@@ -671,9 +714,9 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                 <span>{rollLabel}</span>
               </button>
 
-              {showEmoteButton && (
+              {showRadialEmoteTrigger && (
                 <div ref={emoteRootDesktopRef} className="relative">
-                  {emoteMenuOpen && (
+                  {!onOpenEmoteWheel && emoteMenuOpen && (
                     <div
                       role="menu"
                       aria-label="Pilih Emote Multiplayer"
@@ -704,14 +747,25 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setEmoteMenuOpen((o) => !o)}
+                    onClick={(e) => {
+                      if (onOpenEmoteWheel) {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        onOpenEmoteWheel({
+                          x: rect.left + rect.width / 2,
+                          y: rect.top - 132,
+                          openedByHold: false,
+                        });
+                      } else {
+                        setEmoteMenuOpen((o) => !o);
+                      }
+                    }}
                     className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
                       emoteMenuOpen
                         ? 'border-amber-400 bg-amber-500/20 text-amber-200'
-                        : 'border-slate-700/80 bg-slate-900/80 text-slate-200 hover:border-amber-400/50 hover:text-amber-200'
+                        : 'border-amber-500/35 bg-slate-900/80 text-amber-200 hover:border-amber-400/70 hover:bg-amber-500/15'
                     }`}
-                    title="Kirim Emote"
-                    aria-label="Kirim Emote"
+                    title="Buka Emote Wheel"
+                    aria-label="Buka Emote Wheel"
                   >
                     <Smile className="w-4 h-4" />
                     <span>Emote</span>

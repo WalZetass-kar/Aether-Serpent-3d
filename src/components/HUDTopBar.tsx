@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Camera, Compass, Home, Menu, MessageSquare, Sparkles, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { BookOpen, Camera, Compass, Home, Menu, MessageSquare, Smile, Sparkles, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import {
   BOARD_GAME_MODES,
   ONLINE_TURN_TIMEOUT_SEC,
@@ -9,6 +9,7 @@ import {
 } from '../../shared/gameConfig';
 import type { QualityPresetId } from '../three/perf/qualityPresets';
 import { AnimatedProgressRing } from './AnimatedProgressRing';
+import { useEmoteLongPress, type EmoteWheelAnchor } from './EmoteWheel';
 import { SerpentCrestEmblem } from './FantasyIcons';
 
 interface HUDTopBarProps {
@@ -29,6 +30,7 @@ interface HUDTopBarProps {
   unreadChatCount?: number;
   onQuickToggleLightweight?: () => void;
   onOpenChat?: () => void;
+  onOpenEmoteWheel?: (anchor: EmoteWheelAnchor) => void;
   onToggleMute: () => void;
   onOpenTutorial: () => void;
   onOpenCameraSettings?: () => void;
@@ -61,6 +63,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   unreadChatCount = 0,
   onQuickToggleLightweight,
   onOpenChat,
+  onOpenEmoteWheel,
   onToggleMute,
   onOpenTutorial,
   onOpenCameraSettings,
@@ -69,6 +72,20 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   onReturnToMenu,
 }) => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const chatLongPress = useEmoteLongPress({
+    enabled: Boolean(onOpenEmoteWheel),
+    onLongPress: (anchor) => onOpenEmoteWheel?.(anchor),
+  });
+
+  const handleOpenEmoteFromButton = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!onOpenEmoteWheel) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    onOpenEmoteWheel({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 128,
+      openedByHold: false,
+    });
+  };
 
   const isLightMode = graphicsPreset === 'potato' || graphicsPreset === 'low';
 
@@ -239,10 +256,18 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             {onOpenChat && (
               <button
                 type="button"
-                onClick={onOpenChat}
-                className="hidden sm:inline-flex relative items-center justify-center gap-1.5 rounded-xl border border-sky-400/45 bg-sky-500/15 backdrop-blur-md min-h-[38px] px-2.5 md:px-3 text-xs font-bold text-sky-200 hover:border-sky-300 hover:text-sky-100 shadow-lg transition-all cursor-pointer"
-                title="Obrolan Sesama Pemain"
-                aria-label="Buka Obrolan Pemain"
+                {...chatLongPress.bind}
+                onClick={() => {
+                  if (chatLongPress.consumeLongPressClick()) return;
+                  onOpenChat();
+                }}
+                className={`hidden sm:inline-flex relative items-center justify-center gap-1.5 rounded-xl border backdrop-blur-md min-h-[38px] px-2.5 md:px-3 text-xs font-bold shadow-lg transition-all cursor-pointer select-none ${
+                  chatLongPress.isHolding
+                    ? 'border-amber-400 bg-amber-500/25 text-amber-100 scale-95 ring-2 ring-amber-400/50'
+                    : 'border-sky-400/45 bg-sky-500/15 text-sky-200 hover:border-sky-300 hover:text-sky-100'
+                }`}
+                title="Obrolan Pemain (Tahan untuk Emote Wheel)"
+                aria-label="Buka Obrolan Pemain atau tahan untuk Emote Wheel"
               >
                 <MessageSquare className="w-4 h-4 text-sky-300 shrink-0" />
                 <span className="hidden md:inline">Chat</span>
@@ -251,6 +276,19 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                     {unreadChatCount > 9 ? '9+' : unreadChatCount}
                   </span>
                 )}
+              </button>
+            )}
+
+            {onOpenEmoteWheel && (
+              <button
+                type="button"
+                onClick={handleOpenEmoteFromButton}
+                className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/45 bg-amber-500/12 backdrop-blur-md min-h-[38px] px-2.5 text-xs font-bold text-amber-200 hover:border-amber-300 hover:bg-amber-500/20 shadow-lg transition-all cursor-pointer"
+                title="Buka Emote Wheel"
+                aria-label="Buka Emote Wheel"
+              >
+                <Smile className="w-4 h-4 text-amber-300 shrink-0" />
+                <span className="hidden lg:inline">Emote</span>
               </button>
             )}
 
@@ -296,13 +334,22 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
               <span className="hidden md:inline">Menu</span>
             </button>
 
-            {/* Mobile Quick Chat Button */}
+            {/* Mobile Quick Chat Button (Tap: Chat, Long-Press: Emote Wheel) */}
             {onOpenChat && (
               <button
                 type="button"
-                onClick={onOpenChat}
-                aria-label="Buka Obrolan Pemain"
-                className="sm:hidden relative inline-flex items-center justify-center rounded-xl border border-sky-400/45 bg-slate-950/85 backdrop-blur-md w-9 h-9 text-sky-200 shadow-md cursor-pointer"
+                {...chatLongPress.bind}
+                onClick={() => {
+                  if (chatLongPress.consumeLongPressClick()) return;
+                  onOpenChat();
+                }}
+                aria-label="Buka Obrolan atau tahan untuk Emote Wheel"
+                title="Ketuk: Obrolan · Tahan: Emote Wheel"
+                className={`sm:hidden relative inline-flex items-center justify-center rounded-xl border backdrop-blur-md w-9 h-9 shadow-md transition-all cursor-pointer select-none ${
+                  chatLongPress.isHolding
+                    ? 'border-amber-400 bg-amber-500/25 text-amber-100 scale-95 ring-2 ring-amber-400/50'
+                    : 'border-sky-400/45 bg-slate-950/85 text-sky-200'
+                }`}
               >
                 <MessageSquare className="w-4 h-4 text-sky-300" />
                 {unreadChatCount > 0 && (

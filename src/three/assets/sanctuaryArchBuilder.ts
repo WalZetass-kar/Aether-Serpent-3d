@@ -98,6 +98,29 @@ function pushTransformedCyl(
 }
 
 /**
+ * Normalizes indexed (Box/Cylinder/Cone) and non-indexed (Octahedron/Polyhedron) geometries
+ * so BufferGeometryUtils.mergeGeometries never fails due to mismatched index buffers.
+ */
+function mergeSafeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
+  if (geos.length === 0) return null;
+  const normalized: THREE.BufferGeometry[] = geos.map((src) => {
+    const g = src.index ? src.toNonIndexed() : src.clone();
+    if (!g.attributes.normal) {
+      g.computeVertexNormals();
+    }
+    ensureUv2(g);
+    return g;
+  });
+  geos.forEach((g) => g.dispose());
+  const merged = BufferGeometryUtils.mergeGeometries(normalized, false);
+  normalized.forEach((g) => g.dispose());
+  if (merged) {
+    ensureUv2(merged);
+  }
+  return merged;
+}
+
+/**
  * Builds a single multi-part fantasy triumphal stone archway with deep ground-anchored piers,
  * carved plinth moldings, bronze bands, vaulted Gothic voussoir arch blocks, glowing keystone,
  * pitched slate coping roof, and twin animated flame braziers.
@@ -365,10 +388,8 @@ function buildTriumphalArch(
 
   // Merge grouped geometries by material for ultra-low draw calls
   const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, castShadow: boolean) => {
-    if (geos.length === 0) return;
-    const merged = BufferGeometryUtils.mergeGeometries(geos, false);
-    geos.forEach((g) => g.dispose());
-    ensureUv2(merged);
+    const merged = mergeSafeGeometries(geos);
+    if (!merged) return;
     const mesh = new THREE.Mesh(merged, mat);
     mesh.castShadow = castShadow && shadowsEnabled;
     mesh.receiveShadow = shadowsEnabled;
@@ -441,10 +462,8 @@ function buildWaystoneObelisks(
   }
 
   const mount = (geos: THREE.BufferGeometry[], mat: THREE.Material, castShadow: boolean) => {
-    if (geos.length === 0) return;
-    const merged = BufferGeometryUtils.mergeGeometries(geos, false);
-    geos.forEach((g) => g.dispose());
-    ensureUv2(merged);
+    const merged = mergeSafeGeometries(geos);
+    if (!merged) return;
     const mesh = new THREE.Mesh(merged, mat);
     mesh.castShadow = castShadow && shadowsEnabled;
     mesh.receiveShadow = shadowsEnabled;

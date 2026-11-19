@@ -37,6 +37,13 @@ import { BoardManagerView } from './components/BoardManagerView';
 import { BottomControlDock } from './components/BottomControlDock';
 import { CameraSettingsModal } from './components/CameraSettingsModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
+import {
+  EmoteWheel,
+  resolveEmoteVisual,
+  useEmoteLongPress,
+  type EmoteTone,
+  type EmoteWheelAnchor,
+} from './components/EmoteWheel';
 import { ArchetypeEmblem } from './components/FantasyIcons';
 import { GameConfigView } from './components/GameConfigView';
 import { GiftCoinsOverlay } from './components/GiftCoinsOverlay';
@@ -376,9 +383,11 @@ export default function App() {
   const [toast, setToast] = useState<{ title: string; subtitle?: string } | null>(null);
   const [arenaEmote, setArenaEmote] = useState<{
     id: number;
+    senderId?: string;
     senderName: string;
     text: string;
   } | null>(null);
+  const [emoteWheelAnchor, setEmoteWheelAnchor] = useState<EmoteWheelAnchor | null>(null);
   const [contextLost, setContextLost] = useState(false);
 
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
@@ -467,6 +476,7 @@ export default function App() {
     matchStartedAtRef.current = Date.now();
     setInspectedTile(null);
     setArenaEmote(null);
+    setEmoteWheelAnchor(null);
     setArenaChatOpen(false);
     setUnreadChatCount(0);
     setArenaLocalChatMessages([]);
@@ -1620,6 +1630,7 @@ export default function App() {
             if (screenRef.current === 'arena' && latestChat.text) {
               setArenaEmote({
                 id: latestChat.timestamp,
+                senderId: latestChat.senderId,
                 senderName: latestChat.senderName,
                 text: latestChat.text,
               });
@@ -1797,7 +1808,7 @@ export default function App() {
           ],
         }));
         if (screenRef.current === 'arena' && text) {
-          setArenaEmote({ id: timestamp, senderName, text });
+          setArenaEmote({ id: timestamp, senderId, senderName, text });
           window.clearTimeout(emoteTimerRef.current);
           emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
           if (!arenaChatOpenRef.current && senderId !== onlineLobbyRef.current.myPlayerId) {
@@ -2378,12 +2389,21 @@ export default function App() {
           timestamp: ts,
         },
       ]);
-      setArenaEmote({ id: ts, senderName: sender.name, text });
+      setArenaEmote({ id: ts, senderId: sender.id, senderName: sender.name, text });
       window.clearTimeout(emoteTimerRef.current);
       emoteTimerRef.current = window.setTimeout(() => setArenaEmote(null), 3200);
     },
     [profile.name, profile.playerId, sendMultiplayerAction],
   );
+
+  const handleOpenEmoteWheel = useCallback((anchor: EmoteWheelAnchor) => {
+    setEmoteWheelAnchor(anchor);
+  }, []);
+
+  const ownAvatarLongPress = useEmoteLongPress({
+    enabled: screen === 'arena',
+    onLongPress: handleOpenEmoteWheel,
+  });
 
   // Mode Starters (GameConfigView -> LoadingArenaScreen -> Arena)
   const handleStartSolo = (
@@ -2943,12 +2963,14 @@ export default function App() {
             unreadChatCount={unreadChatCount}
             onOpenChat={() => {
               soundEngine.playUiClick();
+              setEmoteWheelAnchor(null);
               setArenaChatOpen((prevOpen) => {
                 const next = !prevOpen;
                 if (next) setUnreadChatCount(0);
                 return next;
               });
             }}
+            onOpenEmoteWheel={handleOpenEmoteWheel}
             onQuickToggleLightweight={() => {
               soundEngine.playUiClick();
               const isCurrentlyLight =
@@ -2983,22 +3005,52 @@ export default function App() {
             onReturnToMenu={handleReturnToMenu}
           />
 
-          {/* Responsive Mobile & Tablet Player Standings Strip (auto-hidden when Mode Pandang Leluasa / dockCollapsed is active) */}
+          {/* Responsive Mobile & Tablet Player Standings Strip (long-press own avatar for Emote Wheel) */}
           {!dockCollapsed && (
             <div className="pointer-events-none fixed safe-hud-subtop z-10 flex lg:hidden items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
               {players.map((p, idx) => {
                 const isTurn = idx === currentTurnIndex && !winner;
+                const isOwnAvatar =
+                  !p.isAI &&
+                  (mode === 'online'
+                    ? p.id === onlineLobby.myPlayerId
+                    : mode === 'solo'
+                      ? true
+                      : idx === currentTurnIndex);
+                const hasPlayerEmote =
+                  Boolean(arenaEmote) &&
+                  (arenaEmote?.senderId
+                    ? arenaEmote.senderId === p.id
+                    : arenaEmote?.senderName === p.name);
+                const playerEmoteVisual =
+                  hasPlayerEmote && arenaEmote ? resolveEmoteVisual(arenaEmote.text) : null;
                 return (
                   <div
                     key={p.id}
-                    className={`flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs shrink-0 transition-all backdrop-blur-xs ${
-                      isTurn
-                        ? 'border-amber-400/80 bg-slate-900/92 text-white shadow-md'
-                        : 'border-slate-700/60 bg-slate-950/75 text-slate-300'
+                    {...(isOwnAvatar ? ownAvatarLongPress.bind : {})}
+                    title={isOwnAvatar ? 'Tahan avatar untuk Emote Wheel' : undefined}
+                    className={`relative flex items-center gap-1.5 sm:gap-2 rounded-xl border px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs shrink-0 transition-all backdrop-blur-xs select-none ${
+                      isOwnAvatar ? 'pointer-events-auto cursor-pointer' : ''
+                    } ${
+                      isOwnAvatar && ownAvatarLongPress.isHolding
+                        ? 'border-amber-400 bg-amber-500/25 text-white scale-95 ring-2 ring-amber-400/50'
+                        : isTurn
+                          ? 'border-amber-400/80 bg-slate-900/92 text-white shadow-md'
+                          : 'border-slate-700/60 bg-slate-950/75 text-slate-300'
                     }`}
                   >
                     <ArchetypeEmblem archetypeIndex={p.archetypeIndex} className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                     <span className="max-w-[68px] sm:max-w-[110px] truncate font-semibold">{p.name}</span>
+                    {playerEmoteVisual && (
+                      <span
+                        className={`inline-flex items-center gap-0.5 rounded-md border border-amber-400/55 bg-slate-950/90 px-1.5 py-0.5 text-[10px] font-extrabold text-amber-200 shrink-0 ${
+                          playerEmoteVisual.isAngry ? 'animate-emote-angry' : 'animate-emote-pop'
+                        }`}
+                      >
+                        <span>{playerEmoteVisual.icon}</span>
+                        <span className="hidden sm:inline">{playerEmoteVisual.text}</span>
+                      </span>
+                    )}
                     {p.shields > 0 && (
                       <span className="hidden sm:inline font-mono-num text-[10px] font-bold text-sky-300">
                         ❖{p.shields}
@@ -3013,23 +3065,62 @@ export default function App() {
             </div>
           )}
 
-          {/* Desktop Player Standings Sidebar */}
+          {/* Desktop Player Standings Sidebar (long-press own avatar for Emote Wheel) */}
           <aside className="pointer-events-none fixed safe-hud-aside z-10 hidden lg:flex flex-col gap-2 w-60">
             {players.map((p, idx) => {
               const isTurn = idx === currentTurnIndex && !winner;
+              const isOwnAvatar =
+                !p.isAI &&
+                (mode === 'online'
+                  ? p.id === onlineLobby.myPlayerId
+                  : mode === 'solo'
+                    ? true
+                    : idx === currentTurnIndex);
+              const hasPlayerEmote =
+                Boolean(arenaEmote) &&
+                (arenaEmote?.senderId
+                  ? arenaEmote.senderId === p.id
+                  : arenaEmote?.senderName === p.name);
+              const playerEmoteVisual =
+                hasPlayerEmote && arenaEmote ? resolveEmoteVisual(arenaEmote.text) : null;
               return (
                 <div
                   key={p.id}
-                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs transition-all backdrop-blur-md ${
-                    isTurn
-                      ? 'border-amber-400/80 bg-slate-900/95 text-white shadow-lg'
-                      : 'border-amber-500/20 bg-slate-900/85 text-slate-300'
+                  {...(isOwnAvatar ? ownAvatarLongPress.bind : {})}
+                  title={isOwnAvatar ? 'Tahan avatar Anda untuk membuka Emote Wheel' : undefined}
+                  className={`relative flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs transition-all backdrop-blur-md select-none ${
+                    isOwnAvatar ? 'pointer-events-auto cursor-pointer hover:border-amber-400/70' : ''
+                  } ${
+                    isOwnAvatar && ownAvatarLongPress.isHolding
+                      ? 'border-amber-400 bg-amber-500/20 text-white scale-[0.98] ring-2 ring-amber-400/60 shadow-lg'
+                      : isTurn
+                        ? 'border-amber-400/80 bg-slate-900/95 text-white shadow-lg'
+                        : 'border-amber-500/20 bg-slate-900/85 text-slate-300'
                   }`}
                 >
+                  {playerEmoteVisual && (
+                    <div
+                      className={`pointer-events-none absolute right-full mr-2.5 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-xl border border-amber-400/60 bg-slate-950/94 px-2.5 py-1 shadow-xl flex items-center gap-1.5 ${
+                        playerEmoteVisual.isAngry ? 'animate-emote-angry' : 'animate-emote-pop'
+                      }`}
+                    >
+                      <span className="text-sm leading-none">{playerEmoteVisual.icon}</span>
+                      <span className="text-xs font-extrabold text-amber-200">
+                        {playerEmoteVisual.text}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 min-w-0">
                     <ArchetypeEmblem archetypeIndex={p.archetypeIndex} className="w-4 h-4 shrink-0" />
                     <div className="min-w-0 leading-tight">
-                      <div className="truncate font-semibold">{p.name}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate font-semibold">{p.name}</span>
+                        {isOwnAvatar && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300/80 shrink-0">
+                            Anda
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-slate-400 font-mono-num">
                         Skor {p.score}
                         {p.shields > 0 ? ` · ❖${p.shields}` : ''}
@@ -3055,18 +3146,41 @@ export default function App() {
             })}
           </aside>
 
-          {arenaEmote && (
-            <div className="pointer-events-none fixed top-24 lg:top-16 left-2.5 sm:left-4 z-30 animate-emote-pop">
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-400/50 bg-slate-950/92 backdrop-blur-md px-3 py-1.5 shadow-xl max-w-[85vw]">
-                <span className="text-sm sm:text-base font-bold text-white leading-tight truncate">
-                  {arenaEmote.text}
-                </span>
-                <span className="text-[11px] sm:text-xs font-semibold text-amber-300 max-w-[120px] truncate shrink-0">
-                  · {arenaEmote.senderName}
-                </span>
+          {arenaEmote && (() => {
+            const visual = resolveEmoteVisual(arenaEmote.text);
+            const toneStyles: Record<EmoteTone, string> = {
+              amber: 'border-amber-400/65 bg-slate-950/94 shadow-amber-500/20',
+              emerald: 'border-emerald-400/65 bg-slate-950/94 shadow-emerald-500/20',
+              sky: 'border-sky-400/65 bg-slate-950/94 shadow-sky-500/20',
+              violet: 'border-purple-400/65 bg-slate-950/94 shadow-purple-500/20',
+              rose: 'border-rose-400/75 bg-rose-950/90 shadow-rose-500/25',
+              orange: 'border-orange-400/65 bg-slate-950/94 shadow-orange-500/20',
+            };
+            return (
+              <div
+                key={arenaEmote.id}
+                className={`pointer-events-none fixed top-24 lg:top-16 left-2.5 sm:left-4 z-30 ${
+                  visual.isAngry ? 'animate-emote-angry' : 'animate-emote-pop'
+                }`}
+              >
+                <div
+                  className={`inline-flex items-center gap-2 rounded-2xl border backdrop-blur-md px-3.5 py-2 shadow-xl max-w-[85vw] ${toneStyles[visual.tone]}`}
+                >
+                  {visual.isEmoteWheelItem && (
+                    <span className="text-xl sm:text-2xl leading-none shrink-0">
+                      {visual.icon}
+                    </span>
+                  )}
+                  <span className="text-sm sm:text-base font-extrabold text-white leading-tight truncate">
+                    {visual.isEmoteWheelItem ? visual.text : arenaEmote.text}
+                  </span>
+                  <span className="text-[11px] sm:text-xs font-semibold text-amber-300 max-w-[120px] truncate shrink-0">
+                    · {arenaEmote.senderName}
+                  </span>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {inspectedTile && (
             <div className="fixed top-24 left-2.5 right-2.5 sm:right-auto sm:top-24 sm:left-4 z-20 sm:max-w-xs rounded-xl border border-slate-700 bg-slate-900/95 p-3 shadow-xl">
@@ -3117,9 +3231,29 @@ export default function App() {
             onOpenCameraSettings={() => setCameraSettingsOpen(true)}
             onRollDice={handleRollDice}
             onSendEmote={(emoji) => handleSendArenaChat(emoji)}
+            localPlayerId={
+              mode === 'online'
+                ? onlineLobby.myPlayerId
+                : (players.find((p) => !p.isAI)?.id ?? profile.playerId)
+            }
+            onOpenEmoteWheel={handleOpenEmoteWheel}
             onOpenLeaderboard={() => setLeaderboardOpen(true)}
             onOpenAchievements={() => setAchievementsOpen(true)}
             onOpenCloud={() => setCloudOpen(true)}
+          />
+
+          <EmoteWheel
+            open={Boolean(emoteWheelAnchor)}
+            anchor={emoteWheelAnchor}
+            playerName={
+              mode === 'online'
+                ? myOnlinePlayer?.name ?? profile.name
+                : (players[currentTurnIndex]?.isAI
+                    ? players.find((p) => !p.isAI)?.name ?? profile.name
+                    : players[currentTurnIndex]?.name ?? profile.name)
+            }
+            onSelectEmote={(item) => handleSendArenaChat(item.payload)}
+            onClose={() => setEmoteWheelAnchor(null)}
           />
 
           <ArenaChatDrawer

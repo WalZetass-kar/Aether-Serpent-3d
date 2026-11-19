@@ -198,6 +198,49 @@
   animation: emotePop 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+@keyframes emoteWheelPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.76);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-emote-wheel-pop {
+  animation: emoteWheelPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes emoteAngryShake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-3px, 0, 0) rotate(-1.5deg);
+  }
+  40% {
+    transform: translate3d(3px, 0, 0) rotate(1.5deg);
+  }
+  60% {
+    transform: translate3d(-2px, 0, 0) rotate(-1deg);
+  }
+  80% {
+    transform: translate3d(2px, 0, 0) rotate(1deg);
+  }
+}
+
+.animate-emote-angry {
+  animation: emotePop 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards, emoteAngryShake 0.42s ease-in-out 0.14s;
+}
+
 @keyframes hudTopSlideIn {
   0% {
     opacity: 0;
@@ -384,6 +427,8 @@
   .animate-ring-glow,
   .animate-ring-urgent,
   .animate-emote-pop,
+  .animate-emote-wheel-pop,
+  .animate-emote-angry,
   .animate-hud-slide-in,
   .animate-aether-dust,
   .animate-progress-pulse,
