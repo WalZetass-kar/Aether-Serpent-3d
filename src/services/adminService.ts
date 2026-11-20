@@ -52,6 +52,7 @@ export interface AdminMemberRecord {
   muted: boolean;
   selectedBoardId: string;
   aetherCoins: number;
+  unlimitedCoins: boolean;
   unlockedBoardIds: string[];
   isPublic: boolean | null;
   createdAtMs: number;
@@ -196,6 +197,7 @@ export async function fetchAdminMembers(user: User): Promise<AdminMembersResult>
         muted: Boolean(d.muted),
         selectedBoardId: typeof d.selectedBoardId === 'string' ? d.selectedBoardId : '-',
         aetherCoins: typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250,
+        unlimitedCoins: d.unlimitedCoins === true,
         unlockedBoardIds: Array.isArray(d.unlockedBoardIds)
           ? d.unlockedBoardIds.filter((v): v is string => typeof v === 'string')
           : [...STARTER_UNLOCKED_BOARD_IDS],
@@ -234,6 +236,7 @@ export async function fetchAdminMembers(user: User): Promise<AdminMembersResult>
         muted: false,
         selectedBoardId: '-',
         aetherCoins: 250,
+        unlimitedCoins: false,
         unlockedBoardIds: [...STARTER_UNLOCKED_BOARD_IDS],
         isPublic: Boolean(pubData.isPublic),
         createdAtMs: toEpochMs(pubData.createdAt),
@@ -424,11 +427,57 @@ export async function adminGrantAllPremiumBoards(
   return { nextCoins, unlockedBoardIds: nextUnlocked };
 }
 
+export async function adminSetMemberUnlimitedCoins(
+  adminUser: User,
+  targetMember: { uid: string; email: string; displayName: string },
+  enabled: boolean,
+  note?: string,
+  postToChat = true,
+): Promise<{ unlimitedCoins: boolean }> {
+  if (!isAdminAccount(adminUser)) {
+    throw new Error('Akses admin diperlukan untuk mengatur Koin Unlimited member.');
+  }
+  const path = `users/${targetMember.uid}`;
+  const ref = doc(db, 'users', targetMember.uid);
+  const nextEnabled = Boolean(enabled);
+
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      throw new Error('Dokumen akun member belum terdaftar di Firestore.');
+    }
+    await updateDoc(ref, {
+      unlimitedCoins: nextEnabled,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+
+  if (postToChat) {
+    const notePart = note?.trim() ? ` Catatan: ${note.trim()}` : '';
+    const summaryText = nextEnabled
+      ? `Mode Koin Aether Unlimited (∞) telah DIAKTIFKAN oleh Admin untuk akunmu! Kamu bisa membuka semua papan & pion premium tanpa batas saldo.${notePart}`
+      : `Mode Koin Aether Unlimited (∞) pada akunmu telah dinonaktifkan oleh Admin. Saldo kembali menggunakan Koin Aether normal.${notePart}`;
+    try {
+      await sendAdminTopUpReply(adminUser, targetMember, summaryText, {
+        coinDelta: 0,
+        status: nextEnabled ? 'completed' : 'open',
+      });
+    } catch {
+      // Flag update already succeeded; chat receipt is best-effort
+    }
+  }
+
+  return { unlimitedCoins: nextEnabled };
+}
+
 export interface AdminCoinGiftRecipientInfo {
   uid: string;
   displayName: string;
   email: string;
   aetherCoins: number;
+  unlimitedCoins?: boolean;
   archetypeIndex: number;
 }
 
@@ -468,6 +517,7 @@ export async function adminLookupMemberByUid(
       email: String(d.email || '—'),
       aetherCoins:
         typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250,
+      unlimitedCoins: d.unlimitedCoins === true,
       archetypeIndex: typeof d.archetypeIndex === 'number' ? d.archetypeIndex : 0,
     };
   } catch (err) {

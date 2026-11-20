@@ -14,6 +14,7 @@ import {
   Flame,
   Gift,
   Globe,
+  Infinity as InfinityIcon,
   Layers,
   Lock,
   MessageCircle,
@@ -38,6 +39,7 @@ import {
   adminKickRoomPlayer,
   adminLookupMemberByUid,
   adminSendGiftCoins,
+  adminSetMemberUnlimitedCoins,
   fetchAdminMembers,
   fetchAdminServerOverview,
   fetchMemberCustomBoards,
@@ -147,6 +149,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [coinAmountInput, setCoinAmountInput] = useState('500');
   const [coinNoteInput, setCoinNoteInput] = useState('');
   const [adjustingCoinsUid, setAdjustingCoinsUid] = useState<string | null>(null);
+  const [togglingUnlimitedUid, setTogglingUnlimitedUid] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Gift Coins by User ID State
@@ -456,6 +459,40 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     }
   };
 
+  const handleAdminToggleUnlimitedCoins = async (
+    target: { uid: string; email: string; displayName: string },
+    nextEnabled: boolean,
+    customNote?: string,
+  ) => {
+    setTogglingUnlimitedUid(target.uid);
+    try {
+      const res = await adminSetMemberUnlimitedCoins(user, target, nextEnabled, customNote, true);
+      setMembers((prev) =>
+        prev.map((m) => (m.uid === target.uid ? { ...m, unlimitedCoins: res.unlimitedCoins } : m)),
+      );
+      setSelectedMember((prev) =>
+        prev && prev.uid === target.uid ? { ...prev, unlimitedCoins: res.unlimitedCoins } : prev,
+      );
+      setGiftRecipientPreview((prev) =>
+        prev && prev.uid === target.uid ? { ...prev, unlimitedCoins: res.unlimitedCoins } : prev,
+      );
+      setCoinNoteInput('');
+      onNotify(
+        res.unlimitedCoins ? 'Koin Unlimited (∞) Diaktifkan' : 'Koin Unlimited Dinonaktifkan',
+        res.unlimitedCoins
+          ? `${target.displayName} sekarang memiliki Koin Aether Unlimited (∞).`
+          : `${target.displayName} kembali ke saldo Koin Aether normal.`,
+      );
+    } catch (err) {
+      onNotify(
+        'Gagal Mengatur Koin Unlimited',
+        err instanceof Error ? err.message : 'Terjadi kesalahan Firestore.',
+      );
+    } finally {
+      setTogglingUnlimitedUid(null);
+    }
+  };
+
   const handleSendAdminReply = async (e: React.FormEvent) => {
     e.preventDefault();
     const activeThread = topUpThreads.find((t) => t.uid === selectedThreadUid);
@@ -510,6 +547,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         displayName: cached.displayName,
         email: cached.email,
         aetherCoins: cached.aetherCoins,
+        unlimitedCoins: cached.unlimitedCoins,
         archetypeIndex: cached.archetypeIndex,
       });
     }
@@ -619,7 +657,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       : members;
 
     return [...filtered].sort((a, b) => {
-      if (memberSort === 'coins') return b.aetherCoins - a.aetherCoins || b.bestScore - a.bestScore;
+      if (memberSort === 'coins') {
+        return (
+          Number(b.unlimitedCoins) - Number(a.unlimitedCoins) ||
+          b.aetherCoins - a.aetherCoins ||
+          b.bestScore - a.bestScore
+        );
+      }
       if (memberSort === 'score') return b.bestScore - a.bestScore || b.wins - a.wins;
       if (memberSort === 'wins') return b.wins - a.wins || b.bestScore - a.bestScore;
       if (memberSort === 'streak') return b.loginStreak - a.loginStreak || b.bestScore - a.bestScore;
@@ -994,8 +1038,20 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           <td className="py-3 px-4 text-slate-300 max-w-[200px] truncate">
                             {m.email}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono-num font-bold text-amber-300 whitespace-nowrap">
-                            {m.aetherCoins.toLocaleString('id-ID')}
+                          <td className="py-3 px-4 text-right font-mono-num font-bold whitespace-nowrap">
+                            {m.unlimitedCoins ? (
+                              <span
+                                title={`Koin Unlimited Aktif (Saldo dasar: ${m.aetherCoins.toLocaleString('id-ID')})`}
+                                className="inline-flex items-center gap-1 rounded-md border border-cyan-400/45 bg-cyan-500/15 px-2 py-0.5 text-cyan-200"
+                              >
+                                <InfinityIcon className="w-3.5 h-3.5 text-cyan-300" />
+                                <span>Unlimited</span>
+                              </span>
+                            ) : (
+                              <span className="text-amber-300">
+                                {m.aetherCoins.toLocaleString('id-ID')}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right font-mono-num text-slate-200 whitespace-nowrap">
                             {m.totalGames} / <span className="text-emerald-300 font-semibold">{m.wins}</span>
@@ -1138,11 +1194,22 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                               </div>
                             </div>
                             <div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-950/40 px-2.5 py-1.5 text-xs shrink-0">
-                              <Coins className="w-3.5 h-3.5 text-amber-400" />
-                              <span className="text-slate-300">Saldo:</span>
-                              <span className="font-mono-num font-bold text-amber-300">
-                                {(selectedThreadMember?.aetherCoins ?? 0).toLocaleString('id-ID')}
-                              </span>
+                              {selectedThreadMember?.unlimitedCoins ? (
+                                <>
+                                  <InfinityIcon className="w-3.5 h-3.5 text-cyan-300" />
+                                  <span className="font-mono-num font-bold text-cyan-200">
+                                    ∞ Unlimited
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <Coins className="w-3.5 h-3.5 text-amber-400" />
+                                  <span className="text-slate-300">Saldo:</span>
+                                  <span className="font-mono-num font-bold text-amber-300">
+                                    {(selectedThreadMember?.aetherCoins ?? 0).toLocaleString('id-ID')}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
 
@@ -1189,6 +1256,29 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                             >
                               <Crown className="w-3.5 h-3.5 text-amber-400" />
                               <span>Aktifkan Royal Pass</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={togglingUnlimitedUid === selectedTopUpThread.uid}
+                              onClick={() =>
+                                void handleAdminToggleUnlimitedCoins(
+                                  selectedTopUpThread,
+                                  !(selectedThreadMember?.unlimitedCoins ?? false),
+                                  coinNoteInput,
+                                )
+                              }
+                              className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-50 cursor-pointer whitespace-nowrap ${
+                                selectedThreadMember?.unlimitedCoins
+                                  ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30'
+                                  : 'border-sky-400/45 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25'
+                              }`}
+                            >
+                              <InfinityIcon className="w-3.5 h-3.5 shrink-0" />
+                              <span>
+                                {selectedThreadMember?.unlimitedCoins
+                                  ? 'Matikan Unlimited (∞)'
+                                  : 'Set Unlimited (∞)'}
+                              </span>
                             </button>
                           </div>
                         </div>
@@ -1314,6 +1404,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                               displayName: exact.displayName,
                               email: exact.email,
                               aetherCoins: exact.aetherCoins,
+                              unlimitedCoins: exact.unlimitedCoins,
                               archetypeIndex: exact.archetypeIndex,
                             });
                           } else {
@@ -1360,7 +1451,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         <div className="text-right shrink-0">
                           <div className="text-[10px] text-slate-400">Saldo Saat Ini</div>
                           <div className="font-mono-num text-xs font-bold text-amber-300">
-                            {giftRecipientPreview.aetherCoins.toLocaleString('id-ID')} Koin
+                            {giftRecipientPreview.unlimitedCoins
+                              ? '∞ Unlimited'
+                              : `${giftRecipientPreview.aetherCoins.toLocaleString('id-ID')} Koin`}
                           </div>
                         </div>
                       </div>
@@ -1483,6 +1576,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                 displayName: m.displayName,
                                 email: m.email,
                                 aetherCoins: m.aetherCoins,
+                                unlimitedCoins: m.unlimitedCoins,
                                 archetypeIndex: m.archetypeIndex,
                               });
                             }}
@@ -1498,8 +1592,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                 {m.uid}
                               </div>
                             </div>
-                            <span className="font-mono-num text-xs font-bold text-amber-300 shrink-0">
-                              {m.aetherCoins.toLocaleString('id-ID')}
+                            <span
+                              className={`font-mono-num text-xs font-bold shrink-0 ${
+                                m.unlimitedCoins ? 'text-cyan-300' : 'text-amber-300'
+                              }`}
+                            >
+                              {m.unlimitedCoins ? '∞ Unlimited' : m.aetherCoins.toLocaleString('id-ID')}
                             </span>
                           </button>
                         );
@@ -2396,6 +2494,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           displayName: selectedMember.displayName,
                           email: selectedMember.email,
                           aetherCoins: selectedMember.aetherCoins,
+                          unlimitedCoins: selectedMember.unlimitedCoins,
                           archetypeIndex: selectedMember.archetypeIndex,
                         });
                         setSelectedMember(null);
@@ -2421,7 +2520,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               {/* Stat Grid */}
               <div className="grid grid-cols-2 gap-3 font-mono-num">
                 <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
-                  <div className="text-[11px] text-slate-400 font-sans">Skor Terbaik</div>
+                  <div className="text-[11px] text-slate-400 font-sans">Total Skor Karier</div>
                   <div className="text-base font-bold text-amber-300 mt-0.5">
                     {selectedMember.bestScore.toLocaleString('id-ID')}
                   </div>
@@ -2453,9 +2552,66 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <Coins className="w-4 h-4 shrink-0" />
                     <span>Kelola Poin / Koin Aether Member</span>
                   </div>
-                  <span className="font-mono-num text-base font-bold text-amber-200">
-                    {selectedMember.aetherCoins.toLocaleString('id-ID')} Koin
-                  </span>
+                  {selectedMember.unlimitedCoins ? (
+                    <span className="inline-flex items-center gap-1 font-mono-num text-sm font-bold text-cyan-200">
+                      <InfinityIcon className="w-4 h-4 text-cyan-300" />
+                      <span>Unlimited</span>
+                    </span>
+                  ) : (
+                    <span className="font-mono-num text-base font-bold text-amber-200">
+                      {selectedMember.aetherCoins.toLocaleString('id-ID')} Koin
+                    </span>
+                  )}
+                </div>
+
+                {/* Admin Unlimited Coins Toggle Banner */}
+                <div
+                  className={`rounded-xl border p-3 flex flex-wrap items-center justify-between gap-2.5 ${
+                    selectedMember.unlimitedCoins
+                      ? 'border-cyan-400/50 bg-cyan-950/35'
+                      : 'border-slate-700/80 bg-slate-950/70'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                      <InfinityIcon
+                        className={`w-4 h-4 shrink-0 ${
+                          selectedMember.unlimitedCoins ? 'text-cyan-300' : 'text-slate-400'
+                        }`}
+                      />
+                      <span>Mode Koin Unlimited (∞)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                      {selectedMember.unlimitedCoins
+                        ? `Aktif — member bisa membuka semua papan & pion premium gratis (saldo dasar: ${selectedMember.aetherCoins.toLocaleString('id-ID')} Koin).`
+                        : 'Aktifkan agar member memiliki Koin Aether tak terbatas yang hanya dapat diatur Admin.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={togglingUnlimitedUid === selectedMember.uid}
+                    onClick={() =>
+                      void handleAdminToggleUnlimitedCoins(
+                        selectedMember,
+                        !selectedMember.unlimitedCoins,
+                        coinNoteInput,
+                      )
+                    }
+                    className={`inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap shrink-0 ${
+                      selectedMember.unlimitedCoins
+                        ? 'border border-rose-400/50 bg-rose-950/60 text-rose-200 hover:bg-rose-900/70'
+                        : 'bg-cyan-400 text-slate-950 hover:bg-cyan-300 shadow'
+                    }`}
+                  >
+                    <InfinityIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      {togglingUnlimitedUid === selectedMember.uid
+                        ? 'Menyimpan...'
+                        : selectedMember.unlimitedCoins
+                          ? 'Nonaktifkan Unlimited'
+                          : 'Aktifkan Unlimited (∞)'}
+                    </span>
+                  </button>
                 </div>
 
                 <div className="text-[11px] text-slate-400">

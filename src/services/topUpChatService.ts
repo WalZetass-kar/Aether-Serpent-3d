@@ -46,6 +46,7 @@ export interface TopUpChatMessage {
 
 export interface WalletSyncSnapshot {
   aetherCoins: number;
+  unlimitedCoins: boolean;
   unlockedBoardIds: string[];
   unlockedPawnIndices?: number[];
 }
@@ -117,6 +118,7 @@ export function subscribeToUserWalletSync(
       const d = docSnap.data();
       if (
         typeof d.aetherCoins !== 'number' &&
+        typeof d.unlimitedCoins !== 'boolean' &&
         !Array.isArray(d.unlockedBoardIds) &&
         !Array.isArray(d.unlockedPawnIndices)
       ) {
@@ -125,6 +127,7 @@ export function subscribeToUserWalletSync(
       onWalletChange({
         aetherCoins:
           typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250,
+        unlimitedCoins: d.unlimitedCoins === true,
         unlockedBoardIds: Array.isArray(d.unlockedBoardIds)
           ? d.unlockedBoardIds.filter((v): v is string => typeof v === 'string').slice(0, 30)
           : [],

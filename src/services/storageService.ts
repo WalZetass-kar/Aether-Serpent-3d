@@ -80,6 +80,7 @@ export interface PlayerProfile {
   tutorialCompleted: boolean;
   muted: boolean;
   aetherCoins: number;
+  unlimitedCoins?: boolean;
   unlockedBoardIds: string[];
   unlockedPawnIndices: number[];
 }
@@ -234,6 +235,7 @@ function createDefaultProfile(): PlayerProfile {
     tutorialCompleted: false,
     muted: false,
     aetherCoins: 250,
+    unlimitedCoins: false,
     unlockedBoardIds: [...STARTER_UNLOCKED_BOARD_IDS],
     unlockedPawnIndices: [...STARTER_PAWN_INDICES],
   };
@@ -302,6 +304,7 @@ export function loadProfile(): PlayerProfile {
         typeof parsed.aetherCoins === 'number' && Number.isFinite(parsed.aetherCoins)
           ? Math.max(0, Math.floor(parsed.aetherCoins))
           : base.aetherCoins,
+      unlimitedCoins: Boolean(parsed.unlimitedCoins),
       unlockedBoardIds: Array.from(
         new Set([
           ...STARTER_UNLOCKED_BOARD_IDS,
@@ -586,7 +589,8 @@ export function purchasePremiumPawn(
   }
   const cost = getPawnUnlockCost(safeIdx);
   const coins = profile.aetherCoins ?? 0;
-  if (coins < cost) {
+  const hasUnlimitedCoins = Boolean(profile.unlimitedCoins);
+  if (!hasUnlimitedCoins && coins < cost) {
     return {
       ok: false,
       profile,
@@ -599,7 +603,7 @@ export function purchasePremiumPawn(
 
   const updated: PlayerProfile = {
     ...profile,
-    aetherCoins: coins - cost,
+    aetherCoins: hasUnlimitedCoins ? coins : coins - cost,
     unlockedPawnIndices: nextUnlocked,
     archetypeIndex: safeIdx,
   };

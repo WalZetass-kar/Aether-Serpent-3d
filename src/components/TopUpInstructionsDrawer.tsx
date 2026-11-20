@@ -21,6 +21,7 @@ export interface TopUpInstructionsDrawerProps {
   user: User | null;
   playerName: string;
   currentCoins: number;
+  unlimitedCoins?: boolean;
   onOpenAuth: (tab: 'login' | 'register') => void;
   onOpenAdminChat: () => void;
   onOpenBoardCollection: () => void;
@@ -60,6 +61,7 @@ export const TopUpInstructionsDrawer: React.FC<TopUpInstructionsDrawerProps> = (
   user,
   playerName,
   currentCoins,
+  unlimitedCoins = false,
   onOpenAuth,
   onOpenAdminChat,
   onOpenBoardCollection,
@@ -166,8 +168,14 @@ export const TopUpInstructionsDrawer: React.FC<TopUpInstructionsDrawerProps> = (
             </h3>
             <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
               <span>Saldo saat ini:</span>
-              <span className="font-mono-num font-bold text-amber-300">
-                {currentCoins.toLocaleString('id-ID')} Koin
+              <span
+                className={`font-mono-num font-bold ${
+                  unlimitedCoins ? 'text-cyan-300' : 'text-amber-300'
+                }`}
+              >
+                {unlimitedCoins
+                  ? '∞ Unlimited Koin'
+                  : `${currentCoins.toLocaleString('id-ID')} Koin`}
               </span>
             </div>
           </div>

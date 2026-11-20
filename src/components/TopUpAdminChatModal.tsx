@@ -26,6 +26,7 @@ interface TopUpAdminChatModalProps {
   user: User | null;
   displayName: string;
   currentCoins: number;
+  unlimitedCoins?: boolean;
   initialBoardRequestName?: string | null;
   onOpenAuth?: () => void;
   onClose: () => void;
@@ -43,6 +44,7 @@ export const TopUpAdminChatModal: React.FC<TopUpAdminChatModalProps> = ({
   user,
   displayName,
   currentCoins,
+  unlimitedCoins = false,
   initialBoardRequestName,
   onOpenAuth,
   onClose,
@@ -147,8 +149,14 @@ export const TopUpAdminChatModal: React.FC<TopUpAdminChatModalProps> = ({
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
               Saldo saat ini:{' '}
-              <span className="font-mono-num font-bold text-amber-300">
-                {currentCoins.toLocaleString('id-ID')} Koin Aether
+              <span
+                className={`font-mono-num font-bold ${
+                  unlimitedCoins ? 'text-cyan-300' : 'text-amber-300'
+                }`}
+              >
+                {unlimitedCoins
+                  ? '∞ Unlimited Koin Aether'
+                  : `${currentCoins.toLocaleString('id-ID')} Koin Aether`}
               </span>
               {' · '}
               <span>Admin akan memverifikasi pembayaran &amp; menambahkan koin langsung ke akunmu.</span>

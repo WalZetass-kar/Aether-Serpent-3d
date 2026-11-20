@@ -183,7 +183,8 @@ export function purchasePremiumBoard(
   }
   const price = status.rule.premium.priceCoins;
   const currentCoins = profile.aetherCoins ?? 0;
-  if (currentCoins < price) {
+  const hasUnlimitedCoins = Boolean(profile.unlimitedCoins);
+  if (!hasUnlimitedCoins && currentCoins < price) {
     return {
       ok: false,
       profile,
@@ -193,13 +194,13 @@ export function purchasePremiumBoard(
   }
   const nextProfile: PlayerProfile = {
     ...profile,
-    aetherCoins: currentCoins - price,
+    aetherCoins: hasUnlimitedCoins ? currentCoins : currentCoins - price,
     unlockedBoardIds: Array.from(
       new Set([...STARTER_UNLOCKED_BOARD_IDS, ...(profile.unlockedBoardIds || []), boardId]),
     ),
   };
   saveProfile(nextProfile);
-  return { ok: true, profile: nextProfile, spentCoins: price };
+  return { ok: true, profile: nextProfile, spentCoins: hasUnlimitedCoins ? 0 : price };
 }
 
 export function applyAetherCoinPack(

@@ -188,6 +188,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   );
   const claimableMissionBoards = useMemo(() => getClaimableMissionBoards(profile), [profile]);
   const currentCoins = profile.aetherCoins ?? 0;
+  const isUnlimitedCoins = Boolean(profile.unlimitedCoins);
 
   useEffect(() => {
     if (!user || !user.emailVerified) {
@@ -911,12 +912,28 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           <button
             type="button"
             onClick={() => handleOpenTopUpChat(null)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-950/40 px-2.5 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs font-bold text-amber-200 hover:bg-amber-900/50 hover:border-amber-400 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            title="Beli Koin Aether & Royal Pass melalui Chat Admin Resmi"
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              isUnlimitedCoins
+                ? 'border-cyan-400/50 bg-cyan-950/45 text-cyan-200 hover:bg-cyan-900/55 hover:border-cyan-300'
+                : 'border-amber-500/40 bg-amber-950/40 text-amber-200 hover:bg-amber-900/50 hover:border-amber-400'
+            }`}
+            title={
+              isUnlimitedCoins
+                ? 'Koin Aether Unlimited (∞) aktif dari Admin'
+                : 'Beli Koin Aether & Royal Pass melalui Chat Admin Resmi'
+            }
           >
-            <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="font-mono-num">{currentCoins.toLocaleString('id-ID')}</span>
-            <span className="text-amber-400/90 font-semibold">· Beli Koin</span>
+            <Coins
+              className={`w-3.5 h-3.5 shrink-0 ${
+                isUnlimitedCoins ? 'text-cyan-300' : 'text-amber-400'
+              }`}
+            />
+            <span className="font-mono-num">
+              {isUnlimitedCoins ? '∞ Unlimited' : currentCoins.toLocaleString('id-ID')}
+            </span>
+            <span className={isUnlimitedCoins ? 'text-cyan-300/90 font-semibold' : 'text-amber-400/90 font-semibold'}>
+              {isUnlimitedCoins ? '· Chat Admin' : '· Beli Koin'}
+            </span>
             {unreadAdminReplies > 0 && (
               <span className="font-mono-num text-[10px] font-bold text-emerald-300">
                 ({unreadAdminReplies})
@@ -3414,8 +3431,8 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
         const isPremium = status.rule.unlockType === 'premium' && Boolean(status.rule.premium);
         const prem = status.rule.premium;
         const mission = status.rule.mission;
-        const canAfford = prem ? currentCoins >= prem.priceCoins : false;
-        const shortfall = prem ? Math.max(0, prem.priceCoins - currentCoins) : 0;
+        const canAfford = prem ? isUnlimitedCoins || currentCoins >= prem.priceCoins : false;
+        const shortfall = prem ? (isUnlimitedCoins ? 0 : Math.max(0, prem.priceCoins - currentCoins)) : 0;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/82 backdrop-blur-sm p-4">
@@ -3549,10 +3566,16 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                       <span className="text-slate-400">Saldo Koin Aether Kamu</span>
                       <span
                         className={`font-mono-num font-bold ${
-                          canAfford ? 'text-emerald-300' : 'text-rose-300'
+                          isUnlimitedCoins
+                            ? 'text-cyan-300'
+                            : canAfford
+                              ? 'text-emerald-300'
+                              : 'text-rose-300'
                         }`}
                       >
-                        {currentCoins.toLocaleString('id-ID')} Koin
+                        {isUnlimitedCoins
+                          ? '∞ Unlimited Koin'
+                          : `${currentCoins.toLocaleString('id-ID')} Koin`}
                       </span>
                     </div>
                   </div>
@@ -3597,7 +3620,11 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                       className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap shadow-lg"
                     >
                       <Unlock className="w-3.5 h-3.5" />
-                      <span>Buka Sekarang ({prem.priceCoins.toLocaleString('id-ID')} Koin)</span>
+                      <span>
+                        {isUnlimitedCoins
+                          ? 'Buka Sekarang (∞ Unlimited)'
+                          : `Buka Sekarang (${prem.priceCoins.toLocaleString('id-ID')} Koin)`}
+                      </span>
                     </button>
                   ) : (
                     <button
@@ -3622,6 +3649,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           user={user}
           displayName={profile.name}
           currentCoins={currentCoins}
+          unlimitedCoins={isUnlimitedCoins}
           initialBoardRequestName={topUpBoardContext}
           onOpenAuth={onOpenAuth}
           onClose={() => setTopUpChatOpen(false)}

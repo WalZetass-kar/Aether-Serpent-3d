@@ -68,7 +68,7 @@ service cloud.firestore {
           'onlineWins', 'unlockedAchievements', 'dailyStreak',
           'loginStreak', 'lastLoginDate',
           'tutorialCompleted', 'muted', 'selectedBoardId',
-          'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId',
+          'aetherCoins', 'unlimitedCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId',
           'createdAt', 'updatedAt'
         ])
         && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
@@ -81,7 +81,7 @@ service cloud.firestore {
         && data.totalGames is int && data.totalGames >= 0 && data.totalGames <= 1000000
         && data.wins is int && data.wins >= 0 && data.wins <= 1000000
         && data.losses is int && data.losses >= 0 && data.losses <= 1000000
-        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 10000000
+        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 999999999
         && data.fastestWinTurns is int && data.fastestWinTurns >= 0 && data.fastestWinTurns <= 10000
         && data.laddersClimbed is int && data.laddersClimbed >= 0 && data.laddersClimbed <= 1000000
         && data.snakesBitten is int && data.snakesBitten >= 0 && data.snakesBitten <= 1000000
@@ -97,6 +97,7 @@ service cloud.firestore {
         && data.muted is bool
         && data.selectedBoardId is string && data.selectedBoardId.size() >= 1 && data.selectedBoardId.size() <= 80
         && (!('aetherCoins' in data) || (data.aetherCoins is int && data.aetherCoins >= 0 && data.aetherCoins <= 10000000))
+        && (!('unlimitedCoins' in data) || data.unlimitedCoins is bool)
         && (!('unlockedBoardIds' in data) || (data.unlockedBoardIds is list && data.unlockedBoardIds.size() <= 30 && (data.unlockedBoardIds.size() == 0 || (data.unlockedBoardIds[0] is string && data.unlockedBoardIds[0].size() <= 64))))
         && (!('unlockedPawnIndices' in data) || (data.unlockedPawnIndices is list && data.unlockedPawnIndices.size() <= 14 && (data.unlockedPawnIndices.size() == 0 || (data.unlockedPawnIndices[0] is int && data.unlockedPawnIndices[0] >= 0 && data.unlockedPawnIndices[0] <= 13))))
         && (!('numericId' in data) || (data.numericId is string && data.numericId.size() >= 6 && data.numericId.size() <= 16 && data.numericId.matches('^[0-9]+$')))
@@ -144,7 +145,7 @@ service cloud.firestore {
         && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
         && data.wins is int && data.wins >= 0 && data.wins <= 1000000
         && data.totalGames is int && data.totalGames >= 0 && data.totalGames <= 1000000
-        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 10000000
+        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 999999999
         && data.onlineWins is int && data.onlineWins >= 0 && data.onlineWins <= 1000000
         && data.isPublic is bool
         && (!('isOnline' in data) || data.isOnline is bool)
@@ -379,6 +380,7 @@ service cloud.firestore {
         && isOwner(userId)
         && isValidUserProfile(incoming(), userId)
         && (!('aetherCoins' in incoming()) || incoming().aetherCoins <= 500)
+        && (!('unlimitedCoins' in incoming()) || incoming().unlimitedCoins == false)
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -412,7 +414,7 @@ service cloud.firestore {
           (
             isAdmin()
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'aetherCoins', 'unlockedBoardIds', 'updatedAt'
+              'aetherCoins', 'unlimitedCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'updatedAt'
             ])
           )
         );

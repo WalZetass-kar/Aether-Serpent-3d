@@ -617,7 +617,7 @@ export default function App() {
   }, [profile.notificationsEnabled, profile.notificationHour]);
 
   // Real-time Firestore Wallet & Unlocked Boards sync (reflects Admin coin top-ups/deductions & Royal Pass instantly)
-  const lastSyncedWalletRef = useRef<{ coins: number; boardsKey: string } | null>(null);
+  const lastSyncedWalletRef = useRef<{ coins: number; boardsKey: string; unlimitedCoins: boolean } | null>(null);
   const profileWalletRef = useRef(profile);
   profileWalletRef.current = profile;
   const [pendingCoinGifts, setPendingCoinGifts] = useState<CoinGiftEvent[]>([]);
@@ -792,9 +792,10 @@ export default function App() {
     }
     return subscribeToUserWalletSync(
       user,
-      ({ aetherCoins, unlockedBoardIds, unlockedPawnIndices }) => {
+      ({ aetherCoins, unlimitedCoins, unlockedBoardIds, unlockedPawnIndices }) => {
         const current = profileWalletRef.current;
         const prevCoins = current.aetherCoins ?? 0;
+        const prevUnlimited = Boolean(current.unlimitedCoins);
         const mergedUnlocked = Array.from(
           new Set([...(current.unlockedBoardIds ?? []), ...unlockedBoardIds]),
         );
@@ -810,16 +811,22 @@ export default function App() {
         const prevPawnsKey = [...(current.unlockedPawnIndices ?? [])].sort((a, b) => a - b).join(',');
         const nextPawnsKey = mergedPawns.join(',');
         const coinsChanged = aetherCoins !== prevCoins;
+        const unlimitedChanged = unlimitedCoins !== prevUnlimited;
         const boardsAdded = mergedUnlocked.length > (current.unlockedBoardIds?.length ?? 0);
         const pawnsChanged = prevPawnsKey !== nextPawnsKey;
 
         // Initialize baseline on first snapshot so initial load doesn't fire a spurious toast
         if (!lastSyncedWalletRef.current) {
-          lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
-          if (coinsChanged || prevBoardsKey !== nextBoardsKey || pawnsChanged) {
+          lastSyncedWalletRef.current = {
+            coins: aetherCoins,
+            boardsKey: nextBoardsKey,
+            unlimitedCoins,
+          };
+          if (coinsChanged || unlimitedChanged || prevBoardsKey !== nextBoardsKey || pawnsChanged) {
             const next = {
               ...current,
               aetherCoins,
+              unlimitedCoins,
               unlockedBoardIds: mergedUnlocked,
               unlockedPawnIndices: mergedPawns,
             };
@@ -831,47 +838,76 @@ export default function App() {
 
         const prevSnapCoins = lastSyncedWalletRef.current.coins;
         const prevSnapBoardsKey = lastSyncedWalletRef.current.boardsKey;
-        lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
+        const prevSnapUnlimited = lastSyncedWalletRef.current.unlimitedCoins;
+        lastSyncedWalletRef.current = {
+          coins: aetherCoins,
+          boardsKey: nextBoardsKey,
+          unlimitedCoins,
+        };
 
-        if (!coinsChanged && prevBoardsKey === nextBoardsKey && !pawnsChanged) return;
+        if (!coinsChanged && !unlimitedChanged && prevBoardsKey === nextBoardsKey && !pawnsChanged) {
+          return;
+        }
 
         const next = {
           ...current,
           aetherCoins,
+          unlimitedCoins,
           unlockedBoardIds: mergedUnlocked,
           unlockedPawnIndices: mergedPawns,
         };
         saveProfile(next);
         setProfile(next);
 
-      const delta = aetherCoins - prevSnapCoins;
-      const recentGift = activeGiftNoticeRef.current;
-      const isCoveredByGiftOverlay =
-        recentGift !== null &&
-        Date.now() - recentGift.at < 4500 &&
-        delta === recentGift.amount;
+        if (unlimitedCoins !== prevSnapUnlimited) {
+          if (unlimitedCoins) {
+            soundEngine.playVictory();
+            showToast(
+              'Koin Aether Unlimited (∞) Aktif!',
+              'Admin mengaktifkan Koin Unlimited di akunmu. Semua papan & pion premium siap dibuka gratis!',
+            );
+          } else {
+            showToast(
+              'Mode Koin Unlimited Dinonaktifkan',
+              `Saldo kembali normal (${aetherCoins.toLocaleString('id-ID')} Koin Aether).`,
+            );
+          }
+          return;
+        }
 
-      if (delta !== 0 && !isCoveredByGiftOverlay) {
-        if (delta > 0) {
+        const delta = aetherCoins - prevSnapCoins;
+        const recentGift = activeGiftNoticeRef.current;
+        const isCoveredByGiftOverlay =
+          recentGift !== null &&
+          Date.now() - recentGift.at < 4500 &&
+          delta === recentGift.amount;
+
+        if (delta !== 0 && !isCoveredByGiftOverlay) {
+          if (delta > 0) {
+            soundEngine.playVictory();
+            showToast(
+              `+${delta.toLocaleString('id-ID')} Koin Aether Masuk!`,
+              unlimitedCoins
+                ? 'Akunmu juga memiliki status Koin Unlimited (∞).'
+                : `Saldo kamu sekarang ${aetherCoins.toLocaleString('id-ID')} Koin.`,
+            );
+          } else {
+            showToast(
+              `Saldo Koin Diperbarui (${delta.toLocaleString('id-ID')})`,
+              unlimitedCoins
+                ? 'Akunmu memiliki status Koin Unlimited (∞).'
+                : `Saldo kamu sekarang ${aetherCoins.toLocaleString('id-ID')} Koin.`,
+            );
+          }
+        } else if (boardsAdded && prevSnapBoardsKey !== nextBoardsKey) {
           soundEngine.playVictory();
           showToast(
-            `+${delta.toLocaleString('id-ID')} Koin Aether Masuk!`,
-            `Saldo kamu sekarang ${aetherCoins.toLocaleString('id-ID')} Koin.`,
-          );
-        } else {
-          showToast(
-            `Saldo Koin Diperbarui (${delta.toLocaleString('id-ID')})`,
-            `Saldo kamu sekarang ${aetherCoins.toLocaleString('id-ID')} Koin.`,
+            'Akses Papan Premium Diaktifkan!',
+            'Koleksi papan barumu sudah tersedia di Studio Papan.',
           );
         }
-      } else if (boardsAdded && prevSnapBoardsKey !== nextBoardsKey) {
-        soundEngine.playVictory();
-        showToast(
-          'Akses Papan Premium Diaktifkan!',
-          'Koleksi papan barumu sudah tersedia di Studio Papan.',
-        );
-      }
-    });
+      },
+    );
   }, [showToast, user]);
 
   // Hard Authentication & Admin Route Guard
@@ -1031,6 +1067,7 @@ export default function App() {
           loginStreak: mergedStreak.loginStreak,
           lastLoginDate: mergedStreak.lastLoginDate,
           tutorialCompleted: prev.tutorialCompleted || Boolean(remote?.tutorialCompleted),
+          unlimitedCoins: Boolean(remote?.unlimitedCoins),
         };
         saveProfile(mergedProfile);
         setProfile(mergedProfile);
@@ -1379,12 +1416,14 @@ export default function App() {
         getClaimableMissionBoards(nextProfile).map((b) => b.id),
       );
 
+      const matchScoreEarned = Math.max(100, Math.round(localHero.score));
+
       nextProfile = {
         ...nextProfile,
         totalGames: nextProfile.totalGames + 1,
         wins: nextProfile.wins + (didHumanWin ? 1 : 0),
         losses: nextProfile.losses + (didHumanWin ? 0 : 1),
-        bestScore: Math.max(nextProfile.bestScore, localHero.score),
+        bestScore: Math.min(999_999_999, Math.max(0, nextProfile.bestScore) + matchScoreEarned),
         fastestWinTurns:
           didHumanWin &&
           (nextProfile.fastestWinTurns === null || localHero.turnsTaken < nextProfile.fastestWinTurns)
@@ -1428,6 +1467,12 @@ export default function App() {
           isEmoteSetUnlocked(s.id, nextProfile.unlockedAchievements),
       );
 
+      const achPointsBonus = achRes.newlyUnlocked.reduce((sum, id) => {
+        const def = ACHIEVEMENTS.find((a) => a.id === id);
+        return sum + (def?.points ?? 0);
+      }, 0);
+      const extraScoreBonus = (dailyRes.bonusAwarded ?? 0) + achPointsBonus;
+
       const coinReward = calculateMatchCoinReward({
         won: didHumanWin,
         laddersClimbed: localHero.laddersClimbed,
@@ -1437,6 +1482,7 @@ export default function App() {
       });
       nextProfile = {
         ...nextProfile,
+        bestScore: Math.min(999_999_999, nextProfile.bestScore + extraScoreBonus),
         aetherCoins: (nextProfile.aetherCoins ?? 0) + coinReward.total,
       };
 
@@ -1446,17 +1492,18 @@ export default function App() {
       const newlyClaimableBoards = getClaimableMissionBoards(nextProfile).filter(
         (b) => !prevClaimableBoardIds.has(b.id),
       );
+      const totalScoreAdded = matchScoreEarned + extraScoreBonus;
 
       if (newlyClaimableBoards.length > 0) {
         const firstBoard = newlyClaimableBoards[0];
         showToast(
           `Misi Papan Siap Diklaim: ${firstBoard.name}!`,
-          `+${coinReward.total} Koin Aether · Buka Studio Papan untuk klaim & membuka arena baru.`,
+          `+${totalScoreAdded.toLocaleString('id-ID')} Skor · +${coinReward.total} Koin · Buka Studio Papan untuk klaim.`,
         );
       } else if (dailyRes.challengeJustCompleted) {
         showToast(
           'Tantangan Harian Selesai!',
-          `+${dailyRes.bonusAwarded} poin bonus · +${coinReward.total} Koin Aether · Streak ${nextProfile.dailyStreak} hari`,
+          `+${totalScoreAdded.toLocaleString('id-ID')} Skor (termasuk +${dailyRes.bonusAwarded} bonus) · +${coinReward.total} Koin · Streak ${nextProfile.dailyStreak} hari`,
         );
       } else if (achRes.newlyUnlocked.length > 0 || newlyUnlockedEmoteSet) {
         const firstAch = ACHIEVEMENTS.find((a) => a.id === achRes.newlyUnlocked[0]);
@@ -1466,25 +1513,27 @@ export default function App() {
         if (newlyUnlockedEmoteSet && firstAch) {
           showToast(
             `Set Emote Baru Terbuka: ${newlyUnlockedEmoteSet.name}!`,
-            `Pencapaian "${firstAch.title}" selesai${rewardSkin ? ` · Skin Dadu ${rewardSkin.name} terbuka` : ''} (+${coinReward.total} Koin)`,
+            `Pencapaian "${firstAch.title}" selesai${rewardSkin ? ` · Skin Dadu ${rewardSkin.name} terbuka` : ''} (+${totalScoreAdded.toLocaleString('id-ID')} Skor)`,
           );
         } else if (newlyUnlockedEmoteSet) {
           showToast(
             `Set Emote Baru Terbuka: ${newlyUnlockedEmoteSet.name}!`,
-            `${newlyUnlockedEmoteSet.requirementLabel} · Pasang di tab Set Emote atau Emote Wheel (+${coinReward.total} Koin)`,
+            `${newlyUnlockedEmoteSet.requirementLabel} · Pasang di tab Set Emote atau Emote Wheel (+${totalScoreAdded.toLocaleString('id-ID')} Skor)`,
           );
         } else if (firstAch) {
           showToast(
             `Pencapaian Terbuka: ${firstAch.title}`,
             rewardSkin
-              ? `Skin Dadu 3D baru terbuka: ${rewardSkin.name}! (+${coinReward.total} Koin)`
-              : `${firstAch.description} (+${coinReward.total} Koin Aether)`,
+              ? `Skin Dadu 3D baru terbuka: ${rewardSkin.name}! (+${totalScoreAdded.toLocaleString('id-ID')} Skor)`
+              : `${firstAch.description} (+${totalScoreAdded.toLocaleString('id-ID')} Skor)`,
           );
         }
       } else {
         showToast(
-          `+${coinReward.total} Koin Aether`,
-          `${coinReward.breakdown} · Saldo: ${(nextProfile.aetherCoins ?? 0).toLocaleString('id-ID')} Koin.`,
+          `+${totalScoreAdded.toLocaleString('id-ID')} Skor · +${coinReward.total} Koin`,
+          nextProfile.unlimitedCoins
+            ? `Total Skor: ${nextProfile.bestScore.toLocaleString('id-ID')} · Saldo: ∞ Unlimited`
+            : `Total Skor: ${nextProfile.bestScore.toLocaleString('id-ID')} · Saldo: ${(nextProfile.aetherCoins ?? 0).toLocaleString('id-ID')} Koin`,
         );
       }
 

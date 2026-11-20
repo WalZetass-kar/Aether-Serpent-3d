@@ -134,11 +134,20 @@ export const DIRTY_DOZEN_CASES: readonly DirtyDozenCase[] = [
     payload: { name: 'Hijacked Board', downloads: 2 },
     expected: 'PERMISSION_DENIED',
   },
+  {
+    id: 15,
+    name: 'Non-admin owner cannot self-grant unlimitedCoins on create or update',
+    path: '/users/bob',
+    operation: 'update',
+    auth: { uid: 'bob', email: 'bob@example.com', email_verified: true },
+    payload: { unlimitedCoins: true },
+    expected: 'PERMISSION_DENIED',
+  },
 ];
 
 export function verifyDirtyDozenSpecification(): boolean {
   return (
-    DIRTY_DOZEN_CASES.length === 12 &&
+    DIRTY_DOZEN_CASES.length >= 12 &&
     DIRTY_DOZEN_CASES.every((item) => item.expected === 'PERMISSION_DENIED')
   );
 }

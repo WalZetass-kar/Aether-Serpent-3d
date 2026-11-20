@@ -72,6 +72,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
   const engineRef = useRef<PawnPreviewEngine | null>(null);
 
   const currentCoins = profile.aetherCoins ?? 0;
+  const isUnlimitedCoins = Boolean(profile.unlimitedCoins);
   const ownedCount = useMemo(
     () =>
       PLAYER_ARCHETYPES.filter((a) =>
@@ -99,8 +100,8 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
     profile.unlockedPawnIndices,
   );
   const isSelectedEquipped = profile.archetypeIndex === selectedPawn.archetypeIndex;
-  const canAffordSelected = currentCoins >= selectedPawn.priceCoins;
-  const shortfallCoins = Math.max(0, selectedPawn.priceCoins - currentCoins);
+  const canAffordSelected = isUnlimitedCoins || currentCoins >= selectedPawn.priceCoins;
+  const shortfallCoins = isUnlimitedCoins ? 0 : Math.max(0, selectedPawn.priceCoins - currentCoins);
 
   const showQuickNotice = (msg: string) => {
     setFeedbackToast(msg);
@@ -338,7 +339,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                     >
                       Pasang Pion
                     </button>
-                  ) : currentCoins >= arch.priceCoins ? (
+                  ) : isUnlimitedCoins || currentCoins >= arch.priceCoins ? (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -349,7 +350,11 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-xs font-bold text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
                     >
                       <ShoppingBag className="w-3.5 h-3.5" />
-                      <span>Beli ({arch.priceCoins.toLocaleString('id-ID')})</span>
+                      <span>
+                        {isUnlimitedCoins
+                          ? 'Buka Gratis (∞)'
+                          : `Beli (${arch.priceCoins.toLocaleString('id-ID')})`}
+                      </span>
                     </button>
                   ) : (
                     <button
@@ -498,7 +503,9 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                 >
                   <ShoppingBag className="w-4 h-4" />
                   <span>
-                    Beli Pion ({selectedPawn.priceCoins.toLocaleString('id-ID')} Koin)
+                    {isUnlimitedCoins
+                      ? 'Buka Pion (∞ Unlimited)'
+                      : `Beli Pion (${selectedPawn.priceCoins.toLocaleString('id-ID')} Koin)`}
                   </span>
                 </button>
               ) : (

@@ -134,6 +134,7 @@ export async function loadProfileFromFirebase(user: User): Promise<Partial<Playe
       ...(typeof data.aetherCoins === 'number'
         ? { aetherCoins: Math.max(0, Math.floor(data.aetherCoins)) }
         : {}),
+      unlimitedCoins: data.unlimitedCoins === true,
       ...(Array.isArray(data.unlockedBoardIds)
         ? {
             unlockedBoardIds: data.unlockedBoardIds
@@ -225,7 +226,7 @@ export async function syncProfileToFirebase(
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
         wins: Math.max(0, Math.floor(profile.wins)),
         losses: Math.max(0, Math.floor(profile.losses)),
-        bestScore: Math.max(0, Math.floor(profile.bestScore)),
+        bestScore: Math.min(999999999, Math.max(0, Math.floor(profile.bestScore))),
         fastestWinTurns: profile.fastestWinTurns ? Math.max(0, Math.floor(profile.fastestWinTurns)) : 0,
         laddersClimbed: Math.max(0, Math.floor(profile.laddersClimbed)),
         snakesBitten: Math.max(0, Math.floor(profile.snakesBitten)),
@@ -255,7 +256,7 @@ export async function syncProfileToFirebase(
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
         wins: Math.max(0, Math.floor(profile.wins)),
         losses: Math.max(0, Math.floor(profile.losses)),
-        bestScore: Math.max(0, Math.floor(profile.bestScore)),
+        bestScore: Math.min(999999999, Math.max(0, Math.floor(profile.bestScore))),
         fastestWinTurns: profile.fastestWinTurns ? Math.max(0, Math.floor(profile.fastestWinTurns)) : 0,
         laddersClimbed: Math.max(0, Math.floor(profile.laddersClimbed)),
         snakesBitten: Math.max(0, Math.floor(profile.snakesBitten)),
@@ -291,7 +292,7 @@ export async function syncProfileToFirebase(
         diceSkinId: profile.diceSkinId,
         wins: Math.max(0, Math.floor(profile.wins)),
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
-        bestScore: Math.max(0, Math.floor(profile.bestScore)),
+        bestScore: Math.min(999999999, Math.max(0, Math.floor(profile.bestScore))),
         onlineWins: Math.max(0, Math.floor(profile.onlineWins)),
         isPublic: true,
         isOnline: true,
@@ -308,7 +309,7 @@ export async function syncProfileToFirebase(
         diceSkinId: profile.diceSkinId,
         wins: Math.max(0, Math.floor(profile.wins)),
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
-        bestScore: Math.max(0, Math.floor(profile.bestScore)),
+        bestScore: Math.min(999999999, Math.max(0, Math.floor(profile.bestScore))),
         onlineWins: Math.max(0, Math.floor(profile.onlineWins)),
         isPublic: true,
         isOnline: true,

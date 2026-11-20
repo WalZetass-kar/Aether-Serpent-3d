@@ -16,7 +16,11 @@
    - `allow list` explicitly evaluates `resource.data.isPublished == true || isBootstrappedAdmin()`.
    - Creation requires `isEmailVerified()`, `exists(/databases/.../users/$(request.auth.uid))`, `incoming().authorUid == request.auth.uid`, `incoming().id == boardId`, `incoming().downloads == 0`, and `incoming().isPublished == true`.
    - Updates are action-partitioned: (a) author editing mutable board fields while keeping `downloads` unchanged, (b) verified players incrementing `downloads` by exactly `+1` (`affectedKeys().hasOnly(['downloads', 'updatedAt'])`), or (c) admin moderation of `isPublished`.
-5. **Temporal & Schema Integrity**:
+5. **Admin-Only Unlimited Coins Flag (`/users/{userId}.unlimitedCoins`)**:
+   - The `unlimitedCoins` boolean flag is strictly administrator-managed (`isAdmin()`).
+   - Regular users MUST NOT create a profile with `unlimitedCoins == true` and MUST NOT include `unlimitedCoins` in any owner `update` `affectedKeys()`.
+   - Only `isAdmin()` may toggle `unlimitedCoins` via the Admin Portal.
+6. **Temporal & Schema Integrity**:
    - All `createdAt` fields must equal `request.time` on `create` and remain immutable (`incoming().createdAt == existing().createdAt`) on `update`.
    - All `updatedAt` fields must equal `request.time` on both `create` and `update`.
    - Every string enforces bounded `.size()`, every list enforces bounded `.size()` and index-0 type check, and every `update` uses action-based `affectedKeys().hasOnly(...)`.
@@ -35,6 +39,7 @@
 11. **Client-Spoofed Timestamp**: Verified `bob` sets `updatedAt: new Date(0)` instead of `serverTimestamp()` (`request.time`) -> DENIED.
 12. **Orphaned Board Without Parent User**: Verified `bob` writes `/users/bob/boards/b1` when `/users/bob` does not exist -> DENIED by Master Gate `exists(...)`.
 13. **Community Board Author Spoofing & Download Inflation**: Verified `bob` attempts `create('/communityBoards/cb1', { authorUid: 'alice', downloads: 9999 })` or updates another author's board `name` -> DENIED by `isValidCommunityBoard` & action-based update gates.
+14. **Owner Self-Grant Unlimited Coins Privilege Escalation**: Verified non-admin `bob` attempts `create('/users/bob', { ..., unlimitedCoins: true })` or `update('/users/bob', { unlimitedCoins: true })` -> DENIED by create gate & owner `affectedKeys().hasOnly(...)` allowlist.
 
 ## 3. Verification
 All adversarial payloads are codified in `firestore.rules.test.ts` and validated against the ESLint security rules plugin (`@firebase/eslint-plugin-security-rules`) prior to deployment.

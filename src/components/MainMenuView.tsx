@@ -129,6 +129,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
   const [copiedUid, setCopiedUid] = useState(false);
 
   const currentCoins = profile.aetherCoins ?? 0;
+  const isUnlimitedCoins = Boolean(profile.unlimitedCoins);
 
   const openSidebar = () => {
     setEditName(profile.name);
@@ -295,15 +296,31 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             </div>
 
             {/* Player Coin / Points Balance Bar + TopUp Aether Coins Trigger */}
-            <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-400/35 bg-slate-900/85 px-3 py-2">
+            <div
+              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 ${
+                isUnlimitedCoins
+                  ? 'border-cyan-400/50 bg-cyan-950/35'
+                  : 'border-amber-400/35 bg-slate-900/85'
+              }`}
+            >
               <div className="flex items-center gap-2 min-w-0">
-                <Coins className="w-4 h-4 text-amber-400 shrink-0" />
+                <Coins
+                  className={`w-4 h-4 shrink-0 ${
+                    isUnlimitedCoins ? 'text-cyan-300' : 'text-amber-400'
+                  }`}
+                />
                 <div className="min-w-0">
                   <div className="text-[10px] font-semibold text-slate-400 leading-none">
                     Poin / Koin Aether Kamu
                   </div>
-                  <div className="font-mono-num text-sm sm:text-base font-bold text-amber-300 leading-tight mt-0.5">
-                    {currentCoins.toLocaleString('id-ID')} Koin
+                  <div
+                    className={`font-mono-num text-sm sm:text-base font-bold leading-tight mt-0.5 ${
+                      isUnlimitedCoins ? 'text-cyan-200' : 'text-amber-300'
+                    }`}
+                  >
+                    {isUnlimitedCoins
+                      ? '∞ Unlimited Koin'
+                      : `${currentCoins.toLocaleString('id-ID')} Koin`}
                   </div>
                 </div>
               </div>
@@ -313,7 +330,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                 className="inline-flex items-center gap-1.5 min-h-[38px] rounded-lg border border-amber-400/55 bg-amber-400 px-3 py-1.5 text-[11px] font-bold text-slate-950 hover:bg-amber-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Coins className="w-3.5 h-3.5 shrink-0" />
-                <span>TopUp Aether Coins</span>
+                <span>{isUnlimitedCoins ? 'Info Dompet' : 'TopUp Aether Coins'}</span>
               </button>
             </div>
 
@@ -847,6 +864,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
         user={user}
         playerName={profile.name}
         currentCoins={currentCoins}
+        unlimitedCoins={isUnlimitedCoins}
         onOpenAuth={onOpenAuth}
         onOpenAdminChat={() => setTopUpChatOpen(true)}
         onOpenBoardCollection={() => onOpenBoardManager('collection')}
@@ -859,6 +877,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             user={user}
             displayName={profile.name}
             currentCoins={currentCoins}
+            unlimitedCoins={isUnlimitedCoins}
             onOpenAuth={() => onOpenAuth('login')}
             onClose={() => setTopUpChatOpen(false)}
           />

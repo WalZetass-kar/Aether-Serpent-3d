@@ -505,8 +505,14 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   {boardCollection.selectionMode} mode
                 </span>
                 {' · '}
-                <span className="font-mono-num text-amber-200">
-                  {(profile.aetherCoins ?? 0).toLocaleString('id-ID')} Koin Aether
+                <span
+                  className={`font-mono-num ${
+                    profile.unlimitedCoins ? 'text-cyan-300 font-bold' : 'text-amber-200'
+                  }`}
+                >
+                  {profile.unlimitedCoins
+                    ? '∞ Unlimited Koin Aether'
+                    : `${(profile.aetherCoins ?? 0).toLocaleString('id-ID')} Koin Aether`}
                 </span>
               </p>
             </div>

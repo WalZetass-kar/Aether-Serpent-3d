@@ -670,7 +670,7 @@ export function resolveTurnMove(
   }
 
   const landedTile = cursor;
-  let scoreDelta = roll * 15;
+  let scoreDelta = roll * 25;
   let shieldsDelta = 0;
   let shieldBlocked = false;
   let extraTurn = roll === 6;
@@ -680,20 +680,20 @@ export function resolveTurnMove(
 
   if (specialHit) {
     if (specialHit.type === 'boost') {
-      scoreDelta += 80;
+      scoreDelta += 120;
       const target = landedTile + (specialHit.delta ?? 4);
       postSpecialTile = target > 100 ? 100 - (target - 100) : target;
     } else if (specialHit.type === 'extra_roll') {
-      scoreDelta += 80;
+      scoreDelta += 120;
       extraTurn = true;
     } else if (specialHit.type === 'shield') {
-      scoreDelta += 90;
+      scoreDelta += 140;
       shieldsDelta += 1;
     } else if (specialHit.type === 'curse') {
       if (currentShields + shieldsDelta > 0) {
         shieldsDelta -= 1;
         shieldBlocked = true;
-        scoreDelta += 120;
+        scoreDelta += 200;
       } else {
         postSpecialTile = Math.max(1, landedTile + (specialHit.delta ?? -3));
         scoreDelta = Math.max(0, scoreDelta - 25);
@@ -729,12 +729,12 @@ export function resolveTurnMove(
   if (jumpTriggered) {
     if (jumpTriggered.type === 'ladder') {
       finalTile = jumpTriggered.to;
-      scoreDelta += 120;
+      scoreDelta += 180 + Math.max(0, jumpTriggered.to - jumpTriggered.from) * 8;
     } else if (jumpTriggered.type === 'snake') {
       if (currentShields + shieldsDelta > 0) {
         shieldsDelta -= 1;
         shieldBlocked = true;
-        scoreDelta += 150;
+        scoreDelta += 220;
         finalTile = postSpecialTile;
       } else {
         finalTile = jumpTriggered.to;
@@ -763,7 +763,7 @@ export function resolveTurnMove(
           };
         } else {
           const pushedTo = Math.max(1, victim.tile - 4);
-          scoreDelta += 75;
+          scoreDelta += 150;
           battlePush = {
             targetPlayerId: victim.id,
             targetPlayerName: victim.name,
@@ -778,11 +778,11 @@ export function resolveTurnMove(
         (o) => o.id !== context?.actorId && o.team === context.actorTeam && o.tile === finalTile,
       );
       if (ally) {
-        scoreDelta += 40;
+        scoreDelta += 100;
         teamSynergy = {
           allyPlayerId: ally.id,
           allyPlayerName: ally.name,
-          bonusScore: 40,
+          bonusScore: 100,
         };
       }
     }
@@ -873,8 +873,8 @@ export function pickTimeAttackWinner(players: PlayerState[]): PlayerState | null
 }
 
 export function calculateVictoryBonus(turns: number, difficulty: DifficultyMode): number {
-  const efficiency = Math.max(0, 60 - turns) * 20;
-  return Math.round((500 + efficiency) * getDifficultyMultiplier(difficulty));
+  const efficiency = Math.max(0, 60 - turns) * 35;
+  return Math.round((850 + efficiency) * getDifficultyMultiplier(difficulty));
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [

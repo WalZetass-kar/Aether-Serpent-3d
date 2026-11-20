@@ -1,0 +1,826 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny everything not explicitly matched
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidPairId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 260 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isEmailVerified() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isEmailVerified() && request.auth.token.email == 'ihwalmaulana09@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin()
+        || (isEmailVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
+          'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
+          'onlineWins', 'unlockedAchievements', 'dailyStreak',
+          'loginStreak', 'lastLoginDate',
+          'tutorialCompleted', 'muted', 'selectedBoardId',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'archetypeIndex', 'diceSkinId', 'emoteSetId',
+          'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
+          'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
+          'onlineWins', 'unlockedAchievements', 'dailyStreak',
+          'loginStreak', 'lastLoginDate',
+          'tutorialCompleted', 'muted', 'selectedBoardId',
+          'aetherCoins', 'unlimitedCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && (isAdmin() || request.auth.token.email == null || data.email == request.auth.token.email)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
+        && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 13
+        && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
+        && (!('emoteSetId' in data) || (data.emoteSetId is string && data.emoteSetId.size() >= 1 && data.emoteSetId.size() <= 40 && data.emoteSetId in ['classic_aether', 'ember_valor', 'astral_oracle', 'serpent_guild', 'sovereign_crown']))
+        && data.totalGames is int && data.totalGames >= 0 && data.totalGames <= 1000000
+        && data.wins is int && data.wins >= 0 && data.wins <= 1000000
+        && data.losses is int && data.losses >= 0 && data.losses <= 1000000
+        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 999999999
+        && data.fastestWinTurns is int && data.fastestWinTurns >= 0 && data.fastestWinTurns <= 10000
+        && data.laddersClimbed is int && data.laddersClimbed >= 0 && data.laddersClimbed <= 1000000
+        && data.snakesBitten is int && data.snakesBitten >= 0 && data.snakesBitten <= 1000000
+        && data.shieldsUsed is int && data.shieldsUsed >= 0 && data.shieldsUsed <= 1000000
+        && data.specialTilesHit is int && data.specialTilesHit >= 0 && data.specialTilesHit <= 1000000
+        && data.onlineWins is int && data.onlineWins >= 0 && data.onlineWins <= 1000000
+        && data.unlockedAchievements is list && data.unlockedAchievements.size() <= 24
+        && (data.unlockedAchievements.size() == 0 || (data.unlockedAchievements[0] is string && data.unlockedAchievements[0].size() <= 64))
+        && data.dailyStreak is int && data.dailyStreak >= 0 && data.dailyStreak <= 10000
+        && data.loginStreak is int && data.loginStreak >= 1 && data.loginStreak <= 100000
+        && data.lastLoginDate is string && data.lastLoginDate.size() >= 1 && data.lastLoginDate.size() <= 16
+        && data.tutorialCompleted is bool
+        && data.muted is bool
+        && data.selectedBoardId is string && data.selectedBoardId.size() >= 1 && data.selectedBoardId.size() <= 80
+        && (!('aetherCoins' in data) || (data.aetherCoins is int && data.aetherCoins >= 0 && data.aetherCoins <= 10000000))
+        && (!('unlimitedCoins' in data) || data.unlimitedCoins is bool)
+        && (!('unlockedBoardIds' in data) || (data.unlockedBoardIds is list && data.unlockedBoardIds.size() <= 30 && (data.unlockedBoardIds.size() == 0 || (data.unlockedBoardIds[0] is string && data.unlockedBoardIds[0].size() <= 64))))
+        && (!('unlockedPawnIndices' in data) || (data.unlockedPawnIndices is list && data.unlockedPawnIndices.size() <= 14 && (data.unlockedPawnIndices.size() == 0 || (data.unlockedPawnIndices[0] is int && data.unlockedPawnIndices[0] >= 0 && data.unlockedPawnIndices[0] <= 13))))
+        && (!('numericId' in data) || (data.numericId is string && data.numericId.size() >= 6 && data.numericId.size() <= 16 && data.numericId.matches('^[0-9]+$')))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCustomBoard(data, userId, boardId) {
+      return data.keys().hasAll([
+          'id', 'ownerUid', 'name', 'themeId', 'ladders', 'snakes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerUid', 'name', 'themeId', 'ladders', 'snakes', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == boardId && data.id.size() >= 1 && data.id.size() <= 80
+        && data.ownerUid is string && data.ownerUid == userId && data.ownerUid == request.auth.uid && data.ownerUid.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 60
+        && data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 40
+        && data.ladders is list && data.ladders.size() <= 20
+        && (data.ladders.size() == 0 || data.ladders[0] is map)
+        && data.snakes is list && data.snakes.size() <= 20
+        && (data.snakes.size() == 0 || data.snakes[0] is map)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPublicProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'displayNameLower', 'numericId',
+          'archetypeIndex', 'diceSkinId',
+          'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
+          'isOnline', 'lastSeenAt',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
+        && (!('displayNameLower' in data) || (data.displayNameLower is string && data.displayNameLower.size() >= 1 && data.displayNameLower.size() <= 32))
+        && (!('numericId' in data) || (data.numericId is string && data.numericId.size() >= 6 && data.numericId.size() <= 16 && data.numericId.matches('^[0-9]+$')))
+        && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 13
+        && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
+        && data.wins is int && data.wins >= 0 && data.wins <= 1000000
+        && data.totalGames is int && data.totalGames >= 0 && data.totalGames <= 1000000
+        && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 999999999
+        && data.onlineWins is int && data.onlineWins >= 0 && data.onlineWins <= 1000000
+        && data.isPublic is bool
+        && (!('isOnline' in data) || data.isOnline is bool)
+        && (!('lastSeenAt' in data) || data.lastSeenAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRole(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.uid is string && data.uid == userId && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidActiveRoom(data, roomCode) {
+      return data.keys().hasAll([
+          'code', 'name', 'hostUid', 'hostName', 'isPublic', 'boardMode',
+          'boardName', 'themeId', 'status', 'winnerId',
+          'playerCount', 'maxPlayers', 'turnCount', 'players',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'code', 'name', 'hostUid', 'hostName', 'isPublic', 'boardMode',
+          'boardName', 'themeId', 'status', 'winnerId',
+          'playerCount', 'maxPlayers', 'turnCount', 'players',
+          'createdAt', 'updatedAt'
+        ])
+        && data.code is string && data.code == roomCode && data.code.size() >= 4 && data.code.size() <= 16
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 60
+        && data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 && (data.hostUid == request.auth.uid || isAdmin())
+        && data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 40
+        && data.isPublic is bool
+        && data.boardMode is string && data.boardMode in ['classic', 'battle', 'team', 'time_attack']
+        && data.boardName is string && data.boardName.size() >= 1 && data.boardName.size() <= 60
+        && data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 40
+        && data.status is string && data.status in ['lobby', 'playing', 'finished']
+        && data.winnerId is string && data.winnerId.size() <= 128
+        && data.playerCount is int && data.playerCount >= 1 && data.playerCount <= 4
+        && data.maxPlayers is int && data.maxPlayers >= 2 && data.maxPlayers <= 4
+        && data.turnCount is int && data.turnCount >= 0 && data.turnCount <= 100000
+        && data.players is list && data.players.size() >= 1 && data.players.size() <= 4 && data.players[0] is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTopUpChatThread(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'status', 'requestedPackName',
+          'lastMessageText', 'lastSenderRole', 'unreadByAdmin', 'unreadByMember',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'status', 'requestedPackName',
+          'lastMessageText', 'lastSenderRole', 'unreadByAdmin', 'unreadByMember',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && (isAdmin() || request.auth.token.email == null || data.email == request.auth.token.email)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
+        && data.status is string && data.status in ['open', 'pending_payment', 'completed']
+        && (isAdmin() || data.status != 'completed')
+        && data.requestedPackName is string && data.requestedPackName.size() <= 80
+        && data.lastMessageText is string && data.lastMessageText.size() <= 300
+        && data.lastSenderRole is string && data.lastSenderRole in ['member', 'admin']
+        && data.unreadByAdmin is int && data.unreadByAdmin >= 0 && data.unreadByAdmin <= 999
+        && data.unreadByMember is int && data.unreadByMember >= 0 && data.unreadByMember <= 999
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTopUpChatMessage(data, userId, messageId) {
+      return data.keys().hasAll([
+          'id', 'threadUid', 'senderUid', 'senderName', 'senderRole',
+          'text', 'packId', 'coinDelta', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'threadUid', 'senderUid', 'senderName', 'senderRole',
+          'text', 'packId', 'coinDelta', 'createdAt'
+        ])
+        && data.id is string && data.id == messageId && data.id.size() >= 1 && data.id.size() <= 80
+        && data.threadUid is string && data.threadUid == userId && data.threadUid.size() <= 128
+        && data.senderUid is string && data.senderUid == request.auth.uid && data.senderUid.size() <= 128
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40
+        && data.senderRole is string
+        && ((data.senderRole == 'admin' && isAdmin()) || (data.senderRole == 'member' && isOwner(userId)))
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 600
+        && data.packId is string && data.packId.size() <= 40
+        && data.coinDelta is int && data.coinDelta >= -10000000 && data.coinDelta <= 10000000
+        && (data.coinDelta == 0 || isAdmin())
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCoinGift(data, userId, giftId) {
+      return data.keys().hasAll([
+          'id', 'recipientUid', 'senderUid', 'senderName',
+          'amount', 'message', 'acknowledged', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'recipientUid', 'senderUid', 'senderName',
+          'amount', 'message', 'acknowledged', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == giftId && data.id.size() >= 1 && data.id.size() <= 80
+        && data.recipientUid is string && data.recipientUid == userId && data.recipientUid.size() >= 1 && data.recipientUid.size() <= 128
+        && data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40
+        && data.amount is int && data.amount >= 1 && data.amount <= 10000000
+        && data.message is string && data.message.size() <= 200
+        && data.acknowledged is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFriendship(data, pairId) {
+      return data.keys().hasAll([
+          'id', 'user1Uid', 'user2Uid', 'participantUids', 'requestedBy', 'status',
+          'user1Name', 'user2Name', 'user1Archetype', 'user2Archetype',
+          'inviteRoomCode', 'inviteFromUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'user1Uid', 'user2Uid', 'participantUids', 'requestedBy', 'status',
+          'user1Name', 'user2Name', 'user1Archetype', 'user2Archetype',
+          'inviteRoomCode', 'inviteFromUid', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == pairId && data.id.size() >= 3 && data.id.size() <= 260
+        && data.user1Uid is string && isValidId(data.user1Uid)
+        && data.user2Uid is string && isValidId(data.user2Uid)
+        && data.user1Uid < data.user2Uid
+        && data.id == data.user1Uid + '__' + data.user2Uid
+        && data.participantUids is list && data.participantUids.size() == 2
+        && data.participantUids[0] == data.user1Uid
+        && data.participantUids[1] == data.user2Uid
+        && data.requestedBy is string && (data.requestedBy == data.user1Uid || data.requestedBy == data.user2Uid)
+        && data.status is string && data.status in ['pending', 'accepted']
+        && data.user1Name is string && data.user1Name.size() >= 1 && data.user1Name.size() <= 32
+        && data.user2Name is string && data.user2Name.size() >= 1 && data.user2Name.size() <= 32
+        && data.user1Archetype is int && data.user1Archetype >= 0 && data.user1Archetype <= 13
+        && data.user2Archetype is int && data.user2Archetype >= 0 && data.user2Archetype <= 13
+        && data.inviteRoomCode is string && data.inviteRoomCode.size() <= 16
+        && data.inviteFromUid is string && data.inviteFromUid.size() <= 128
+        && (data.inviteFromUid == '' || data.inviteFromUid == data.user1Uid || data.inviteFromUid == data.user2Uid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isFriendParticipant(data) {
+      return isEmailVerified()
+        && (data.user1Uid == request.auth.uid || data.user2Uid == request.auth.uid);
+    }
+
+    function isValidFriendMessage(data, pairId, messageId) {
+      return data.keys().hasAll([
+          'id', 'pairId', 'senderUid', 'recipientUid', 'participantUids',
+          'senderName', 'text', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'pairId', 'senderUid', 'recipientUid', 'participantUids',
+          'senderName', 'text', 'createdAt'
+        ])
+        && data.id is string && data.id == messageId && isValidId(data.id) && data.id.size() <= 80
+        && data.pairId is string && data.pairId == pairId && isValidPairId(data.pairId)
+        && data.senderUid is string && isValidId(data.senderUid)
+        && data.recipientUid is string && isValidId(data.recipientUid) && data.recipientUid != data.senderUid
+        && data.participantUids is list && data.participantUids.size() == 2
+        && data.participantUids[0] is string && data.participantUids[1] is string
+        && data.participantUids[0] < data.participantUids[1]
+        && data.pairId == data.participantUids[0] + '__' + data.participantUids[1]
+        && (data.senderUid == data.participantUids[0] || data.senderUid == data.participantUids[1])
+        && (data.recipientUid == data.participantUids[0] || data.recipientUid == data.participantUids[1])
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 300
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCommunityBoard(data, boardId) {
+      return data.keys().hasAll([
+          'id', 'authorUid', 'authorName', 'name', 'subtitle', 'description',
+          'themeId', 'previewSwatches', 'ladders', 'snakes',
+          'boardSettings', 'tileConfig', 'snakeConfig', 'ladderConfig',
+          'environmentConfig', 'visualEffects',
+          'isPublished', 'downloads', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'authorUid', 'authorName', 'name', 'subtitle', 'description',
+          'themeId', 'previewSwatches', 'ladders', 'snakes',
+          'boardSettings', 'tileConfig', 'snakeConfig', 'ladderConfig',
+          'environmentConfig', 'visualEffects',
+          'isPublished', 'downloads', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == boardId && isValidId(data.id) && data.id.size() <= 80
+        && data.authorUid is string && isValidId(data.authorUid)
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 32
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 60
+        && data.subtitle is string && data.subtitle.size() <= 100
+        && data.description is string && data.description.size() <= 240
+        && data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 40
+        && data.previewSwatches is list && data.previewSwatches.size() == 3
+        && data.previewSwatches[0] is string && data.previewSwatches[0].size() <= 16
+        && data.ladders is list && data.ladders.size() <= 20
+        && (data.ladders.size() == 0 || data.ladders[0] is map)
+        && data.snakes is list && data.snakes.size() <= 20
+        && (data.snakes.size() == 0 || data.snakes[0] is map)
+        && data.boardSettings is map
+        && data.boardSettings.keys().hasOnly(['shape', 'sizeScale', 'material', 'primaryColor', 'secondaryColor'])
+        && data.tileConfig is map
+        && data.tileConfig.keys().hasOnly(['shape', 'primaryColor', 'alternateColor', 'textureStyle', 'material', 'numeralStyle', 'visualEffect'])
+        && data.snakeConfig is map
+        && data.snakeConfig.keys().hasOnly(['primaryColor', 'stripeColor', 'bellyColor', 'hornColor', 'headModel', 'scalePattern', 'sizeScale', 'materialFinish'])
+        && data.ladderConfig is map
+        && data.ladderConfig.keys().hasOnly(['materialStyle', 'primaryColor', 'accentColor', 'modelStyle', 'widthScale'])
+        && data.environmentConfig is map
+        && data.environmentConfig.keys().hasOnly(['skyPreset', 'showTrees', 'showRocks', 'showCastle', 'showWaterfall', 'decorations', 'fogIntensity', 'lightingPreset'])
+        && data.visualEffects is map
+        && data.visualEffects.keys().hasOnly(['particleStyle', 'particleDensity', 'glowIntensity', 'ambientIntensity', 'shadowsEnabled'])
+        && data.isPublished is bool
+        && data.downloads is int && data.downloads >= 0 && data.downloads <= 10000000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // /users/{userId} — Private PII & Account State (Owner + Verified Admin)
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && (!('aetherCoins' in incoming()) || incoming().aetherCoins <= 500)
+        && (!('unlimitedCoins' in incoming()) || incoming().unlimitedCoins == false)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isOwner(userId)
+            && (!('aetherCoins' in incoming()) || !('aetherCoins' in existing()) || incoming().aetherCoins <= existing().aetherCoins + 500)
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName', 'archetypeIndex', 'diceSkinId', 'emoteSetId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId', 'updatedAt'
+              ])
+              ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName', 'archetypeIndex', 'diceSkinId', 'emoteSetId',
+                'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
+                'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
+                'onlineWins', 'unlockedAchievements', 'dailyStreak',
+                'loginStreak', 'lastLoginDate',
+                'tutorialCompleted', 'muted', 'selectedBoardId',
+                'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId', 'updatedAt'
+              ])
+            )
+          )
+          ||
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'aetherCoins', 'unlimitedCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // /users/{userId}/boards/{boardId} — Custom 3D Boards (Master Gate -> parent /users/{userId})
+      match /boards/{boardId} {
+        allow get: if isValidId(userId) && isValidId(boardId) && (isOwner(userId) || isAdmin())
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow list: if isValidId(userId) && (
+          (isOwner(userId) && resource.data.ownerUid == request.auth.uid)
+          || isBootstrappedAdmin()
+        );
+
+        allow create: if isValidId(userId)
+          && isValidId(boardId)
+          && isOwner(userId)
+          && isValidCustomBoard(incoming(), userId, boardId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isValidId(userId)
+          && isValidId(boardId)
+          && isOwner(userId)
+          && isValidCustomBoard(incoming(), userId, boardId)
+          && incoming().id == existing().id
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'themeId', 'ladders', 'snakes', 'updatedAt'
+          ])
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow delete: if isValidId(userId)
+          && isValidId(boardId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+      }
+
+      // /users/{userId}/coinGifts/{giftId} — Admin-Issued Gift Coins Notifications (Master Gate -> /users/{userId})
+      match /coinGifts/{giftId} {
+        allow get: if isValidId(userId) && isValidId(giftId)
+          && (isOwner(userId) || isAdmin())
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow list: if isValidId(userId) && (
+          (isOwner(userId) && resource.data.recipientUid == request.auth.uid)
+          || isBootstrappedAdmin()
+        );
+
+        allow create: if isValidId(userId) && isValidId(giftId)
+          && isAdmin()
+          && isValidCoinGift(incoming(), userId, giftId)
+          && incoming().senderUid == request.auth.uid
+          && incoming().acknowledged == false
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isValidId(userId) && isValidId(giftId)
+          && isValidCoinGift(incoming(), userId, giftId)
+          && incoming().id == existing().id
+          && incoming().recipientUid == existing().recipientUid
+          && incoming().senderUid == existing().senderUid
+          && incoming().senderName == existing().senderName
+          && incoming().amount == existing().amount
+          && incoming().message == existing().message
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (
+              isOwner(userId)
+              && existing().acknowledged == false
+              && incoming().acknowledged == true
+              && incoming().diff(existing()).affectedKeys().hasOnly(['acknowledged', 'updatedAt'])
+            )
+            ||
+            (
+              isAdmin()
+              && incoming().diff(existing()).affectedKeys().hasOnly(['acknowledged', 'updatedAt'])
+            )
+          )
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow delete: if isValidId(userId) && isValidId(giftId)
+          && isAdmin()
+          && exists(/databases/$(database)/documents/users/$(userId));
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // /publicProfiles/{userId} — PII-Free Public Leaderboard & Presence Projection
+    // -------------------------------------------------------------------------
+    match /publicProfiles/{userId} {
+      allow get: if isValidId(userId)
+        && (isOwner(userId) || isAdmin() || (isEmailVerified() && (resource == null || resource.data.isPublic == true)) || (resource != null && resource.data.isPublic == true));
+      allow list: if resource.data.isPublic == true || isBootstrappedAdmin();
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidPublicProfile(incoming(), userId)
+        && (!('lastSeenAt' in incoming()) || incoming().lastSeenAt == request.time)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isValidPublicProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (!('lastSeenAt' in incoming().diff(existing()).affectedKeys()) || incoming().lastSeenAt == request.time)
+        && (
+          (
+            isOwner(userId)
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName', 'displayNameLower', 'numericId', 'archetypeIndex', 'diceSkinId',
+                'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
+                'isOnline', 'lastSeenAt', 'updatedAt'
+              ])
+              ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'isOnline', 'lastSeenAt', 'updatedAt'
+              ])
+            )
+          )
+          ||
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'isPublic', 'updatedAt'
+          ]))
+        );
+
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
+    // -------------------------------------------------------------------------
+    // /admins/{userId} — Admin Role Directory (Bootstrapped Admin Managed)
+    // -------------------------------------------------------------------------
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isBootstrappedAdmin());
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isValidId(userId)
+        && isBootstrappedAdmin()
+        && isValidAdminRole(incoming(), userId)
+        && incoming().createdAt == request.time;
+
+      allow update: if false;
+
+      allow delete: if isValidId(userId) && isBootstrappedAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // /activeRooms/{roomCode} — Live Multiplayer Room Sync (Host Managed + Admin Monitored)
+    // -------------------------------------------------------------------------
+    match /activeRooms/{roomCode} {
+      allow get: if isValidId(roomCode)
+        && isEmailVerified()
+        && (isAdmin() || (resource != null && (resource.data.isPublic == true || resource.data.hostUid == request.auth.uid)));
+      allow list: if isBootstrappedAdmin()
+        || (isEmailVerified() && (resource.data.isPublic == true || resource.data.hostUid == request.auth.uid));
+
+      allow create: if isValidId(roomCode)
+        && isEmailVerified()
+        && isValidActiveRoom(incoming(), roomCode)
+        && incoming().hostUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(roomCode)
+        && isEmailVerified()
+        && isValidActiveRoom(incoming(), roomCode)
+        && incoming().code == existing().code
+        && incoming().hostUid == existing().hostUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (existing().hostUid == request.auth.uid || isAdmin())
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'hostName', 'isPublic', 'boardMode', 'boardName',
+          'themeId', 'status', 'winnerId', 'playerCount', 'maxPlayers',
+          'turnCount', 'players', 'updatedAt'
+        ]);
+
+      allow delete: if isValidId(roomCode)
+        && isEmailVerified()
+        && (existing().hostUid == request.auth.uid || isAdmin());
+    }
+
+    // -------------------------------------------------------------------------
+    // /topupChats/{userId} — Private Paid Top-Up Chat Thread (Owner + Admin)
+    // -------------------------------------------------------------------------
+    match /topupChats/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isValidId(userId)
+        && (isOwner(userId) || isAdmin())
+        && isValidTopUpChatThread(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && (isOwner(userId) || isAdmin())
+        && isValidTopUpChatThread(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'status', 'requestedPackName', 'lastMessageText',
+          'lastSenderRole', 'unreadByAdmin', 'unreadByMember', 'updatedAt'
+        ]);
+
+      allow delete: if isValidId(userId) && isAdmin();
+
+      // /topupChats/{userId}/messages/{messageId} — Immutable Chat & Coin Audit Log
+      match /messages/{messageId} {
+        allow get: if isValidId(userId) && isValidId(messageId)
+          && (isOwner(userId) || isAdmin())
+          && exists(/databases/$(database)/documents/topupChats/$(userId));
+
+        allow list: if isValidId(userId)
+          && (
+            (isOwner(userId) && resource.data.threadUid == request.auth.uid)
+            || isBootstrappedAdmin()
+          )
+          && exists(/databases/$(database)/documents/topupChats/$(userId));
+
+        allow create: if isValidId(userId) && isValidId(messageId)
+          && (isOwner(userId) || isAdmin())
+          && isValidTopUpChatMessage(incoming(), userId, messageId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/topupChats/$(userId));
+
+        allow update: if false;
+
+        allow delete: if isValidId(userId) && isValidId(messageId) && isAdmin();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // /friendships/{pairId} — Friend Requests, Friends List & Room Invites
+    // -------------------------------------------------------------------------
+    match /friendships/{pairId} {
+      allow get: if isValidPairId(pairId) && isEmailVerified() && (
+        isAdmin()
+        || (resource == null && pairId.matches('^(' + request.auth.uid + '__.*|.*__' + request.auth.uid + ')$'))
+        || (resource != null && isFriendParticipant(existing()))
+      );
+
+      allow list: if isBootstrappedAdmin()
+        || (isEmailVerified() && request.auth.uid in resource.data.participantUids);
+
+      allow create: if isValidPairId(pairId)
+        && isEmailVerified()
+        && isValidFriendship(incoming(), pairId)
+        && incoming().requestedBy == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().inviteRoomCode == ''
+        && incoming().inviteFromUid == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/publicProfiles/$(incoming().user1Uid))
+        && exists(/databases/$(database)/documents/publicProfiles/$(incoming().user2Uid));
+
+      allow update: if isValidPairId(pairId)
+        && isEmailVerified()
+        && isValidFriendship(incoming(), pairId)
+        && incoming().id == existing().id
+        && incoming().user1Uid == existing().user1Uid
+        && incoming().user2Uid == existing().user2Uid
+        && incoming().participantUids == existing().participantUids
+        && incoming().requestedBy == existing().requestedBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().status == 'pending'
+            && incoming().status == 'accepted'
+            && request.auth.uid != existing().requestedBy
+            && isFriendParticipant(existing())
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+          ||
+          (
+            existing().status == 'accepted'
+            && isFriendParticipant(existing())
+            && (
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly(['inviteRoomCode', 'inviteFromUid', 'updatedAt'])
+                && (incoming().inviteFromUid == '' || incoming().inviteFromUid == request.auth.uid)
+              )
+              ||
+              (
+                request.auth.uid == existing().user1Uid
+                && incoming().diff(existing()).affectedKeys().hasOnly(['user1Name', 'user1Archetype', 'updatedAt'])
+              )
+              ||
+              (
+                request.auth.uid == existing().user2Uid
+                && incoming().diff(existing()).affectedKeys().hasOnly(['user2Name', 'user2Archetype', 'updatedAt'])
+              )
+            )
+          )
+        );
+
+      allow delete: if isValidPairId(pairId)
+        && isEmailVerified()
+        && (isAdmin() || isFriendParticipant(existing()));
+
+      // /friendships/{pairId}/messages/{messageId} — Immutable 1-to-1 Friend Quick-Chat
+      match /messages/{messageId} {
+        allow get: if isValidPairId(pairId) && isValidId(messageId)
+          && isEmailVerified()
+          && (
+            isAdmin()
+            || request.auth.uid in get(/databases/$(database)/documents/friendships/$(pairId)).data.participantUids
+          );
+
+        allow list: if isValidPairId(pairId)
+          && (
+            isBootstrappedAdmin()
+            || (
+              isEmailVerified()
+              && resource.data.pairId == pairId
+              && request.auth.uid in resource.data.participantUids
+            )
+          );
+
+        allow create: if isValidPairId(pairId) && isValidId(messageId)
+          && isEmailVerified()
+          && isValidFriendMessage(incoming(), pairId, messageId)
+          && incoming().senderUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && get(/databases/$(database)/documents/friendships/$(pairId)).data.status == 'accepted'
+          && request.auth.uid in get(/databases/$(database)/documents/friendships/$(pairId)).data.participantUids
+          && incoming().participantUids == get(/databases/$(database)/documents/friendships/$(pairId)).data.participantUids;
+
+        allow update: if false;
+
+        allow delete: if isValidPairId(pairId) && isValidId(messageId)
+          && isAdmin()
+          && exists(/databases/$(database)/documents/friendships/$(pairId));
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // /communityBoards/{boardId} — PII-Free Shared Community 3D Boards
+    // -------------------------------------------------------------------------
+    match /communityBoards/{boardId} {
+      allow get: if isValidId(boardId) && (
+        isAdmin()
+        || (resource != null && resource.data.isPublished == true)
+        || (isEmailVerified() && (resource == null || resource.data.authorUid == request.auth.uid))
+      );
+
+      allow list: if resource.data.isPublished == true || isBootstrappedAdmin();
+
+      allow create: if isValidId(boardId)
+        && isEmailVerified()
+        && isValidCommunityBoard(incoming(), boardId)
+        && incoming().authorUid == request.auth.uid
+        && incoming().downloads == 0
+        && incoming().isPublished == true
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      allow update: if isValidId(boardId)
+        && isEmailVerified()
+        && isValidCommunityBoard(incoming(), boardId)
+        && incoming().id == existing().id
+        && incoming().authorUid == existing().authorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().authorUid == request.auth.uid
+            && incoming().downloads == existing().downloads
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'authorName', 'name', 'subtitle', 'description', 'themeId',
+              'previewSwatches', 'ladders', 'snakes',
+              'boardSettings', 'tileConfig', 'snakeConfig', 'ladderConfig',
+              'environmentConfig', 'visualEffects',
+              'isPublished', 'updatedAt'
+            ])
+          )
+          ||
+          (
+            existing().isPublished == true
+            && incoming().downloads == existing().downloads + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['downloads', 'updatedAt'])
+          )
+          ||
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['isPublished', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(boardId)
+        && isEmailVerified()
+        && (existing().authorUid == request.auth.uid || isAdmin());
+    }
+  }
+}
