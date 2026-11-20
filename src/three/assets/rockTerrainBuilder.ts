@@ -250,7 +250,16 @@ export function createSculptedTerrain(
  * Custom PBR rock material enhanced with world-space upward moss accumulation
  * via onBeforeCompile so cliffs and boulders naturally grow moss on top ledges.
  */
-export function createWorldMossRockMaterial(rockPbr: PbrTextureSet): THREE.MeshStandardMaterial {
+export function createWorldMossRockMaterial(
+  rockPbr: PbrTextureSet,
+  simplified = false,
+): THREE.MeshStandardMaterial | THREE.MeshLambertMaterial {
+  if (simplified) {
+    return new THREE.MeshLambertMaterial({
+      map: rockPbr.map,
+      color: 0xb6c6d9,
+    });
+  }
   const mat = new THREE.MeshStandardMaterial({
     map: rockPbr.map,
     normalMap: rockPbr.normalMap,

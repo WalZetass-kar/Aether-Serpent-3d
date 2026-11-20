@@ -15,8 +15,10 @@ import {
 } from 'lucide-react';
 import {
   ONLINE_TURN_TIMEOUT_SEC,
+  getEmoteSetDef,
   type BoardGameMode,
   type ConnectionMode,
+  type EmoteSetId,
   type PlayerState,
 } from '../../shared/gameConfig';
 import type { CameraMode } from '../three/DynamicCameraController';
@@ -69,11 +71,13 @@ interface BottomControlDockProps {
   mode: ConnectionMode;
   boardMode: BoardGameMode;
   cameraMode: CameraMode;
+  isSpectator?: boolean;
   onChangeCameraMode: (mode: CameraMode) => void;
   onResetOverview?: () => void;
   onOpenCameraSettings: () => void;
   onRollDice: () => void;
   onSendEmote?: (emoji: string) => void;
+  equippedEmoteSetId?: EmoteSetId;
   localPlayerId?: string;
   onOpenEmoteWheel?: (anchor: EmoteWheelAnchor) => void;
   onOpenLeaderboard: () => void;
@@ -94,11 +98,13 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
   mode,
   boardMode,
   cameraMode,
+  isSpectator = false,
   onChangeCameraMode,
   onResetOverview,
   onOpenCameraSettings,
   onRollDice,
   onSendEmote,
+  equippedEmoteSetId = 'classic_aether',
   localPlayerId,
   onOpenEmoteWheel,
   onOpenLeaderboard,
@@ -108,6 +114,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
   const [emoteMenuOpen, setEmoteMenuOpen] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [recentEmoteId, setRecentEmoteId] = useState<string | null>(null);
+  const activeEmoteSet = getEmoteSetDef(equippedEmoteSetId);
   const emoteRootDesktopRef = useRef<HTMLDivElement | null>(null);
   const emoteRootMobileRef = useRef<HTMLDivElement | null>(null);
   const mobileToolsRef = useRef<HTMLDivElement | null>(null);
@@ -115,27 +122,32 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
 
   const active = players[currentTurnIndex] ?? players[0];
   const rollDisabled =
+    isSpectator ||
     !canRoll ||
     isAnimating ||
     !active ||
     active.isAI ||
     (mode === 'online' && !isMyOnlineTurn);
 
-  const rollLabel = isAnimating
-    ? 'Berjalan...'
-    : active?.isAI
-      ? 'Giliran AI'
-      : mode === 'online' && !isMyOnlineTurn
-        ? 'Menunggu'
-        : 'Lempar Dadu';
+  const rollLabel = isSpectator
+    ? 'Mode Penonton'
+    : isAnimating
+      ? 'Berjalan...'
+      : active?.isAI
+        ? 'Giliran AI'
+        : mode === 'online' && !isMyOnlineTurn
+          ? 'Menunggu'
+          : 'Lempar Dadu';
 
-  const mobileRollLabel = isAnimating
-    ? 'Gerak'
-    : active?.isAI
-      ? 'AI'
-      : mode === 'online' && !isMyOnlineTurn
-        ? 'Tunggu'
-        : 'Lempar';
+  const mobileRollLabel = isSpectator
+    ? 'Tonton'
+    : isAnimating
+      ? 'Gerak'
+      : active?.isAI
+        ? 'AI'
+        : mode === 'online' && !isMyOnlineTurn
+          ? 'Tunggu'
+          : 'Lempar';
 
   const cameraModeShortLabel =
     cameraMode === 'isometric'
@@ -155,7 +167,8 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
   };
 
   const isActiveOwnAvatar = Boolean(
-    active &&
+    !isSpectator &&
+      active &&
       !active.isAI &&
       (mode === 'online' ? active.id === localPlayerId : true),
   );
@@ -164,8 +177,8 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
     onLongPress: (anchor) => onOpenEmoteWheel?.(anchor),
   });
 
-  const showEmoteButton = mode === 'online' && Boolean(onSendEmote);
-  const showRadialEmoteTrigger = Boolean(onOpenEmoteWheel) || showEmoteButton;
+  const showEmoteButton = !isSpectator && mode === 'online' && Boolean(onSendEmote);
+  const showRadialEmoteTrigger = !isSpectator && (Boolean(onOpenEmoteWheel) || showEmoteButton);
   const showTurnProgress = mode === 'online' && turnTimeLeftSec !== null && !isAnimating;
   const turnProgress = showTurnProgress
     ? Math.max(0, Math.min(1, (turnTimeLeftSec ?? 0) / ONLINE_TURN_TIMEOUT_SEC))
@@ -232,13 +245,13 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
           className="md:hidden fixed left-2 right-[5.25rem] z-20 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5"
           style={{ bottom: 'max(0.5rem, calc(var(--safe-bottom) + 0.375rem))' }}
         >
-          {FANTASY_EMOTES.map((item) => {
+          {activeEmoteSet.items.map((item) => {
             const isSent = recentEmoteId === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => handleSelectEmote(item.message, item.id)}
+                onClick={() => handleSelectEmote(item.payload, item.id)}
                 className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-2 text-[11px] font-semibold whitespace-nowrap shrink-0 backdrop-blur-md shadow-md transition-all active:scale-95 cursor-pointer ${
                   isSent
                     ? 'border-amber-400 bg-amber-500/25 text-amber-100'
@@ -247,7 +260,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                 aria-label={`Kirim emote ${item.label}`}
               >
                 <span className="leading-none">{item.icon}</span>
-                <span>{item.label}</span>
+                <span>{item.shortLabel}</span>
               </button>
             );
           })}
@@ -277,20 +290,27 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
               <Compass className="w-3.5 h-3.5 text-amber-300" />
               <span>{cameraModeShortLabel}</span>
             </button>
-            <button
-              type="button"
-              disabled={rollDisabled}
-              onClick={onRollDice}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-xl min-h-[40px] min-w-[44px] px-3 text-xs font-bold shadow-lg transition-all cursor-pointer ${
-                rollDisabled
-                  ? 'border border-slate-700 bg-slate-900/85 text-slate-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-amber-500/25 active:scale-95'
-              }`}
-              aria-label={rollLabel}
-            >
-              <FacetedDiceIcon className="w-4 h-4" />
-              <span>{mobileRollLabel}</span>
-            </button>
+            {isSpectator ? (
+              <div className="inline-flex items-center gap-1.5 rounded-xl border border-sky-400/50 bg-sky-500/20 min-h-[40px] px-3 text-xs font-bold text-sky-200 shadow-lg">
+                <Eye className="w-4 h-4" />
+                <span>Read-Only</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={rollDisabled}
+                onClick={onRollDice}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl min-h-[40px] min-w-[44px] px-3 text-xs font-bold shadow-lg transition-all cursor-pointer ${
+                  rollDisabled
+                    ? 'border border-slate-700 bg-slate-900/85 text-slate-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-amber-500/25 active:scale-95'
+                }`}
+                aria-label={rollLabel}
+              >
+                <FacetedDiceIcon className="w-4 h-4" />
+                <span>{mobileRollLabel}</span>
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -561,21 +581,28 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                 </div>
               )}
 
-              {/* Primary Right-Thumb Roll Dice CTA */}
-              <button
-                type="button"
-                disabled={rollDisabled}
-                onClick={onRollDice}
-                className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl min-w-[60px] min-h-[56px] px-2.5 py-1.5 text-[11px] font-bold shadow-xl transition-all cursor-pointer ${
-                  rollDisabled
-                    ? 'border border-slate-700 bg-slate-900/85 text-slate-400 cursor-not-allowed'
-                    : 'bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 text-slate-950 shadow-amber-500/30 active:scale-95'
-                }`}
-                aria-label={rollLabel}
-              >
-                <FacetedDiceIcon className="w-5 h-5" />
-                <span className="leading-none">{mobileRollLabel}</span>
-              </button>
+              {/* Primary Right-Thumb Roll Dice CTA (replaced with Read-Only badge when spectating) */}
+              {isSpectator ? (
+                <div className="flex flex-col items-center justify-center gap-0.5 rounded-2xl border border-sky-400/50 bg-sky-950/85 min-w-[60px] min-h-[56px] px-2.5 py-1.5 text-[10px] font-bold text-sky-200 shadow-xl">
+                  <Eye className="w-5 h-5 text-sky-300" />
+                  <span className="leading-none">Tonton</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={rollDisabled}
+                  onClick={onRollDice}
+                  className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl min-w-[60px] min-h-[56px] px-2.5 py-1.5 text-[11px] font-bold shadow-xl transition-all cursor-pointer ${
+                    rollDisabled
+                      ? 'border border-slate-700 bg-slate-900/85 text-slate-400 cursor-not-allowed'
+                      : 'bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 text-slate-950 shadow-amber-500/30 active:scale-95'
+                  }`}
+                  aria-label={rollLabel}
+                >
+                  <FacetedDiceIcon className="w-5 h-5" />
+                  <span className="leading-none">{mobileRollLabel}</span>
+                </button>
+              )}
             </div>
           </>
         )}
@@ -605,15 +632,15 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
               className="pointer-events-auto mx-auto flex max-w-full items-center gap-1.5 overflow-x-auto no-scrollbar rounded-xl border border-amber-500/25 bg-slate-950/85 backdrop-blur-md px-2.5 py-1.5 shadow-lg"
             >
               <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300/90 px-1 shrink-0">
-                Emote
+                {activeEmoteSet.name}
               </span>
-              {FANTASY_EMOTES.map((item) => {
+              {activeEmoteSet.items.map((item) => {
                 const isSent = recentEmoteId === item.id;
                 return (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => handleSelectEmote(item.message, item.id)}
+                    onClick={() => handleSelectEmote(item.payload, item.id)}
                     className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 transition-all active:scale-95 cursor-pointer ${
                       isSent
                         ? 'border-amber-400 bg-amber-400 text-slate-950'
@@ -623,7 +650,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                     aria-label={`Kirim emote ${item.label}`}
                   >
                     <span className="leading-none">{item.icon}</span>
-                    <span>{item.label}</span>
+                    <span>{item.shortLabel}</span>
                   </button>
                 );
               })}
@@ -700,19 +727,26 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
 
             {/* Center Primary Roll CTA + Multiplayer Emote Picker */}
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={rollDisabled}
-                onClick={onRollDice}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all cursor-pointer ${
-                  rollDisabled
-                    ? 'border border-slate-700 bg-slate-800/80 text-slate-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 active:scale-95'
-                }`}
-              >
-                <FacetedDiceIcon className="w-5 h-5" />
-                <span>{rollLabel}</span>
-              </button>
+              {isSpectator ? (
+                <div className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-2.5 text-xs font-bold text-sky-200 whitespace-nowrap">
+                  <Eye className="w-4 h-4 text-sky-300 shrink-0" />
+                  <span>Mode Penonton (Read-Only)</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={rollDisabled}
+                  onClick={onRollDice}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all cursor-pointer ${
+                    rollDisabled
+                      ? 'border border-slate-700 bg-slate-800/80 text-slate-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 active:scale-95'
+                  }`}
+                >
+                  <FacetedDiceIcon className="w-5 h-5" />
+                  <span>{rollLabel}</span>
+                </button>
+              )}
 
               {showRadialEmoteTrigger && (
                 <div ref={emoteRootDesktopRef} className="relative">

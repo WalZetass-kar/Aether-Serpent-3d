@@ -3,6 +3,7 @@ import {
   ACHIEVEMENTS,
   BOARD_GAME_MODES,
   DICE_SKINS,
+  EMOTE_SETS,
   ONLINE_TURN_TIMEOUT_SEC,
   PLAYER_ARCHETYPES,
   STARTER_PAWN_INDICES,
@@ -10,7 +11,9 @@ import {
   applyTurnEffectsToPlayers,
   buildJumpMap,
   getAdaptiveTierLabel,
+  getEmoteSetDef,
   isDiceSkinUnlocked,
+  isEmoteSetUnlocked,
   pickTimeAttackWinner,
   resolveTurnMove,
   rollAdaptiveAIDice,
@@ -18,6 +21,7 @@ import {
   type ConnectionMode,
   type DiceSkinId,
   type DifficultyMode,
+  type EmoteSetId,
   type PlayerState,
   type SpecialTileType,
   type TeamId,
@@ -29,7 +33,16 @@ import {
   soundEngine,
   type SoundSettings,
 } from './audio/soundEngine';
-import { AchievementsDailyModal } from './components/AchievementsDailyModal';
+import {
+  voiceChatEngine,
+  type VoiceChatSnapshot,
+  type VoiceParticipant,
+  type VoiceSignalPacket,
+} from './audio/voiceChatEngine';
+import {
+  AchievementsDailyModal,
+  type AchievementsModalTab,
+} from './components/AchievementsDailyModal';
 import { AdminPortalView } from './components/AdminPortalView';
 import { AetherOracleChatDrawer } from './components/AetherOracleChatDrawer';
 import { ArenaChatDrawer, type ArenaChatMessage } from './components/ArenaChatDrawer';
@@ -87,6 +100,8 @@ import {
   fetchBackendFriendNotifications,
   subscribeToFriendships,
   type BackendFriendNotification,
+  type FriendActiveMatch,
+  type FriendshipItem,
   type FriendshipSummary,
 } from './services/friendsService';
 import {
@@ -225,6 +240,8 @@ interface SerializedRoomPayload {
   currentTurnIndex: number;
   winnerId?: string | null;
   winningTeam?: TeamId | null;
+  spectatorCount?: number;
+  voicePeers?: VoiceParticipant[];
   lastEventId: number;
   turnEvents?: RoomTurnEventPayload[];
   chatMessages?: RoomChatPayload[];
@@ -381,7 +398,11 @@ export default function App() {
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => loadCameraSettings());
   const [cameraSettingsOpen, setCameraSettingsOpen] = useState(false);
+  const [cameraSettingsTab, setCameraSettingsTab] = useState<'camera' | 'sound' | 'graphics'>('camera');
   const [soundSettings, setSoundSettings] = useState<SoundSettings>(() => loadSoundSettings());
+  const [voiceState, setVoiceState] = useState<VoiceChatSnapshot>(() =>
+    voiceChatEngine.getSnapshot(),
+  );
   const [graphicsPrefs, setGraphicsPrefs] = useState<GraphicsPreferences>(() =>
     loadGraphicsPreferences(),
   );
@@ -404,6 +425,7 @@ export default function App() {
 
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [achievementsTab, setAchievementsTab] = useState<AchievementsModalTab>('all');
   const [cloudOpen, setCloudOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [oracleAiOpen, setOracleAiOpen] = useState(false);
@@ -454,6 +476,9 @@ export default function App() {
     status: 'lobby',
     players: [],
     winningTeam: null,
+    isSpectator: false,
+    spectatorCount: 0,
+    voicePeers: [],
     error: null,
     chatMessages: [],
   }));
@@ -530,6 +555,49 @@ export default function App() {
   useEffect(() => {
     soundEngine.setSettings(soundSettings);
   }, [soundSettings]);
+
+  // Subscribe to 3D Spatial Voice Chat engine & keep audio preferences synced
+  useEffect(() => {
+    const unsubscribe = voiceChatEngine.subscribe(setVoiceState);
+    return () => {
+      unsubscribe();
+      voiceChatEngine.leave();
+    };
+  }, []);
+
+  useEffect(() => {
+    voiceChatEngine.applyAudioSettings(soundSettings, profile.muted);
+  }, [soundSettings, profile.muted]);
+
+  // Real-time 3D spatial voice positioning synced with pawn world coordinates in Arena
+  useEffect(() => {
+    if (
+      screen !== 'arena' ||
+      mode !== 'online' ||
+      !onlineLobby.roomCode ||
+      !voiceState.joined ||
+      !soundSettings.spatialVoiceEnabled
+    ) {
+      return;
+    }
+
+    const syncSpatialPose = () => {
+      const pose = engineRef.current?.getSpatialAudioPose(onlineLobbyRef.current.myPlayerId);
+      if (pose) {
+        voiceChatEngine.updateSpatialPositions(pose);
+      }
+    };
+
+    syncSpatialPose();
+    const intervalId = window.setInterval(syncSpatialPose, 80);
+    return () => window.clearInterval(intervalId);
+  }, [
+    mode,
+    onlineLobby.roomCode,
+    screen,
+    soundSettings.spatialVoiceEnabled,
+    voiceState.joined,
+  ]);
 
   // Flush offline queue & check daily reminder when online
   useEffect(() => {
@@ -932,6 +1000,12 @@ export default function App() {
           name: remote?.name || user.displayName || prev.name,
           archetypeIndex: remote?.archetypeIndex ?? prev.archetypeIndex,
           diceSkinId: remote?.diceSkinId ?? prev.diceSkinId,
+          emoteSetId: isEmoteSetUnlocked(
+            remote?.emoteSetId ?? prev.emoteSetId,
+            mergedAchievements,
+          )
+            ? (remote?.emoteSetId ?? prev.emoteSetId)
+            : 'classic_aether',
           totalGames: Math.max(prev.totalGames, remote?.totalGames ?? 0),
           wins: Math.max(prev.wins, remote?.wins ?? 0),
           losses: Math.max(prev.losses, remote?.losses ?? 0),
@@ -1041,6 +1115,29 @@ export default function App() {
     [showToast, user],
   );
 
+  const handleSelectEmoteSet = useCallback(
+    (setId: EmoteSetId) => {
+      soundEngine.playUiClick();
+      const current = loadProfile();
+      const setMeta = getEmoteSetDef(setId);
+      if (!isEmoteSetUnlocked(setId, current.unlockedAchievements)) {
+        showToast(
+          `Set Emote Terkunci: ${setMeta.name}`,
+          `${setMeta.requirementLabel} untuk membuka set emote ini.`,
+        );
+        return;
+      }
+      const next: PlayerProfile = { ...current, emoteSetId: setId };
+      saveProfile(next);
+      setProfile(next);
+      if (user?.emailVerified) {
+        void syncProfileToFirebase(user, next, activeBoardRef.current.id);
+      }
+      showToast(`Set Emote Wheel Aktif: ${setMeta.name}`, setMeta.subtitle);
+    },
+    [showToast, user],
+  );
+
   const isArenaMounted = screen === 'loading_arena' || screen === 'arena';
   const isMenuBackdropMounted =
     !isArenaMounted &&
@@ -1146,6 +1243,12 @@ export default function App() {
       engineRef.current = null;
     };
   }, [isArenaMounted]);
+
+  // Keep rendered 3D board, ladders, and snakes strictly synchronized with activeBoardConfig
+  useEffect(() => {
+    if (!isArenaMounted) return;
+    engineRef.current?.updateBoardConfig(activeBoardConfig);
+  }, [activeBoardConfig, isArenaMounted]);
 
   // Poll live WebGL telemetry ONLY when Developer Performance Overlay is enabled
   useEffect(() => {
@@ -1306,6 +1409,11 @@ export default function App() {
       });
       nextProfile = dailyRes.updatedProfile;
 
+      const prevUnlockedEmoteIds = new Set(
+        EMOTE_SETS.filter((s) =>
+          isEmoteSetUnlocked(s.id, nextProfile.unlockedAchievements),
+        ).map((s) => s.id),
+      );
       const achRes = evaluateAchievements(nextProfile, {
         won: didHumanWin,
         score: localHero.score,
@@ -1314,6 +1422,11 @@ export default function App() {
         difficulty: matchDifficulty,
       });
       nextProfile = achRes.updatedProfile;
+      const newlyUnlockedEmoteSet = EMOTE_SETS.find(
+        (s) =>
+          !prevUnlockedEmoteIds.has(s.id) &&
+          isEmoteSetUnlocked(s.id, nextProfile.unlockedAchievements),
+      );
 
       const coinReward = calculateMatchCoinReward({
         won: didHumanWin,
@@ -1345,12 +1458,22 @@ export default function App() {
           'Tantangan Harian Selesai!',
           `+${dailyRes.bonusAwarded} poin bonus · +${coinReward.total} Koin Aether · Streak ${nextProfile.dailyStreak} hari`,
         );
-      } else if (achRes.newlyUnlocked.length > 0) {
+      } else if (achRes.newlyUnlocked.length > 0 || newlyUnlockedEmoteSet) {
         const firstAch = ACHIEVEMENTS.find((a) => a.id === achRes.newlyUnlocked[0]);
         const rewardSkin = DICE_SKINS.find((s) =>
           achRes.newlyUnlocked.includes(s.requiredAchievementId ?? ''),
         );
-        if (firstAch) {
+        if (newlyUnlockedEmoteSet && firstAch) {
+          showToast(
+            `Set Emote Baru Terbuka: ${newlyUnlockedEmoteSet.name}!`,
+            `Pencapaian "${firstAch.title}" selesai${rewardSkin ? ` · Skin Dadu ${rewardSkin.name} terbuka` : ''} (+${coinReward.total} Koin)`,
+          );
+        } else if (newlyUnlockedEmoteSet) {
+          showToast(
+            `Set Emote Baru Terbuka: ${newlyUnlockedEmoteSet.name}!`,
+            `${newlyUnlockedEmoteSet.requirementLabel} · Pasang di tab Set Emote atau Emote Wheel (+${coinReward.total} Koin)`,
+          );
+        } else if (firstAch) {
           showToast(
             `Pencapaian Terbuka: ${firstAch.title}`,
             rewardSkin
@@ -1488,10 +1611,15 @@ export default function App() {
         soundEngine.playDiceRoll();
       }
 
-      const activeJumpMap = buildJumpMap(
-        activeBoardRef.current.ladders,
-        activeBoardRef.current.snakes,
-      );
+      if (engineRef.current) {
+        engineRef.current.updateBoardConfig(activeBoardRef.current);
+      }
+      const activeJumpMap = engineRef.current
+        ? engineRef.current.getRenderedJumpMap()
+        : buildJumpMap(
+            activeBoardRef.current.ladders,
+            activeBoardRef.current.snakes,
+          );
       const bestHumanTile = Math.max(
         1,
         ...players.filter((p) => !p.isAI).map((p) => p.tile),
@@ -1684,6 +1812,9 @@ export default function App() {
 
       void (async () => {
         if (engineRef.current) {
+          if (room.boardConfig) {
+            engineRef.current.updateBoardConfig(room.boardConfig);
+          }
           await engineRef.current.enqueueTurnAnimation(actorId, resolution, room.players, {
             eventId,
             archetypeIndex: actorPlayer?.archetypeIndex,
@@ -1750,10 +1881,12 @@ export default function App() {
           status: room.status,
           players: room.players,
           winningTeam: room.winningTeam ?? null,
+          spectatorCount: room.spectatorCount ?? prev.spectatorCount ?? 0,
         }));
 
         const nextTurnPlayer = room.players[room.currentTurnIndex];
         if (
+          !onlineLobbyRef.current.isSpectator &&
           document.hidden &&
           room.status === 'playing' &&
           nextTurnPlayer?.id === profile.playerId &&
@@ -1770,26 +1903,30 @@ export default function App() {
           const winP = room.players.find((p) => p.id === room.winnerId) ?? null;
           if (winP) {
             const winTeam = room.winningTeam ?? null;
+            const isSpec = Boolean(onlineLobbyRef.current.isSpectator);
             const me = room.players.find((p) => p.id === profile.playerId);
             const didWin =
-              (room.boardMode === 'team' && winTeam && me?.team === winTeam) ||
-              winP.id === profile.playerId;
+              !isSpec &&
+              ((room.boardMode === 'team' && winTeam && me?.team === winTeam) ||
+                winP.id === profile.playerId);
 
-            if (didWin) soundEngine.playVictory();
+            if (isSpec || didWin) soundEngine.playVictory();
             else soundEngine.playDefeat();
 
             setTimeExpired(false);
             setWinningTeam(winTeam);
             setWinner(winP);
             setVictoryOpen(true);
-            void finalizeMatchProgress(
-              winP,
-              room.players,
-              'online',
-              room.boardMode ?? 'classic',
-              'medium',
-              winTeam,
-            );
+            if (!isSpec) {
+              void finalizeMatchProgress(
+                winP,
+                room.players,
+                'online',
+                room.boardMode ?? 'classic',
+                'medium',
+                winTeam,
+              );
+            }
           }
         }
         setIsAnimating(false);
@@ -1818,15 +1955,29 @@ export default function App() {
       }
 
       if (type === 'error' || msg.error) {
+        const errText = String(msg.error || msg.message || 'Terjadi kesalahan jaringan.');
         setOnlineLobby((prev) => ({
           ...prev,
           connecting: false,
-          error: String(msg.error || msg.message || 'Terjadi kesalahan jaringan.'),
+          error: errText,
         }));
+        if (screenRef.current !== 'multiplayer_lobby') {
+          showToast('Tidak Dapat Terhubung', errText);
+        }
+        return;
+      }
+
+      if (type === 'voice:signal') {
+        const sig = msg.signal as VoiceSignalPacket | undefined;
+        if (sig && sig.fromId && sig.signalType) {
+          void voiceChatEngine.handleIncomingSignal(sig);
+        }
         return;
       }
 
       if (type === 'room:kicked' || msg.kicked) {
+        const wasSpectator = Boolean(onlineLobbyRef.current.isSpectator);
+        voiceChatEngine.leave();
         roomBackupRef.current = null;
         setTurnDeadlineAt(null);
         setTurnTimeLeftSec(null);
@@ -1840,17 +1991,31 @@ export default function App() {
           roomCode: null,
           players: [],
           status: 'lobby',
+          isSpectator: false,
+          spectatorCount: 0,
+          voicePeers: [],
           chatMessages: [],
           error: String(msg.message || 'Ruangan telah ditutup.'),
         }));
         if (screenRef.current === 'arena' || screenRef.current === 'loading_arena') {
-          setScreen('multiplayer_lobby');
+          setScreen(wasSpectator ? 'main_menu' : 'multiplayer_lobby');
         }
-        showToast('Ruangan Ditutup', String(msg.message || 'Anda kembali ke lobi.'));
+        showToast(
+          'Ruangan Ditutup',
+          String(
+            msg.message ||
+              (wasSpectator ? 'Sesi menonton telah berakhir.' : 'Anda kembali ke lobi.'),
+          ),
+        );
         return;
       }
 
-      if (type === 'room:joined' || type === 'room:state' || type === 'room:started') {
+      if (
+        type === 'room:joined' ||
+        type === 'room:spectated' ||
+        type === 'room:state' ||
+        type === 'room:started'
+      ) {
         const room = msg.room as SerializedRoomPayload | undefined;
         if (!room) return;
         roomBackupRef.current = room;
@@ -1858,6 +2023,23 @@ export default function App() {
         const prevStatus = onlineLobbyRef.current.status;
         const nextBoardMode = room.boardMode ?? 'classic';
         const nextTimeLimit = room.timeLimitSec ?? TIME_ATTACK_DEFAULT_SEC;
+        const resolvedPlayerId = msg.playerId
+          ? String(msg.playerId)
+          : onlineLobbyRef.current.myPlayerId || profile.playerId;
+        const isInPlayersList = room.players.some((p) => p.id === resolvedPlayerId);
+        const isSpectatorRole =
+          type === 'room:spectated' || msg.isSpectator === true
+            ? true
+            : type === 'room:joined'
+              ? false
+              : !isInPlayersList && onlineLobbyRef.current.isSpectator;
+
+        if (type === 'room:spectated' && Array.isArray(room.chatMessages) && room.chatMessages.length > 0) {
+          lastProcessedChatTsRef.current = Math.max(
+            lastProcessedChatTsRef.current,
+            ...room.chatMessages.map((c) => c.timestamp || 0),
+          );
+        }
 
         // Sync chat history from room payload if newer messages exist
         if (Array.isArray(room.chatMessages) && room.chatMessages.length > 0) {
@@ -1904,10 +2086,13 @@ export default function App() {
           timeLimitSec: nextTimeLimit,
           endsAt: room.endsAt ?? null,
           hostId: room.hostId,
-          myPlayerId: msg.playerId ? String(msg.playerId) : prev.myPlayerId,
+          myPlayerId: resolvedPlayerId,
           status: room.status,
           players: room.players,
           winningTeam: room.winningTeam ?? null,
+          isSpectator: isSpectatorRole,
+          spectatorCount: room.spectatorCount ?? 0,
+          voicePeers: Array.isArray(room.voicePeers) ? room.voicePeers : [],
           chatMessages: Array.isArray(room.chatMessages)
             ? room.chatMessages.map((c) => ({
                 senderId: c.senderId,
@@ -1925,7 +2110,9 @@ export default function App() {
         }
 
         const justTransitionedToPlaying =
-          type === 'room:started' || (prevStatus !== 'playing' && room.status === 'playing');
+          type === 'room:started' ||
+          (type === 'room:spectated' && (room.status === 'playing' || room.status === 'finished')) ||
+          (prevStatus !== 'playing' && room.status === 'playing');
 
         if (justTransitionedToPlaying) {
           lastProcessedEventIdRef.current = room.lastEventId || 0;
@@ -1958,6 +2145,12 @@ export default function App() {
             }
             engineRef.current?.resetCameraPhase();
           }
+          if (type === 'room:spectated') {
+            showToast(
+              'Mode Penonton Aktif',
+              `Menonton Ruang #${room.code} secara langsung (Read-Only).`,
+            );
+          }
           return;
         }
 
@@ -1988,8 +2181,9 @@ export default function App() {
               const winTeam = room.winningTeam ?? null;
               const me = room.players.find((p) => p.id === profile.playerId);
               const didWin =
-                (room.boardMode === 'team' && winTeam && me?.team === winTeam) ||
-                winP.id === profile.playerId;
+                !isSpectatorRole &&
+                ((room.boardMode === 'team' && winTeam && me?.team === winTeam) ||
+                  winP.id === profile.playerId);
 
               setMode('online');
               setBoardMode(nextBoardMode);
@@ -2001,7 +2195,7 @@ export default function App() {
                 setScreen('arena');
               }
 
-              if (didWin) soundEngine.playVictory();
+              if (isSpectatorRole || didWin) soundEngine.playVictory();
               else soundEngine.playDefeat();
               engineRef.current?.triggerVictoryCamera(winP.id);
 
@@ -2013,14 +2207,16 @@ export default function App() {
                 'Pertandingan Selesai',
                 `${winP.name} memenangkan pertandingan!`,
               );
-              void finalizeMatchProgress(
-                winP,
-                room.players,
-                'online',
-                nextBoardMode,
-                'medium',
-                winTeam,
-              );
+              if (!isSpectatorRole) {
+                void finalizeMatchProgress(
+                  winP,
+                  room.players,
+                  'online',
+                  nextBoardMode,
+                  'medium',
+                  winTeam,
+                );
+              }
             }
           }
         } else {
@@ -2085,21 +2281,24 @@ export default function App() {
         setTimeLeftSec(0);
         setTimeExpired(true);
         if (winP) {
-          const didWin = winP.id === profile.playerId;
-          if (didWin) soundEngine.playVictory();
+          const isSpec = Boolean(onlineLobbyRef.current.isSpectator);
+          const didWin = !isSpec && winP.id === profile.playerId;
+          if (isSpec || didWin) soundEngine.playVictory();
           else soundEngine.playDefeat();
           engineRef.current?.triggerVictoryCamera(winP.id);
           setWinner(winP);
           setWinningTeam(room.winningTeam ?? null);
           setVictoryOpen(true);
-          void finalizeMatchProgress(
-            winP,
-            room.players,
-            'online',
-            room.boardMode ?? 'time_attack',
-            'medium',
-            room.winningTeam ?? null,
-          );
+          if (!isSpec) {
+            void finalizeMatchProgress(
+              winP,
+              room.players,
+              'online',
+              room.boardMode ?? 'time_attack',
+              'medium',
+              room.winningTeam ?? null,
+            );
+          }
         }
         return;
       }
@@ -2164,6 +2363,14 @@ export default function App() {
         if (data.kicked) {
           handleMultiplayerServerEvent({ type: 'room:kicked', message: data.message });
           return;
+        }
+        if (Array.isArray(data.voiceSignals)) {
+          for (const rawSig of data.voiceSignals) {
+            const sig = rawSig as VoiceSignalPacket;
+            if (sig && sig.fromId && sig.signalType) {
+              void voiceChatEngine.handleIncomingSignal(sig);
+            }
+          }
         }
         if (data.room) {
           const r = data.room as SerializedRoomPayload;
@@ -2360,7 +2567,11 @@ export default function App() {
       }
 
       // HTTP Serverless Multiplayer Action Fallback (/api/mp/action)
-      if (payload.type === 'room:create' || payload.type === 'room:join') {
+      if (
+        payload.type === 'room:create' ||
+        payload.type === 'room:join' ||
+        payload.type === 'room:spectate'
+      ) {
         setOnlineLobby((prev) => ({ ...prev, connecting: true, error: null }));
       }
 
@@ -2384,11 +2595,18 @@ export default function App() {
         }));
         const data = (await res.json()) as Record<string, unknown>;
         if (!res.ok || data.error) {
+          if (actionType === 'voice:signal') {
+            return;
+          }
+          const errMsg = String(data.error || 'Gagal menghubungi server multiplayer.');
           setOnlineLobby((prev) => ({
             ...prev,
             connecting: false,
-            error: String(data.error || 'Gagal menghubungi server multiplayer.'),
+            error: errMsg,
           }));
+          if (actionType === 'room:spectate') {
+            showToast('Tidak Dapat Menonton', errMsg);
+          }
           return;
         }
 
@@ -2397,20 +2615,103 @@ export default function App() {
         } else if (data.room) {
           handleMultiplayerServerEvent({
             type: String(data.type || 'room:state'),
+            isSpectator: data.isSpectator,
             playerId: data.playerId ?? profile.playerId,
             room: data.room,
           });
         }
       } catch {
+        if (actionType === 'voice:signal') {
+          return;
+        }
         setOnlineLobby((prev) => ({
           ...prev,
           connecting: false,
           error: 'Gagal terhubung ke server multiplayer daring. Periksa koneksi internet Anda.',
         }));
+        if (actionType === 'room:spectate') {
+          showToast(
+            'Tidak Dapat Menonton',
+            'Gagal terhubung ke server multiplayer daring.',
+          );
+        }
       }
     },
-    [ensureWebSocket, handleMultiplayerServerEvent, profile.playerId],
+    [ensureWebSocket, handleMultiplayerServerEvent, profile.playerId, showToast],
   );
+
+  // Bind Voice Chat session & participant mesh to the active online room
+  useEffect(() => {
+    if (!onlineLobby.roomCode || onlineLobby.isSpectator) {
+      voiceChatEngine.configureSession({
+        roomCode: null,
+        myPlayerId: onlineLobby.myPlayerId,
+        onSendSignal: null,
+      });
+      return;
+    }
+
+    voiceChatEngine.configureSession({
+      roomCode: onlineLobby.roomCode,
+      myPlayerId: onlineLobby.myPlayerId,
+      onSendSignal: (packet) => {
+        void sendMultiplayerAction({
+          type: 'voice:signal',
+          toId: packet.toId,
+          signalType: packet.signalType,
+          payload: packet.payload,
+        });
+      },
+    });
+  }, [
+    onlineLobby.isSpectator,
+    onlineLobby.myPlayerId,
+    onlineLobby.roomCode,
+    sendMultiplayerAction,
+  ]);
+
+  useEffect(() => {
+    if (!onlineLobby.roomCode || onlineLobby.isSpectator) return;
+    voiceChatEngine.syncParticipants(onlineLobby.voicePeers ?? []);
+  }, [onlineLobby.isSpectator, onlineLobby.roomCode, onlineLobby.voicePeers, voiceState.joined]);
+
+  const handleToggleVoiceMute = useCallback(async () => {
+    if (!onlineLobbyRef.current.roomCode || onlineLobbyRef.current.isSpectator) return;
+    soundEngine.playUiClick();
+    const snap = voiceChatEngine.getSnapshot();
+    if (!snap.joined) {
+      const ok = await voiceChatEngine.join(false);
+      if (ok) {
+        void sendMultiplayerAction({ type: 'voice:join', muted: false });
+        voiceChatEngine.syncParticipants(onlineLobbyRef.current.voicePeers ?? []);
+        showToast(
+          'Obrolan Suara Aktif',
+          soundSettings.spatialVoiceEnabled
+            ? 'Mikrofon terhubung dengan Audio Spasial 3D.'
+            : 'Mikrofon terhubung dalam mode stereo.',
+        );
+      } else {
+        const latest = voiceChatEngine.getSnapshot();
+        if (latest.errorMessage) {
+          showToast('Mikrofon Tidak Tersedia', latest.errorMessage);
+        }
+      }
+      return;
+    }
+
+    const nextMuted = !snap.isMuted;
+    voiceChatEngine.setMuted(nextMuted);
+    void sendMultiplayerAction({ type: 'voice:mute', muted: nextMuted });
+  }, [sendMultiplayerAction, showToast, soundSettings.spatialVoiceEnabled]);
+
+  const handleLeaveVoice = useCallback(() => {
+    soundEngine.playUiClick();
+    voiceChatEngine.leave();
+    if (onlineLobbyRef.current.roomCode && !onlineLobbyRef.current.isSpectator) {
+      void sendMultiplayerAction({ type: 'voice:leave' });
+    }
+    showToast('Obrolan Suara Diputuskan', 'Anda keluar dari saluran suara ruangan.');
+  }, [sendMultiplayerAction, showToast]);
 
   // Auto-detect Vercel Serverless runtime & auto-open Multiplayer Lobby if URL has ?room=CODE
   useEffect(() => {
@@ -2466,6 +2767,7 @@ export default function App() {
   // Unified Roll Handler (Solo, Local, or Online)
   const handleRollDice = useCallback(() => {
     if (screen !== 'arena' || isAnimating || winner) return;
+    if (mode === 'online' && onlineLobby.isSpectator) return;
     const active = players[currentTurnIndex];
     if (!active) return;
 
@@ -2482,6 +2784,7 @@ export default function App() {
     executeLocalTurn,
     isAnimating,
     mode,
+    onlineLobby.isSpectator,
     onlineLobby.myPlayerId,
     players,
     screen,
@@ -2506,6 +2809,7 @@ export default function App() {
       }
       if (
         e.code === 'Space' &&
+        !(modeRef.current === 'online' && onlineLobbyRef.current.isSpectator) &&
         !cameraSettingsOpen &&
         !leaderboardOpen &&
         !achievementsOpen &&
@@ -2526,11 +2830,13 @@ export default function App() {
 
   const leaveOnlineRoomIfAny = useCallback(() => {
     const code = onlineLobby.roomCode;
+    voiceChatEngine.leave();
     if (code) {
       const isHostLeaving =
-        onlineLobby.hostId === onlineLobby.myPlayerId ||
-        (user?.uid ? onlineLobby.hostId === user.uid : false) ||
-        onlineLobby.players[0]?.id === onlineLobby.myPlayerId;
+        !onlineLobby.isSpectator &&
+        (onlineLobby.hostId === onlineLobby.myPlayerId ||
+          (user?.uid ? onlineLobby.hostId === user.uid : false) ||
+          onlineLobby.players[0]?.id === onlineLobby.myPlayerId);
       if (isHostLeaving && user?.emailVerified) {
         void deleteActiveRoomFromFirebase(user, code);
       }
@@ -2544,11 +2850,15 @@ export default function App() {
       roomCode: null,
       players: [],
       status: 'lobby',
+      isSpectator: false,
+      spectatorCount: 0,
+      voicePeers: [],
       chatMessages: [],
       error: null,
     }));
   }, [
     onlineLobby.hostId,
+    onlineLobby.isSpectator,
     onlineLobby.myPlayerId,
     onlineLobby.players,
     onlineLobby.roomCode,
@@ -2613,6 +2923,7 @@ export default function App() {
 
   const handleSendArenaChat = useCallback(
     (rawText: string) => {
+      if (modeRef.current === 'online' && onlineLobbyRef.current.isSpectator) return;
       const text = rawText.trim().slice(0, 80);
       if (!text) return;
       if (modeRef.current === 'online') {
@@ -2646,13 +2957,49 @@ export default function App() {
   );
 
   const handleOpenEmoteWheel = useCallback((anchor: EmoteWheelAnchor) => {
+    if (modeRef.current === 'online' && onlineLobbyRef.current.isSpectator) return;
     setEmoteWheelAnchor(anchor);
   }, []);
 
   const ownAvatarLongPress = useEmoteLongPress({
-    enabled: screen === 'arena',
+    enabled: screen === 'arena' && !(mode === 'online' && onlineLobby.isSpectator),
     onLongPress: handleOpenEmoteWheel,
   });
+
+  const handleWatchFriendMatch = useCallback(
+    (roomCode: string, friend: FriendshipItem, match: FriendActiveMatch) => {
+      soundEngine.playUiClick();
+      const normalizedCode = roomCode.trim().toUpperCase();
+      if (!normalizedCode) return;
+
+      setFriendsDrawerOpen(false);
+      setFriendsOpen(false);
+      setEmoteWheelAnchor(null);
+      setVictoryOpen(false);
+      setWinner(null);
+      setWinningTeam(null);
+      setTimeExpired(false);
+
+      if (onlineLobbyRef.current.roomCode && onlineLobbyRef.current.roomCode !== normalizedCode) {
+        leaveOnlineRoomIfAny();
+      }
+      roomBackupRef.current = null;
+      lastProcessedEventIdRef.current = 0;
+      lastProcessedChatTsRef.current = 0;
+
+      showToast(
+        `Menghubungkan ke Ruang #${normalizedCode}`,
+        `Menonton ${friend.friendName} di ${match.boardName} (Read-Only)...`,
+      );
+      void sendMultiplayerAction({
+        type: 'room:spectate',
+        code: normalizedCode,
+        playerId: profile.playerId,
+        playerName: profile.name,
+      });
+    },
+    [leaveOnlineRoomIfAny, profile.name, profile.playerId, sendMultiplayerAction, showToast],
+  );
 
   // Mode Starters (GameConfigView -> LoadingArenaScreen -> Arena)
   const handleStartSolo = (
@@ -2804,10 +3151,14 @@ export default function App() {
   };
 
   const adaptiveInfo = getAdaptiveTierLabel(profile.recentResults);
+  const isSpectating = mode === 'online' && Boolean(onlineLobby.isSpectator);
   const activePlayer = players[currentTurnIndex] ?? players[0];
-  const isMyOnlineTurn = mode === 'online' && activePlayer?.id === onlineLobby.myPlayerId;
+  const isMyOnlineTurn =
+    !isSpectating && mode === 'online' && activePlayer?.id === onlineLobby.myPlayerId;
   const myOnlinePlayer =
-    mode === 'online' ? players.find((p) => p.id === onlineLobby.myPlayerId) : undefined;
+    mode === 'online' && !isSpectating
+      ? players.find((p) => p.id === onlineLobby.myPlayerId)
+      : undefined;
   const localHero =
     mode === 'solo'
       ? players.find((p) => !p.isAI)
@@ -2815,7 +3166,8 @@ export default function App() {
         ? myOnlinePlayer
         : winner;
   const isLocalWinner = Boolean(
-    winner &&
+    !isSpectating &&
+      winner &&
       (boardMode === 'team' && winningTeam
         ? localHero?.team === winningTeam
         : mode === 'solo'
@@ -2937,7 +3289,10 @@ export default function App() {
             }}
             onOpenTutorial={() => setTutorialOpen(true)}
             onOpenLeaderboard={() => setLeaderboardOpen(true)}
-            onOpenAchievements={() => setAchievementsOpen(true)}
+            onOpenAchievements={() => {
+              setAchievementsTab('all');
+              setAchievementsOpen(true);
+            }}
             onOpenCloud={() => setCloudOpen(true)}
             onOpenBoardManager={(tab = 'collection') => {
               soundEngine.playUiClick();
@@ -3059,8 +3414,15 @@ export default function App() {
           adaptiveTier={adaptiveInfo.tier}
           muted={profile.muted}
           selectedDiceSkinId={profile.diceSkinId}
+          selectedEmoteSetId={profile.emoteSetId}
           unlockedAchievements={profile.unlockedAchievements}
           onSelectDiceSkin={handleSelectDiceSkin}
+          onSelectEmoteSet={handleSelectEmoteSet}
+          onOpenEmoteCustomizer={() => {
+            soundEngine.playUiClick();
+            setAchievementsTab('emotes');
+            setAchievementsOpen(true);
+          }}
           cameraSettings={cameraSettings}
           onChangeCameraMode={(nextMode) =>
             handleUpdateCameraSettings({ ...cameraSettings, mode: nextMode })
@@ -3130,7 +3492,20 @@ export default function App() {
               saveProfile(next);
               setProfile(next);
             }}
-            onOpenCameraSettings={() => setCameraSettingsOpen(true)}
+            onOpenCameraSettings={() => {
+              setCameraSettingsTab('camera');
+              setCameraSettingsOpen(true);
+            }}
+            onOpenAudioSettings={() => {
+              soundEngine.playUiClick();
+              setCameraSettingsTab('sound');
+              setCameraSettingsOpen(true);
+            }}
+            voiceState={voiceState}
+            onToggleVoiceMute={() => {
+              void handleToggleVoiceMute();
+            }}
+            onLeaveVoice={handleLeaveVoice}
             onOnlineCreateRoom={(opts) => {
               const chosenBoard = resolveBoardForMatch(profile);
               setActiveBoardConfig(chosenBoard);
@@ -3238,6 +3613,39 @@ export default function App() {
             isAnimating={isAnimating}
             graphicsPreset={graphicsPrefs.preset}
             unreadChatCount={unreadChatCount}
+            isSpectator={isSpectating}
+            spectatorCount={onlineLobby.spectatorCount ?? 0}
+            voiceState={mode === 'online' && onlineLobby.roomCode && !isSpectating ? voiceState : undefined}
+            voicePeerCount={mode === 'online' && onlineLobby.roomCode ? (onlineLobby.voicePeers?.length ?? 0) : 0}
+            voiceParticipants={
+              mode === 'online' && onlineLobby.roomCode && !isSpectating
+                ? players.map((p) => {
+                    const vp = onlineLobby.voicePeers?.find((peer) => peer.playerId === p.id);
+                    return {
+                      id: p.id,
+                      name: p.name,
+                      inVoice: Boolean(vp) || (p.id === onlineLobby.myPlayerId && voiceState.joined),
+                      muted:
+                        p.id === onlineLobby.myPlayerId
+                          ? voiceState.isMuted
+                          : Boolean(vp?.muted),
+                    };
+                  })
+                : []
+            }
+            myPlayerId={onlineLobby.myPlayerId}
+            onToggleVoiceMute={
+              mode === 'online' && onlineLobby.roomCode && !isSpectating
+                ? () => {
+                    void handleToggleVoiceMute();
+                  }
+                : undefined
+            }
+            onLeaveVoice={
+              mode === 'online' && onlineLobby.roomCode && !isSpectating
+                ? handleLeaveVoice
+                : undefined
+            }
             onOpenChat={() => {
               soundEngine.playUiClick();
               setEmoteWheelAnchor(null);
@@ -3247,7 +3655,7 @@ export default function App() {
                 return next;
               });
             }}
-            onOpenEmoteWheel={handleOpenEmoteWheel}
+            onOpenEmoteWheel={isSpectating ? undefined : handleOpenEmoteWheel}
             onQuickToggleLightweight={() => {
               soundEngine.playUiClick();
               const isCurrentlyLight =
@@ -3270,17 +3678,40 @@ export default function App() {
               setProfile(next);
             }}
             onOpenTutorial={() => setTutorialOpen(true)}
-            onOpenCameraSettings={() => setCameraSettingsOpen(true)}
+            onOpenCameraSettings={() => {
+              setCameraSettingsTab('camera');
+              setCameraSettingsOpen(true);
+            }}
             onResetOverview={() => {
               engineRef.current?.snapCameraOverview('isometric');
               showToast('Pandangan Papan Penuh', 'Kamera direset ke tampilan seluruh papan 3D');
             }}
-            onOpenOracleAI={() => {
-              soundEngine.playUiClick();
-              setOracleAiOpen(true);
-            }}
+            onOpenOracleAI={
+              isSpectating
+                ? undefined
+                : () => {
+                    soundEngine.playUiClick();
+                    setOracleAiOpen(true);
+                  }
+            }
             onReturnToMenu={handleReturnToMenu}
           />
+
+          {isSpectating && (
+            <div className="pointer-events-auto fixed top-12 sm:top-[64px] left-1/2 -translate-x-1/2 z-15 flex items-center gap-2 rounded-xl border border-sky-400/45 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 shadow-lg max-w-[94vw]">
+              <span className="text-[11px] sm:text-xs font-bold text-sky-200 truncate">
+                Mode Menonton (Read-Only)
+                {onlineLobby.roomCode ? ` · #${onlineLobby.roomCode}` : ''}
+              </span>
+              <button
+                type="button"
+                onClick={handleReturnToMenu}
+                className="rounded-lg border border-rose-400/45 bg-rose-500/20 px-2.5 py-0.5 text-[10px] sm:text-[11px] font-bold text-rose-200 hover:bg-rose-500/30 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Keluar
+              </button>
+            </div>
+          )}
 
           {/* Responsive Mobile & Tablet Player Standings Strip (long-press own avatar for Emote Wheel) */}
           {!dockCollapsed && (
@@ -3288,6 +3719,7 @@ export default function App() {
               {players.map((p, idx) => {
                 const isTurn = idx === currentTurnIndex && !winner;
                 const isOwnAvatar =
+                  !isSpectating &&
                   !p.isAI &&
                   (mode === 'online'
                     ? p.id === onlineLobby.myPlayerId
@@ -3347,6 +3779,7 @@ export default function App() {
             {players.map((p, idx) => {
               const isTurn = idx === currentTurnIndex && !winner;
               const isOwnAvatar =
+                !isSpectating &&
                 !p.isAI &&
                 (mode === 'online'
                   ? p.id === onlineLobby.myPlayerId
@@ -3488,13 +3921,14 @@ export default function App() {
             players={players}
             currentTurnIndex={currentTurnIndex}
             lastRoll={lastRoll}
-            canRoll={!winner}
+            canRoll={!winner && !isSpectating}
             isAnimating={isAnimating}
             isMyOnlineTurn={isMyOnlineTurn}
             turnTimeLeftSec={turnTimeLeftSec}
             mode={mode}
             boardMode={boardMode}
             cameraMode={cameraSettings.mode}
+            isSpectator={isSpectating}
             onChangeCameraMode={(nextMode) => {
               handleUpdateCameraSettings({ ...cameraSettings, mode: nextMode });
               if (nextMode === 'isometric') {
@@ -3507,21 +3941,29 @@ export default function App() {
             }}
             onOpenCameraSettings={() => setCameraSettingsOpen(true)}
             onRollDice={handleRollDice}
-            onSendEmote={(emoji) => handleSendArenaChat(emoji)}
+            onSendEmote={isSpectating ? undefined : (emoji) => handleSendArenaChat(emoji)}
+            equippedEmoteSetId={profile.emoteSetId}
             localPlayerId={
-              mode === 'online'
-                ? onlineLobby.myPlayerId
-                : (players.find((p) => !p.isAI)?.id ?? profile.playerId)
+              isSpectating
+                ? undefined
+                : mode === 'online'
+                  ? onlineLobby.myPlayerId
+                  : (players.find((p) => !p.isAI)?.id ?? profile.playerId)
             }
-            onOpenEmoteWheel={handleOpenEmoteWheel}
+            onOpenEmoteWheel={isSpectating ? undefined : handleOpenEmoteWheel}
             onOpenLeaderboard={() => setLeaderboardOpen(true)}
-            onOpenAchievements={() => setAchievementsOpen(true)}
+            onOpenAchievements={() => {
+              setAchievementsTab('all');
+              setAchievementsOpen(true);
+            }}
             onOpenCloud={() => setCloudOpen(true)}
           />
 
           <EmoteWheel
-            open={Boolean(emoteWheelAnchor)}
+            open={!isSpectating && Boolean(emoteWheelAnchor)}
             anchor={emoteWheelAnchor}
+            emoteSetId={profile.emoteSetId}
+            unlockedAchievements={profile.unlockedAchievements}
             playerName={
               mode === 'online'
                 ? myOnlinePlayer?.name ?? profile.name
@@ -3530,6 +3972,12 @@ export default function App() {
                     : players[currentTurnIndex]?.name ?? profile.name)
             }
             onSelectEmote={(item) => handleSendArenaChat(item.payload)}
+            onSwitchEmoteSet={handleSelectEmoteSet}
+            onOpenEmoteCustomizer={() => {
+              setEmoteWheelAnchor(null);
+              setAchievementsTab('emotes');
+              setAchievementsOpen(true);
+            }}
             onClose={() => setEmoteWheelAnchor(null)}
           />
 
@@ -3544,6 +3992,7 @@ export default function App() {
             }
             mode={mode}
             roomCode={mode === 'online' ? onlineLobby.roomCode : null}
+            readOnly={isSpectating}
             onSendMessage={handleSendArenaChat}
           />
         </>
@@ -3574,12 +4023,14 @@ export default function App() {
         open={achievementsOpen}
         onClose={() => setAchievementsOpen(false)}
         profile={profile}
+        initialTab={achievementsTab}
         onUpdateNotifications={(enabled, hour) => {
           const next = { ...profile, notificationsEnabled: enabled, notificationHour: hour };
           saveProfile(next);
           setProfile(next);
         }}
         onSelectDiceSkin={handleSelectDiceSkin}
+        onSelectEmoteSet={handleSelectEmoteSet}
       />
 
       <CloudSyncModal
@@ -3625,12 +4076,13 @@ export default function App() {
         winningTeam={winningTeam}
         timeExpired={timeExpired}
         isLocalWinner={isLocalWinner}
-        canRematch={mode !== 'online' || onlineLobby.hostId === onlineLobby.myPlayerId}
-        exitLabel={mode === 'online' ? 'Ke Lobi' : 'Menu Utama'}
+        isSpectator={isSpectating}
+        canRematch={!isSpectating && (mode !== 'online' || onlineLobby.hostId === onlineLobby.myPlayerId)}
+        exitLabel={isSpectating ? 'Keluar Menonton' : mode === 'online' ? 'Ke Lobi' : 'Menu Utama'}
         globalRank={globalRank}
         boardName={activeBoardConfig.name}
         onRematch={handleRematch}
-        onMainMenu={mode === 'online' ? handleReturnToLobby : handleReturnToMenu}
+        onMainMenu={isSpectating ? handleReturnToMenu : mode === 'online' ? handleReturnToLobby : handleReturnToMenu}
         onClose={() => setVictoryOpen(false)}
       />
 
@@ -3646,6 +4098,7 @@ export default function App() {
 
       <CameraSettingsModal
         open={cameraSettingsOpen}
+        initialTab={cameraSettingsTab}
         onClose={() => setCameraSettingsOpen(false)}
         settings={cameraSettings}
         onChange={handleUpdateCameraSettings}
@@ -3657,6 +4110,7 @@ export default function App() {
         muted={profile.muted}
         onSoundChange={handleUpdateSoundSettings}
         onToggleMute={handleToggleMasterMute}
+        voiceState={voiceState}
       />
 
       <AetherOracleChatDrawer
@@ -3722,6 +4176,7 @@ export default function App() {
             archetypeIndex: profile.archetypeIndex,
           });
         }}
+        onWatchMatch={handleWatchFriendMatch}
         onNotify={showToast}
       />
 

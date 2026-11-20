@@ -116,6 +116,24 @@ export const DIRTY_DOZEN_CASES: readonly DirtyDozenCase[] = [
     auth: { uid: 'bob', email_verified: true },
     expected: 'PERMISSION_DENIED',
   },
+  {
+    id: 13,
+    name: 'Community board cannot spoof another authorUid or inflate downloads on create',
+    path: '/communityBoards/cb_spoof_1',
+    operation: 'create',
+    auth: { uid: 'bob', email_verified: true },
+    payload: { authorUid: 'alice', downloads: 9999, isPublished: true },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    id: 14,
+    name: 'Non-author cannot modify community board name or ladders during download increment',
+    path: '/communityBoards/cb_alice_1',
+    operation: 'update',
+    auth: { uid: 'bob', email_verified: true },
+    payload: { name: 'Hijacked Board', downloads: 2 },
+    expected: 'PERMISSION_DENIED',
+  },
 ];
 
 export function verifyDirtyDozenSpecification(): boolean {

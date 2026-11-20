@@ -381,7 +381,7 @@ export function createOrientalDragonPbrMaps(
 export function createRockPbrMaps(
   maxAnisotropy: number,
   repeat = 2,
-  texSize: 256 | 512 | 1024 = 512,
+  texSize: 128 | 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
   const cacheKey = `rock:${size}:${repeat}`;
@@ -435,7 +435,7 @@ export function createRockPbrMaps(
  */
 export function createBarkPbrMaps(
   maxAnisotropy: number,
-  texSize: 256 | 512 | 1024 = 512,
+  texSize: 128 | 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
   const cacheKey = `bark:${size}`;
@@ -484,7 +484,7 @@ export function createBarkPbrMaps(
  */
 export function createCastleStonePbrMaps(
   maxAnisotropy: number,
-  texSize: 256 | 512 | 1024 = 512,
+  texSize: 128 | 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
   const cacheKey = `stone:${size}`;
@@ -543,7 +543,7 @@ export function createCastleStonePbrMaps(
  */
 export function createCastleSlateRoofPbrMaps(
   maxAnisotropy: number,
-  texSize: 256 | 512 | 1024 = 512,
+  texSize: 128 | 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
   const cacheKey = `slate:${size}`;
@@ -599,9 +599,9 @@ export function createCastleSlateRoofPbrMaps(
  */
 export function createTimberPbrMaps(
   maxAnisotropy: number,
-  texSize: 256 | 512 | 1024 = 512,
+  texSize: 128 | 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
-  const size = texSize >= 512 ? 512 : 256;
+  const size = texSize >= 512 ? 512 : texSize;
   const cacheKey = `timber:${size}`;
   const cached = pbrBufferCache.get(cacheKey);
   if (cached) return createPbrSetFromBuffers(cached, maxAnisotropy);
@@ -645,7 +645,7 @@ export function createTimberPbrMaps(
  */
 export function createTerrainPbrMaps(
   maxAnisotropy: number,
-  texSize: 256 | 512 | 1024 = 512,
+  texSize: 128 | 256 | 512 | 1024 = 512,
 ): PbrTextureSet {
   const size = texSize;
   const cacheKey = `terrain:${size}`;
@@ -693,12 +693,12 @@ export function createTerrainPbrMaps(
  */
 export function createFoliageAtlasTextures(
   maxAnisotropy: number,
-  texSize: 256 | 512 | 1024 = 512,
+  texSize: 128 | 256 | 512 | 1024 = 512,
 ): {
   map: THREE.CanvasTexture;
   normalMap: THREE.CanvasTexture;
 } {
-  const size = texSize >= 512 ? 512 : 256;
+  const size = texSize >= 512 ? 512 : texSize;
   const cachedCanvases = foliageCanvasCache.get(size);
   if (cachedCanvases) {
     const map = new THREE.CanvasTexture(cachedCanvases.colorCanvas);

@@ -10,6 +10,7 @@ import {
   Shield,
   ShoppingBag,
   Shuffle,
+  Smile,
   Sparkles,
   Swords,
   Users,
@@ -20,14 +21,17 @@ import {
 import {
   BOARD_GAME_MODES,
   DICE_SKINS,
+  EMOTE_SETS,
   PLAYER_ARCHETYPES,
   TIME_ATTACK_DEFAULT_SEC,
   disambiguatePlayerName,
+  getEmoteSetUnlockProgress,
   isDiceSkinUnlocked,
   isPawnUnlocked,
   type BoardGameMode,
   type DiceSkinId,
   type DifficultyMode,
+  type EmoteSetId,
   type TeamId,
 } from '../../shared/gameConfig';
 import {
@@ -55,8 +59,11 @@ interface GameConfigViewProps {
   adaptiveTier: string;
   muted: boolean;
   selectedDiceSkinId: DiceSkinId;
+  selectedEmoteSetId: EmoteSetId;
   unlockedAchievements: string[];
   onSelectDiceSkin: (skinId: DiceSkinId) => void;
+  onSelectEmoteSet: (setId: EmoteSetId) => void;
+  onOpenEmoteCustomizer?: () => void;
   cameraSettings: CameraSettings;
   onChangeCameraMode: (mode: CameraMode) => void;
   onOpenCameraSettings: () => void;
@@ -100,8 +107,11 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   adaptiveTier,
   muted,
   selectedDiceSkinId,
+  selectedEmoteSetId,
   unlockedAchievements,
   onSelectDiceSkin,
+  onSelectEmoteSet,
+  onOpenEmoteCustomizer,
   cameraSettings,
   onChangeCameraMode,
   onOpenCameraSettings,
@@ -654,6 +664,71 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                     <div className="text-[10px] text-slate-400 truncate">
                       {unlocked ? skin.subtitle : skin.requiredAchievementTitle}
                     </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Custom EmoteWheel Set Selection Strip */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+              <Smile className="w-3.5 h-3.5 text-sky-400" />
+              Pilih Set Emote Wheel
+            </label>
+            {onOpenEmoteCustomizer ? (
+              <button
+                type="button"
+                onClick={onOpenEmoteCustomizer}
+                className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 underline underline-offset-2 cursor-pointer"
+              >
+                Lihat Progres &amp; Detail Set Emote
+              </button>
+            ) : (
+              <span className="text-[10px] sm:text-[11px] text-slate-400">
+                Terbuka dari progres pencapaian
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {EMOTE_SETS.map((emoteSet) => {
+              const status = getEmoteSetUnlockProgress(emoteSet.id, unlockedAchievements);
+              const selected = status.unlocked && selectedEmoteSetId === emoteSet.id;
+              return (
+                <button
+                  key={emoteSet.id}
+                  type="button"
+                  onClick={() => {
+                    if (status.unlocked) {
+                      onSelectEmoteSet(emoteSet.id);
+                    } else {
+                      onOpenEmoteCustomizer?.();
+                    }
+                  }}
+                  title={
+                    status.unlocked
+                      ? `${emoteSet.name} — ${emoteSet.description}`
+                      : `Terkunci (${status.progressText}) — ${status.requirementLabel}`
+                  }
+                  className={`min-w-0 overflow-hidden flex flex-col justify-between gap-1.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    selected
+                      ? 'border-amber-400 bg-amber-500/15 text-amber-100 shadow-md'
+                      : status.unlocked
+                        ? 'border-slate-700 bg-slate-900/75 text-slate-200 hover:bg-slate-800'
+                        : 'border-slate-800/80 bg-slate-950/50 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 w-full">
+                    <span className="text-xs font-bold truncate">{emoteSet.name}</span>
+                    {!status.unlocked && <Lock className="w-3 h-3 text-slate-500 shrink-0" />}
+                  </div>
+                  <div className="text-xs leading-none tracking-wider truncate">
+                    {emoteSet.items.slice(0, 4).map((i) => i.icon).join(' ')}
+                  </div>
+                  <div className="text-[10px] font-mono-num text-slate-400 truncate">
+                    {status.unlocked ? emoteSet.subtitle : status.progressText}
                   </div>
                 </button>
               );

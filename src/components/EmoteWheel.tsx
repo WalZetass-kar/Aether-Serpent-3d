@@ -1,82 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { SlidersHorizontal, X } from 'lucide-react';
+import {
+  EMOTE_SETS,
+  getEmoteSetDef,
+  isEmoteSetUnlocked,
+  type EmoteSetId,
+  type EmoteTone,
+  type EmoteWheelItem,
+} from '../../shared/gameConfig';
 import { soundEngine } from '../audio/soundEngine';
 
-export type EmoteTone = 'amber' | 'emerald' | 'sky' | 'violet' | 'rose' | 'orange';
+export type { EmoteTone, EmoteWheelItem };
 
-export interface EmoteWheelItem {
-  id: string;
-  label: string;
-  shortLabel: string;
-  icon: string;
-  payload: string;
-  tone: EmoteTone;
-  accentHex: string;
-  glowRgba: string;
-}
-
-export const EMOTE_WHEEL_ITEMS: EmoteWheelItem[] = [
-  {
-    id: 'gg',
-    label: 'GG!',
-    shortLabel: 'GG',
-    icon: '🏆',
-    payload: '🏆 GG!',
-    tone: 'amber',
-    accentHex: '#fbbf24',
-    glowRgba: 'rgba(251, 191, 36, 0.34)',
-  },
-  {
-    id: 'thanks',
-    label: 'Thanks!',
-    shortLabel: 'Thanks',
-    icon: '🙏',
-    payload: '🙏 Thanks!',
-    tone: 'emerald',
-    accentHex: '#34d399',
-    glowRgba: 'rgba(52, 211, 153, 0.32)',
-  },
-  {
-    id: 'well_played',
-    label: 'Well Played!',
-    shortLabel: 'WP',
-    icon: '⚔️',
-    payload: '⚔️ Well Played!',
-    tone: 'sky',
-    accentHex: '#38bdf8',
-    glowRgba: 'rgba(56, 189, 248, 0.32)',
-  },
-  {
-    id: 'oops',
-    label: 'Oops!',
-    shortLabel: 'Oops',
-    icon: '😱',
-    payload: '😱 Oops!',
-    tone: 'violet',
-    accentHex: '#c084fc',
-    glowRgba: 'rgba(192, 132, 252, 0.34)',
-  },
-  {
-    id: 'angry',
-    label: 'Angry!',
-    shortLabel: 'Angry',
-    icon: '💢',
-    payload: '💢 Angry!',
-    tone: 'rose',
-    accentHex: '#fb7185',
-    glowRgba: 'rgba(251, 113, 133, 0.36)',
-  },
-  {
-    id: 'nice',
-    label: 'Nice!',
-    shortLabel: 'Nice',
-    icon: '🔥',
-    payload: '🔥 Nice!',
-    tone: 'orange',
-    accentHex: '#fb923c',
-    glowRgba: 'rgba(251, 146, 60, 0.34)',
-  },
-];
+export const EMOTE_WHEEL_ITEMS: EmoteWheelItem[] = EMOTE_SETS[0].items;
 
 export interface ResolvedEmoteVisual {
   icon: string;
@@ -86,14 +22,16 @@ export interface ResolvedEmoteVisual {
   isEmoteWheelItem: boolean;
 }
 
+const ALL_EMOTE_ITEMS: EmoteWheelItem[] = EMOTE_SETS.flatMap((set) => set.items);
+
 /**
- * Matches any arena chat/emote string against known quick visual emotes so
+ * Matches any arena chat/emote string against all EmoteWheel sets so
  * incoming remote and local emotes render with expressive mood styling.
  */
 export function resolveEmoteVisual(rawText: string): ResolvedEmoteVisual {
   const trimmed = rawText.trim();
   const lower = trimmed.toLowerCase();
-  const matched = EMOTE_WHEEL_ITEMS.find(
+  const matched = ALL_EMOTE_ITEMS.find(
     (item) =>
       trimmed === item.payload ||
       lower === item.label.toLowerCase() ||
@@ -105,7 +43,7 @@ export function resolveEmoteVisual(rawText: string): ResolvedEmoteVisual {
       icon: matched.icon,
       text: matched.label,
       tone: matched.tone,
-      isAngry: matched.id === 'angry',
+      isAngry: Boolean(matched.isAngry || matched.id === 'angry'),
       isEmoteWheelItem: true,
     };
   }
@@ -233,6 +171,10 @@ interface EmoteWheelProps {
   open: boolean;
   anchor: EmoteWheelAnchor | null;
   playerName?: string;
+  emoteSetId?: EmoteSetId;
+  unlockedAchievements?: string[];
+  onSwitchEmoteSet?: (setId: EmoteSetId) => void;
+  onOpenEmoteCustomizer?: () => void;
   onSelectEmote: (item: EmoteWheelItem) => void;
   onClose: () => void;
 }
@@ -243,9 +185,9 @@ const OUTER_R = 118;
 const INNER_R = 44;
 const ICON_R = 82;
 const DEADZONE_R = 28;
-const SECTOR_COUNT = EMOTE_WHEEL_ITEMS.length;
+const SECTOR_COUNT = 6;
 const SECTOR_ANGLE = (Math.PI * 2) / SECTOR_COUNT;
-// Offset so index 0 ("GG") sits centered at straight top (-90 deg)
+// Offset so index 0 sits centered at straight top (-90 deg)
 const START_OFFSET = -Math.PI / 2 - SECTOR_ANGLE / 2;
 
 function polarToCartesian(cx: number, cy: number, r: number, angleRad: number) {
@@ -274,19 +216,25 @@ function buildWedgePath(index: number, outerR: number, innerR: number): string {
   ].join(' ');
 }
 
-function resolveSectorIndex(dx: number, dy: number): number | null {
+function resolveSectorIndex(dx: number, dy: number, sectorCount: number): number | null {
   const dist = Math.hypot(dx, dy);
   if (dist < DEADZONE_R) return null;
-  let angle = Math.atan2(dy, dx) - START_OFFSET;
+  const sectorAngle = (Math.PI * 2) / sectorCount;
+  const startOffset = -Math.PI / 2 - sectorAngle / 2;
+  let angle = Math.atan2(dy, dx) - startOffset;
   while (angle < 0) angle += Math.PI * 2;
   while (angle >= Math.PI * 2) angle -= Math.PI * 2;
-  return Math.floor(angle / SECTOR_ANGLE) % SECTOR_COUNT;
+  return Math.floor(angle / sectorAngle) % sectorCount;
 }
 
 export const EmoteWheel: React.FC<EmoteWheelProps> = ({
   open,
   anchor,
   playerName,
+  emoteSetId = 'classic_aether',
+  unlockedAchievements = [],
+  onSwitchEmoteSet,
+  onOpenEmoteCustomizer,
   onSelectEmote,
   onClose,
 }) => {
@@ -295,23 +243,44 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
   const activeIdxRef = useRef<number | null>(null);
   activeIdxRef.current = activeIdx;
 
-  // Clamp radial center strictly inside safe viewport bounds so wheel never clips
+  const unlockedSets = useMemo(
+    () => EMOTE_SETS.filter((set) => isEmoteSetUnlocked(set.id, unlockedAchievements)),
+    [unlockedAchievements],
+  );
+
+  const activeSet = useMemo(() => {
+    if (isEmoteSetUnlocked(emoteSetId, unlockedAchievements)) {
+      return getEmoteSetDef(emoteSetId);
+    }
+    return EMOTE_SETS[0];
+  }, [emoteSetId, unlockedAchievements]);
+
+  const activeItems = activeSet.items;
+  const activeItemsRef = useRef<EmoteWheelItem[]>(activeItems);
+  activeItemsRef.current = activeItems;
+
+  // Clamp radial center strictly inside safe viewport bounds so wheel + top set bar never clip
   const center = useMemo(() => {
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 768;
-    const margin = HALF + 16;
+    const marginX = HALF + 16;
+    const topMargin = HALF + 58;
+    const bottomMargin = HALF + 38;
     const rawX = anchor?.x ?? vw / 2;
     const rawY = anchor?.y ?? vh / 2;
     return {
-      x: Math.max(margin, Math.min(vw - margin, rawX)),
-      y: Math.max(margin + 12, Math.min(vh - margin - 12, rawY)),
+      x: Math.max(marginX, Math.min(vw - marginX, rawX)),
+      y: Math.max(topMargin, Math.min(vh - bottomMargin, rawY)),
     };
   }, [anchor]);
 
   const wedges = useMemo(
     () =>
-      EMOTE_WHEEL_ITEMS.map((item, idx) => {
-        const midAngle = START_OFFSET + (idx + 0.5) * SECTOR_ANGLE;
+      activeItems.map((item, idx) => {
+        const count = activeItems.length;
+        const sectorAngle = (Math.PI * 2) / count;
+        const startOffset = -Math.PI / 2 - sectorAngle / 2;
+        const midAngle = startOffset + (idx + 0.5) * sectorAngle;
         const pos = polarToCartesian(HALF, HALF, ICON_R, midAngle);
         return {
           item,
@@ -322,16 +291,16 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
           midAngle,
         };
       }),
-    [],
+    [activeItems],
   );
 
-  // Reset hover state on open
+  // Reset hover state on open or set switch
   useEffect(() => {
     if (open) {
       setActiveIdx(null);
       setPointerAngle(null);
     }
-  }, [open, anchor]);
+  }, [open, anchor, activeSet.id]);
 
   // Support true hold-drag-release when opened by long-press AND Escape key dismissal
   useEffect(() => {
@@ -347,10 +316,10 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
       const dx = e.clientX - center.x;
       const dy = e.clientY - center.y;
       const dist = Math.hypot(dx, dy);
+      const count = activeItemsRef.current.length;
       if (dist > OUTER_R + 72) {
         if (anchor?.openedByHold) {
-          // Even far drags still pick nearest sector while holding
-          setActiveIdx(resolveSectorIndex(dx, dy));
+          setActiveIdx(resolveSectorIndex(dx, dy, count));
           setPointerAngle(Math.atan2(dy, dx));
         } else {
           setActiveIdx(null);
@@ -358,7 +327,7 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
         }
         return;
       }
-      const idx = resolveSectorIndex(dx, dy);
+      const idx = resolveSectorIndex(dx, dy, count);
       setActiveIdx(idx);
       setPointerAngle(idx !== null ? Math.atan2(dy, dx) : null);
     };
@@ -367,14 +336,14 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
       if (!anchor?.openedByHold) return;
       const idx = activeIdxRef.current;
       if (idx !== null) {
-        const chosen = EMOTE_WHEEL_ITEMS[idx];
+        const chosen = activeItemsRef.current[idx];
         if (chosen) {
           soundEngine.playUiClick();
           onSelectEmote(chosen);
         }
         onClose();
       }
-      // If user released inside the center deadzone, keep wheel open so they can tap any wedge cleanly!
+      // If released inside center deadzone, keep wheel open for tap selection
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -394,7 +363,7 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
 
   if (!open || !anchor) return null;
 
-  const activeItem = activeIdx !== null ? EMOTE_WHEEL_ITEMS[activeIdx] : null;
+  const activeItem = activeIdx !== null ? activeItems[activeIdx] : null;
 
   return (
     <div
@@ -411,6 +380,59 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
           onClose();
         }}
       />
+
+      {/* Compact Top Set Bar (Switch between unlocked sets or open customizer) */}
+      <div
+        className="absolute -translate-x-1/2 flex items-center gap-1 rounded-xl border border-slate-700/90 bg-slate-950/94 backdrop-blur-md px-1.5 py-1 shadow-xl max-w-[92vw] overflow-x-auto no-scrollbar"
+        style={{
+          left: center.x,
+          top: Math.max(10, center.y - HALF - 44),
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {onSwitchEmoteSet && unlockedSets.length > 1 ? (
+          unlockedSets.map((set) => {
+            const isActive = set.id === activeSet.id;
+            return (
+              <button
+                key={set.id}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSwitchEmoteSet(set.id);
+                }}
+                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  isActive
+                    ? 'bg-amber-400 text-slate-950'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                {set.items[0]?.icon} {set.name}
+              </button>
+            );
+          })
+        ) : (
+          <span className="px-2 py-0.5 text-[10px] font-bold text-amber-200 whitespace-nowrap shrink-0">
+            {activeSet.items[0]?.icon} {activeSet.name}
+          </span>
+        )}
+        {onOpenEmoteCustomizer && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              soundEngine.playUiClick();
+              onClose();
+              onOpenEmoteCustomizer();
+            }}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 bg-slate-900 text-[10px] font-semibold text-sky-300 hover:border-sky-400/60 hover:text-sky-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            title="Lihat progres & buka set emote baru"
+          >
+            <SlidersHorizontal className="w-3 h-3 shrink-0" />
+            <span>Set ({unlockedSets.length}/{EMOTE_SETS.length})</span>
+          </button>
+        )}
+      </div>
 
       {/* Radial Wheel Container anchored cleanly inside viewport */}
       <div
@@ -429,7 +451,7 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
           style={{
             boxShadow: activeItem
               ? `0 0 38px ${activeItem.glowRgba}, 0 22px 48px rgba(2, 6, 23, 0.85)`
-              : '0 0 28px rgba(245, 158, 11, 0.16), 0 22px 48px rgba(2, 6, 23, 0.82)',
+              : `0 0 28px ${activeSet.glowRgba}, 0 22px 48px rgba(2, 6, 23, 0.82)`,
           }}
         />
 
@@ -447,13 +469,14 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
             </radialGradient>
           </defs>
 
-          {/* Outer Obsidian Backing Disc & Gilded Brass Ring */}
+          {/* Outer Obsidian Backing Disc & Theme Accent Ring */}
           <circle
             cx={HALF}
             cy={HALF}
             r={OUTER_R + 3}
             fill="url(#emoteWheelBg)"
-            stroke="rgba(245, 158, 11, 0.42)"
+            stroke={activeSet.themeHex}
+            strokeOpacity="0.48"
             strokeWidth="1.5"
           />
           <circle
@@ -466,7 +489,7 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
             strokeDasharray="3 5"
           />
 
-          {/* 6 Interactive Emote Wedges */}
+          {/* Interactive Emote Wedges */}
           {wedges.map(({ item, idx, path, activePath }) => {
             const isSelected = activeIdx === idx;
             return (
@@ -549,7 +572,7 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
           aria-label="Tutup Emote Wheel"
           className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[78px] h-[78px] rounded-full border bg-slate-950/96 flex flex-col items-center justify-center text-center shadow-inner transition-colors cursor-pointer"
           style={{
-            borderColor: activeItem ? activeItem.accentHex : 'rgba(245, 158, 11, 0.45)',
+            borderColor: activeItem ? activeItem.accentHex : activeSet.themeHex,
           }}
         >
           {activeItem ? (
@@ -565,8 +588,11 @@ export const EmoteWheel: React.FC<EmoteWheelProps> = ({
           ) : (
             <>
               <X className="w-4 h-4 text-slate-300" />
-              <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-300/90">
-                Emote
+              <span
+                className="mt-0.5 text-[9px] font-bold uppercase tracking-wider max-w-[66px] truncate"
+                style={{ color: activeSet.themeHex }}
+              >
+                {activeSet.name.split(' ')[0]}
               </span>
               {playerName && (
                 <span className="max-w-[60px] truncate text-[8px] text-slate-400">

@@ -416,8 +416,11 @@ export function buildArenaEnvironment(
   group.name = 'ArenaRealisticEnvironment';
 
   let currentQuality = quality;
+  const simplified = quality.simplifiedShaders;
   const shadows = quality.shadowsEnabled && (boardConfig?.visualEffects.shadowsEnabled ?? true);
-  const texSize = quality.pbrTexSize;
+  const envTexSize = quality.envTexSize;
+  const envSubTexSize = (envTexSize >= 512 ? 512 : envTexSize) as 128 | 256 | 512;
+  const envAniso = simplified ? 1 : maxAnisotropy;
 
   const themeId = boardConfig?.themeId ?? 'enchanted_forest';
   const envCfg = boardConfig?.environmentConfig;
@@ -433,16 +436,16 @@ export function buildArenaEnvironment(
   const uTime = { value: 0 };
   const uWindTime = { value: 0 };
 
-  // 1. Shared Resolution-Tiered PBR Texture Sets
-  const terrainPbr = createTerrainPbrMaps(maxAnisotropy, texSize);
-  const rockPbr = createRockPbrMaps(maxAnisotropy, 2, texSize);
-  const barkPbr = createBarkPbrMaps(maxAnisotropy, texSize);
-  const stonePbr = createCastleStonePbrMaps(maxAnisotropy, texSize);
-  const slatePbr = createCastleSlateRoofPbrMaps(maxAnisotropy, Math.min(512, texSize) as 256 | 512);
-  const timberPbr = createTimberPbrMaps(maxAnisotropy, Math.min(512, texSize) as 256 | 512);
-  const foliageAtlas = createFoliageAtlasTextures(maxAnisotropy, texSize);
+  // 1. Shared Resolution-Tiered Environment Texture Sets (128px on Potato Mode to slash VRAM & bandwidth)
+  const terrainPbr = createTerrainPbrMaps(envAniso, envTexSize);
+  const rockPbr = createRockPbrMaps(envAniso, 2, envTexSize);
+  const barkPbr = createBarkPbrMaps(envAniso, envTexSize);
+  const stonePbr = createCastleStonePbrMaps(envAniso, envTexSize);
+  const slatePbr = createCastleSlateRoofPbrMaps(envAniso, envSubTexSize);
+  const timberPbr = createTimberPbrMaps(envAniso, envSubTexSize);
+  const foliageAtlas = createFoliageAtlasTextures(envAniso, envTexSize);
   const mistTex = createMistSpriteTexture();
-  const moatTex = createRunicMoatTexture(maxAnisotropy);
+  const moatTex = createRunicMoatTexture(envAniso);
 
   const disposableGeos: THREE.BufferGeometry[] = [];
   const disposableMats: THREE.Material[] = [];
@@ -502,17 +505,22 @@ export function buildArenaEnvironment(
   terrainGeo.setAttribute('color', new THREE.BufferAttribute(tColors, 3));
 
   const isLowPbrTier = quality.tier === 'potato' || quality.tier === 'low';
-  const terrainMat = new THREE.MeshStandardMaterial({
-    map: terrainPbr.map,
-    normalMap: isLowPbrTier ? null : terrainPbr.normalMap,
-    normalScale: new THREE.Vector2(1.4, 1.4),
-    roughnessMap: isLowPbrTier ? null : terrainPbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : terrainPbr.aoMap,
-    aoMapIntensity: 0.9,
-    vertexColors: true,
-    roughness: themeId === 'frozen_kingdom' ? 0.52 : 0.88,
-    metalness: themeId === 'frozen_kingdom' ? 0.14 : 0.03,
-  });
+  const terrainMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: terrainPbr.map,
+        vertexColors: true,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: terrainPbr.map,
+        normalMap: isLowPbrTier ? null : terrainPbr.normalMap,
+        normalScale: new THREE.Vector2(1.4, 1.4),
+        roughnessMap: isLowPbrTier ? null : terrainPbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : terrainPbr.aoMap,
+        aoMapIntensity: 0.9,
+        vertexColors: true,
+        roughness: themeId === 'frozen_kingdom' ? 0.52 : 0.88,
+        metalness: themeId === 'frozen_kingdom' ? 0.14 : 0.03,
+      });
   disposableGeos.push(terrainGeo);
   disposableMats.push(terrainMat);
 
@@ -525,39 +533,48 @@ export function buildArenaEnvironment(
   const waterGeo = new THREE.RingGeometry(
     11.6,
     19.8,
-    quality.tier === 'potato' ? 36 : 64,
-    quality.tier === 'potato' ? 2 : 5,
+    simplified ? 24 : 64,
+    simplified ? 1 : 5,
   );
-  const waterMat =
-    quality.tier === 'potato' || quality.tier === 'low' || isSoftwareGl
-      ? new THREE.MeshStandardMaterial({
+  const waterMat: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial =
+    simplified
+      ? new THREE.MeshLambertMaterial({
           map: moatTex,
           color: biome.moatBaseHex,
-          roughness: isLavaTheme ? 0.32 : 0.14,
-          metalness: isLavaTheme ? 0.08 : 0.18,
           emissive: isLavaTheme ? new THREE.Color(0xdc2626) : new THREE.Color(0x000000),
-          emissiveIntensity: isLavaTheme ? 0.55 : 0,
+          emissiveIntensity: isLavaTheme ? 0.5 : 0,
           transparent: true,
-          opacity: 0.92,
+          opacity: 0.9,
         })
-      : new THREE.MeshPhysicalMaterial({
-          map: moatTex,
-          color: biome.moatBaseHex,
-          roughness: isLavaTheme ? 0.32 : 0.09,
-          metalness: isLavaTheme ? 0.08 : 0.14,
-          emissive: isLavaTheme ? new THREE.Color(0xdc2626) : new THREE.Color(0x000000),
-          emissiveIntensity: isLavaTheme ? 0.55 : 0,
-          clearcoat: isLavaTheme ? 0.15 : 1.0,
-          clearcoatRoughness: 0.06,
-          transparent: true,
-          opacity: 0.92,
-        });
+      : quality.tier === 'low' || isSoftwareGl
+        ? new THREE.MeshStandardMaterial({
+            map: moatTex,
+            color: biome.moatBaseHex,
+            roughness: isLavaTheme ? 0.32 : 0.14,
+            metalness: isLavaTheme ? 0.08 : 0.18,
+            emissive: isLavaTheme ? new THREE.Color(0xdc2626) : new THREE.Color(0x000000),
+            emissiveIntensity: isLavaTheme ? 0.55 : 0,
+            transparent: true,
+            opacity: 0.92,
+          })
+        : new THREE.MeshPhysicalMaterial({
+            map: moatTex,
+            color: biome.moatBaseHex,
+            roughness: isLavaTheme ? 0.32 : 0.09,
+            metalness: isLavaTheme ? 0.08 : 0.14,
+            emissive: isLavaTheme ? new THREE.Color(0xdc2626) : new THREE.Color(0x000000),
+            emissiveIntensity: isLavaTheme ? 0.55 : 0,
+            clearcoat: isLavaTheme ? 0.15 : 1.0,
+            clearcoatRoughness: 0.06,
+            transparent: true,
+            opacity: 0.92,
+          });
 
   const [mdR, mdG, mdB] = biome.moatDeep;
   const [msR, msG, msB] = biome.moatShallow;
   const [mfR, mfG, mfB] = biome.moatFoam;
 
-  if (quality.tier !== 'potato') {
+  if (!simplified) {
     waterMat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = uTime;
       shader.vertexShader = shader.vertexShader
@@ -612,7 +629,7 @@ export function buildArenaEnvironment(
   group.add(waterMesh);
 
   // 5. Distant Mountain Waterfall / Lavafall Gorge Cascade (North vista behind Tile 91-100)
-  const fallGeo = new THREE.PlaneGeometry(3.8, 5.4, 12, 16);
+  const fallGeo = new THREE.PlaneGeometry(3.8, 5.4, simplified ? 4 : 12, simplified ? 6 : 16);
   const fPos = fallGeo.attributes.position;
   for (let i = 0; i < fPos.count; i++) {
     const y = fPos.getY(i);
@@ -622,56 +639,66 @@ export function buildArenaEnvironment(
   }
   fallGeo.computeVertexNormals();
 
-  const waterfallMat = new THREE.MeshStandardMaterial({
-    color: isLavaTheme ? 0xf97316 : biome.moatBaseHex,
-    roughness: 0.18,
-    metalness: 0.05,
-    transparent: true,
-    opacity: 0.88,
-    emissive: isLavaTheme ? 0xea580c : biome.moatBaseHex,
-    emissiveIntensity: isLavaTheme ? 0.65 : 0.2,
-  });
-  waterfallMat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = uTime;
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-         varying vec2 vWfUv;`,
-      )
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-         vWfUv = uv;`,
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-         uniform float uTime;
-         varying vec2 vWfUv;`,
-      )
-      .replace(
-        '#include <color_fragment>',
-        `#include <color_fragment>
-         float flow = vWfUv.y * 4.5 + uTime * 3.2;
-         float sA = sin(vWfUv.x * 24.0 + sin(flow * 1.2) * 1.2) * 0.5 + 0.5;
-         float sB = cos(vWfUv.x * 38.0 - flow * 1.7) * 0.5 + 0.5;
-         float foam = smoothstep(0.45, 0.9, sA * 0.6 + sB * 0.4);
-         float bottomChurn = smoothstep(0.3, 0.0, vWfUv.y) * 0.65;
-         float edgeFade = smoothstep(0.0, 0.14, vWfUv.x) * smoothstep(1.0, 0.86, vWfUv.x);
-         vec3 baseCasc = vec3(${msR.toFixed(3)}, ${msG.toFixed(3)}, ${msB.toFixed(3)});
-         vec3 crestCasc = vec3(${mfR.toFixed(3)}, ${mfG.toFixed(3)}, ${mfB.toFixed(3)});
-         diffuseColor.rgb = mix(baseCasc, crestCasc, clamp(foam * 0.72 + bottomChurn, 0.0, 1.0));
-         diffuseColor.a *= edgeFade;`,
-      );
-  };
+  const waterfallMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        color: isLavaTheme ? 0xf97316 : biome.moatBaseHex,
+        transparent: true,
+        opacity: 0.82,
+        emissive: isLavaTheme ? 0xea580c : biome.moatBaseHex,
+        emissiveIntensity: isLavaTheme ? 0.5 : 0.18,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: isLavaTheme ? 0xf97316 : biome.moatBaseHex,
+        roughness: 0.18,
+        metalness: 0.05,
+        transparent: true,
+        opacity: 0.88,
+        emissive: isLavaTheme ? 0xea580c : biome.moatBaseHex,
+        emissiveIntensity: isLavaTheme ? 0.65 : 0.2,
+      });
+  if (!simplified) {
+    waterfallMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = uTime;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           varying vec2 vWfUv;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           vWfUv = uv;`,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform float uTime;
+           varying vec2 vWfUv;`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+           float flow = vWfUv.y * 4.5 + uTime * 3.2;
+           float sA = sin(vWfUv.x * 24.0 + sin(flow * 1.2) * 1.2) * 0.5 + 0.5;
+           float sB = cos(vWfUv.x * 38.0 - flow * 1.7) * 0.5 + 0.5;
+           float foam = smoothstep(0.45, 0.9, sA * 0.6 + sB * 0.4);
+           float bottomChurn = smoothstep(0.3, 0.0, vWfUv.y) * 0.65;
+           float edgeFade = smoothstep(0.0, 0.14, vWfUv.x) * smoothstep(1.0, 0.86, vWfUv.x);
+           vec3 baseCasc = vec3(${msR.toFixed(3)}, ${msG.toFixed(3)}, ${msB.toFixed(3)});
+           vec3 crestCasc = vec3(${mfR.toFixed(3)}, ${mfG.toFixed(3)}, ${mfB.toFixed(3)});
+           diffuseColor.rgb = mix(baseCasc, crestCasc, clamp(foam * 0.72 + bottomChurn, 0.0, 1.0));
+           diffuseColor.a *= edgeFade;`,
+        );
+    };
+  }
   disposableGeos.push(fallGeo);
   disposableMats.push(waterfallMat);
 
   const cascadeMesh = new THREE.Mesh(fallGeo, waterfallMat);
   cascadeMesh.position.set(0, 2.0, -19.0);
-  cascadeMesh.visible = showWaterfall;
+  cascadeMesh.visible = showWaterfall && !simplified;
   group.add(cascadeMesh);
 
   // Waterfall Mist Sprites (InstancedMesh -> 1 draw call!)
@@ -692,131 +719,137 @@ export function buildArenaEnvironment(
   group.add(mistInst);
 
   // 6. Theme-Specific 3D Sanctuary Corner, Perimeter Landmarks & Surrounding Fantasy Buildings
-  const ashlarMat = new THREE.MeshStandardMaterial({
-    map: stonePbr.map,
-    normalMap: isLowPbrTier ? null : stonePbr.normalMap,
-    normalScale: new THREE.Vector2(1.45, 1.45),
-    roughnessMap: isLowPbrTier ? null : stonePbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : stonePbr.aoMap,
-    aoMapIntensity: 0.9,
-    color:
-      decorationStyle === 'desert_pyramids'
-        ? 0xd97706
-        : decorationStyle === 'shadow_monoliths' ||
-            decorationStyle === 'volcano_braziers' ||
-            decorationStyle === 'nebula_rings'
-          ? 0x475569
-          : decorationStyle === 'sakura_torii'
-            ? 0xbe123c
-            : decorationStyle === 'clockwork_gears'
-              ? 0xb45309
-              : decorationStyle === 'jade_pagodas'
-                ? 0x10b981
-                : decorationStyle === 'atlantis_pillars' || decorationStyle === 'floating_islands'
-                  ? 0xe2e8f0
-                  : 0xb8c4d4,
-    roughness: decorationStyle === 'jade_pagodas' ? 0.36 : 0.68,
-    metalness: decorationStyle === 'clockwork_gears' ? 0.68 : 0.12,
-  });
-  const slateRoofMat = new THREE.MeshStandardMaterial({
-    map: slatePbr.map,
-    normalMap: isLowPbrTier ? null : slatePbr.normalMap,
-    normalScale: new THREE.Vector2(1.35, 1.35),
-    roughnessMap: isLowPbrTier ? null : slatePbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : slatePbr.aoMap,
-    aoMapIntensity: 0.88,
-    color:
-      themeId === 'dragon_volcano' || themeId === 'sakura_shogun'
-        ? 0x881337
-        : themeId === 'frozen_kingdom'
-          ? 0x0284c7
-          : themeId === 'lost_desert' || themeId === 'ancient_temple' || themeId === 'clockwork_aether'
+  const ashlarColor =
+    decorationStyle === 'desert_pyramids'
+      ? 0xd97706
+      : decorationStyle === 'shadow_monoliths' ||
+          decorationStyle === 'volcano_braziers' ||
+          decorationStyle === 'nebula_rings'
+        ? 0x475569
+        : decorationStyle === 'sakura_torii'
+          ? 0xbe123c
+          : decorationStyle === 'clockwork_gears'
             ? 0xb45309
-            : themeId === 'jade_palace'
-              ? 0x047857
-              : themeId === 'shadow_realm' || themeId === 'cosmic_nebula'
-                ? 0x581c87
-                : 0x3b82f6,
-    roughness: 0.48,
-    metalness: 0.18,
-  });
-  const timberBeamMat = new THREE.MeshStandardMaterial({
-    map: timberPbr.map,
-    normalMap: isLowPbrTier ? null : timberPbr.normalMap,
-    normalScale: new THREE.Vector2(1.35, 1.35),
-    roughnessMap: isLowPbrTier ? null : timberPbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : timberPbr.aoMap,
-    aoMapIntensity: 0.88,
-    color: themeId === 'sakura_shogun' ? 0x9f1239 : 0xb47b48,
-    roughness: 0.72,
-    metalness: 0.05,
-  });
-  const bronzeMat = new THREE.MeshStandardMaterial({
-    color:
-      decorationStyle === 'ice_crystals' || decorationStyle === 'nebula_rings'
+            : decorationStyle === 'jade_pagodas'
+              ? 0x10b981
+              : decorationStyle === 'atlantis_pillars' || decorationStyle === 'floating_islands'
+                ? 0xe2e8f0
+                : 0xb8c4d4;
+  const slateColor =
+    themeId === 'dragon_volcano' || themeId === 'sakura_shogun'
+      ? 0x881337
+      : themeId === 'frozen_kingdom'
+        ? 0x0284c7
+        : themeId === 'lost_desert' || themeId === 'ancient_temple' || themeId === 'clockwork_aether'
+          ? 0xb45309
+          : themeId === 'jade_palace'
+            ? 0x047857
+            : themeId === 'shadow_realm' || themeId === 'cosmic_nebula'
+              ? 0x581c87
+              : 0x3b82f6;
+  const timberColor = themeId === 'sakura_shogun' ? 0x9f1239 : 0xb47b48;
+  const bronzeColor =
+    decorationStyle === 'ice_crystals' || decorationStyle === 'nebula_rings'
+      ? 0x38bdf8
+      : decorationStyle === 'shadow_monoliths'
+        ? 0xa855f7
+        : decorationStyle === 'sakura_torii'
+          ? 0xf43f5e
+          : decorationStyle === 'jade_pagodas'
+            ? 0xfde047
+            : 0xf59e0b;
+  const lanternColor =
+    decorationStyle === 'volcano_braziers'
+      ? 0xf97316
+      : decorationStyle === 'ice_crystals' || decorationStyle === 'atlantis_pillars'
         ? 0x38bdf8
         : decorationStyle === 'shadow_monoliths'
-          ? 0xa855f7
+          ? 0xc084fc
           : decorationStyle === 'sakura_torii'
-            ? 0xf43f5e
-            : decorationStyle === 'jade_pagodas'
-              ? 0xfde047
-              : 0xf59e0b,
-    roughness: 0.25,
-    metalness: 0.88,
-  });
-  const warmLanternMat = new THREE.MeshStandardMaterial({
-    color:
-      decorationStyle === 'volcano_braziers'
-        ? 0xf97316
-        : decorationStyle === 'ice_crystals' || decorationStyle === 'atlantis_pillars'
-          ? 0x38bdf8
-          : decorationStyle === 'shadow_monoliths'
-            ? 0xc084fc
-            : decorationStyle === 'sakura_torii'
-              ? 0xf9a8d4
-              : decorationStyle === 'clockwork_gears' || decorationStyle === 'jade_pagodas'
-                ? 0x34d399
-                : decorationStyle === 'nebula_rings'
-                  ? 0x7dd3fc
-                  : 0xfef08a,
-    emissive:
-      decorationStyle === 'volcano_braziers'
-        ? 0xea580c
-        : decorationStyle === 'ice_crystals' || decorationStyle === 'atlantis_pillars'
-          ? 0x0284c7
-          : decorationStyle === 'shadow_monoliths'
-            ? 0x9333ea
-            : decorationStyle === 'sakura_torii'
-              ? 0xe11d48
-              : decorationStyle === 'clockwork_gears' || decorationStyle === 'jade_pagodas'
-                ? 0x059669
-                : decorationStyle === 'nebula_rings'
-                  ? 0x6366f1
-                  : 0xf59e0b,
-    emissiveIntensity: 0.92,
-    roughness: 0.16,
-  });
+            ? 0xf9a8d4
+            : decorationStyle === 'clockwork_gears' || decorationStyle === 'jade_pagodas'
+              ? 0x34d399
+              : decorationStyle === 'nebula_rings'
+                ? 0x7dd3fc
+                : 0xfef08a;
+  const lanternEmissive =
+    decorationStyle === 'volcano_braziers'
+      ? 0xea580c
+      : decorationStyle === 'ice_crystals' || decorationStyle === 'atlantis_pillars'
+        ? 0x0284c7
+        : decorationStyle === 'shadow_monoliths'
+          ? 0x9333ea
+          : decorationStyle === 'sakura_torii'
+            ? 0xe11d48
+            : decorationStyle === 'clockwork_gears' || decorationStyle === 'jade_pagodas'
+              ? 0x059669
+              : decorationStyle === 'nebula_rings'
+                ? 0x6366f1
+                : 0xf59e0b;
+
+  const ashlarMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ map: stonePbr.map, color: ashlarColor })
+    : new THREE.MeshStandardMaterial({
+        map: stonePbr.map,
+        normalMap: isLowPbrTier ? null : stonePbr.normalMap,
+        normalScale: new THREE.Vector2(1.45, 1.45),
+        roughnessMap: isLowPbrTier ? null : stonePbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : stonePbr.aoMap,
+        aoMapIntensity: 0.9,
+        color: ashlarColor,
+        roughness: decorationStyle === 'jade_pagodas' ? 0.36 : 0.68,
+        metalness: decorationStyle === 'clockwork_gears' ? 0.68 : 0.12,
+      });
+  const slateRoofMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ map: slatePbr.map, color: slateColor })
+    : new THREE.MeshStandardMaterial({
+        map: slatePbr.map,
+        normalMap: isLowPbrTier ? null : slatePbr.normalMap,
+        normalScale: new THREE.Vector2(1.35, 1.35),
+        roughnessMap: isLowPbrTier ? null : slatePbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : slatePbr.aoMap,
+        aoMapIntensity: 0.88,
+        color: slateColor,
+        roughness: 0.48,
+        metalness: 0.18,
+      });
+  const timberBeamMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ map: timberPbr.map, color: timberColor })
+    : new THREE.MeshStandardMaterial({
+        map: timberPbr.map,
+        normalMap: isLowPbrTier ? null : timberPbr.normalMap,
+        normalScale: new THREE.Vector2(1.35, 1.35),
+        roughnessMap: isLowPbrTier ? null : timberPbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : timberPbr.aoMap,
+        aoMapIntensity: 0.88,
+        color: timberColor,
+        roughness: 0.72,
+        metalness: 0.05,
+      });
+  const bronzeMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ color: bronzeColor })
+    : new THREE.MeshStandardMaterial({
+        color: bronzeColor,
+        roughness: 0.25,
+        metalness: 0.88,
+      });
+  const warmLanternMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        color: lanternColor,
+        emissive: lanternEmissive,
+        emissiveIntensity: 0.78,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: lanternColor,
+        emissive: lanternEmissive,
+        emissiveIntensity: 0.92,
+        roughness: 0.16,
+      });
   disposableMats.push(ashlarMat, slateRoofMat, timberBeamMat, bronzeMat, warmLanternMat);
 
-  const plinthGeo = new THREE.CylinderGeometry(0.88, 1.12, 0.48, 8);
-  const spireGeo =
-    decorationStyle === 'desert_pyramids'
-      ? new THREE.ConeGeometry(1.35, 2.6, 4)
-      : decorationStyle === 'ice_crystals'
-        ? new THREE.CylinderGeometry(0.08, 0.68, 3.2, 6)
-        : decorationStyle === 'volcano_braziers'
-          ? new THREE.CylinderGeometry(0.78, 0.52, 1.9, 8)
-          : new THREE.CylinderGeometry(0.32, 0.62, 2.65, 8);
   const collarGeo = new THREE.TorusGeometry(0.58, 0.048, 8, 24);
   collarGeo.rotateX(Math.PI / 2);
-  const lanternGeo = new THREE.OctahedronGeometry(
-    decorationStyle === 'volcano_braziers' ? 0.46 : 0.3,
-    0,
-  );
-  ensureUv2(plinthGeo);
-  ensureUv2(spireGeo);
-  disposableGeos.push(plinthGeo, spireGeo, collarGeo, lanternGeo);
+  disposableGeos.push(collarGeo);
 
   const obeliskCorners: Array<[number, number]> = [
     [-11.1, -11.1],
@@ -825,40 +858,6 @@ export function buildArenaEnvironment(
     [11.1, 11.1],
   ];
   const obeliskMeshes: THREE.Mesh[] = [];
-  for (const [ox, oz] of obeliskCorners) {
-    const obGroup = new THREE.Group();
-    obGroup.position.set(ox, -0.25, oz);
-
-    const plinth = new THREE.Mesh(plinthGeo, ashlarMat);
-    plinth.position.y = 0.24;
-    plinth.castShadow = shadows;
-    plinth.receiveShadow = shadows;
-    obGroup.add(plinth);
-    obeliskMeshes.push(plinth);
-
-    const spire = new THREE.Mesh(
-      spireGeo,
-      decorationStyle === 'ice_crystals' ? warmLanternMat : ashlarMat,
-    );
-    spire.position.y = decorationStyle === 'volcano_braziers' ? 1.25 : 1.78;
-    if (decorationStyle === 'desert_pyramids') {
-      spire.rotation.y = Math.PI / 4;
-    }
-    spire.castShadow = shadows;
-    spire.receiveShadow = shadows;
-    obGroup.add(spire);
-    obeliskMeshes.push(spire);
-
-    const collar = new THREE.Mesh(collarGeo, bronzeMat);
-    collar.position.y = 0.52;
-    obGroup.add(collar);
-
-    const cap = new THREE.Mesh(lanternGeo, warmLanternMat);
-    cap.position.y = decorationStyle === 'volcano_braziers' ? 2.35 : 3.45;
-    obGroup.add(cap);
-
-    group.add(obGroup);
-  }
 
   // 6B. Surrounding Fantasy Village Buildings, Arched Moat Bridges, Watchtowers & Arcane Pavilions
   // Merged by material role so the entire surrounding architectural ring costs only 5 draw calls!
@@ -904,6 +903,47 @@ export function buildArenaEnvironment(
   const unitCone8 = toNonIndexedUnit(new THREE.ConeGeometry(1, 1, 8));
   const unitCone4 = toNonIndexedUnit(new THREE.ConeGeometry(1, 1, 4));
   const unitOct = toNonIndexedUnit(new THREE.OctahedronGeometry(1, 0));
+
+  // (0) Merge the 4 Corner Sanctuary Obelisks directly into the shared architectural buckets (saves 16 draw calls!)
+  const obPlinthUnit = toNonIndexedUnit(new THREE.CylinderGeometry(0.88, 1.12, 0.48, 8));
+  const obSpireUnit = toNonIndexedUnit(
+    decorationStyle === 'desert_pyramids'
+      ? new THREE.ConeGeometry(1.35, 2.6, 4)
+      : decorationStyle === 'ice_crystals'
+        ? new THREE.CylinderGeometry(0.08, 0.68, 3.2, 6)
+        : decorationStyle === 'volcano_braziers'
+          ? new THREE.CylinderGeometry(0.78, 0.52, 1.9, 8)
+          : new THREE.CylinderGeometry(0.32, 0.62, 2.65, 8),
+  );
+  const obCollarUnit = toNonIndexedUnit(collarGeo.clone());
+  const obLanternUnit = toNonIndexedUnit(
+    new THREE.OctahedronGeometry(decorationStyle === 'volcano_braziers' ? 0.46 : 0.3, 0),
+  );
+  for (const [ox, oz] of obeliskCorners) {
+    pushTransformedGeo(surroundStoneGeos, obPlinthUnit, ox, -0.01, oz);
+    pushTransformedGeo(
+      decorationStyle === 'ice_crystals' ? surroundGlowGeos : surroundStoneGeos,
+      obSpireUnit,
+      ox,
+      -0.25 + (decorationStyle === 'volcano_braziers' ? 1.25 : 1.78),
+      oz,
+      0,
+      decorationStyle === 'desert_pyramids' ? Math.PI / 4 : 0,
+      0,
+    );
+    pushTransformedGeo(surroundBronzeGeos, obCollarUnit, ox, 0.27, oz);
+    pushTransformedGeo(
+      surroundGlowGeos,
+      obLanternUnit,
+      ox,
+      -0.25 + (decorationStyle === 'volcano_braziers' ? 2.35 : 3.45),
+      oz,
+    );
+  }
+  obPlinthUnit.dispose();
+  obSpireUnit.dispose();
+  obCollarUnit.dispose();
+  obLanternUnit.dispose();
 
   // (i) 8 Inner Sanctuary Perimeter Lantern Pillars framing the board edges
   const innerPosts: Array<[number, number]> = [
@@ -1248,8 +1288,11 @@ export function buildArenaEnvironment(
   buildMergedArchMesh(surroundBronzeGeos, bronzeMat, false);
   buildMergedArchMesh(surroundGlowGeos, warmLanternMat, false);
 
-  // Additional Distant Theme Landmarks around the Outer Sanctuary Bank
-  if (decorationStyle === 'desert_pyramids') {
+  // Additional Distant Theme Landmarks around the Outer Sanctuary Bank (skipped on Potato simplified mode to cut 15-60 draw calls)
+  const themeLandmarksGroup = new THREE.Group();
+  themeLandmarksGroup.name = 'ThemeLandmarks';
+  group.add(themeLandmarksGroup);
+  if (!simplified && decorationStyle === 'desert_pyramids') {
     const bigPyramidGeo = new THREE.ConeGeometry(4.6, 6.2, 4);
     ensureUv2(bigPyramidGeo);
     disposableGeos.push(bigPyramidGeo);
@@ -1263,9 +1306,9 @@ export function buildArenaEnvironment(
       pyr.scale.setScalar(sc);
       pyr.castShadow = shadows;
       pyr.receiveShadow = shadows;
-      group.add(pyr);
+      themeLandmarksGroup.add(pyr);
     });
-  } else if (decorationStyle === 'floating_islands') {
+  } else if (!simplified && decorationStyle === 'floating_islands') {
     const islandGeo = new THREE.ConeGeometry(2.6, 3.4, 7);
     islandGeo.rotateX(Math.PI);
     ensureUv2(islandGeo);
@@ -1279,14 +1322,14 @@ export function buildArenaEnvironment(
       const isl = new THREE.Mesh(islandGeo, ashlarMat);
       isl.position.set(ix, iy, iz);
       isl.castShadow = shadows;
-      group.add(isl);
+      themeLandmarksGroup.add(isl);
 
       const ring = new THREE.Mesh(collarGeo, bronzeMat);
       ring.position.set(ix, iy + 1.8, iz);
       ring.scale.setScalar(2.8);
-      group.add(ring);
+      themeLandmarksGroup.add(ring);
     });
-  } else if (decorationStyle === 'sakura_torii') {
+  } else if (!simplified && decorationStyle === 'sakura_torii') {
     // Composite 3D Vermilion Torii Gates with double lintel beams & hanging lanterns
     const pillarGeo = new THREE.CylinderGeometry(0.28, 0.34, 4.4, 10);
     const kasagiGeo = new THREE.BoxGeometry(5.6, 0.36, 0.54);
@@ -1329,9 +1372,9 @@ export function buildArenaEnvironment(
       lantern.position.set(0, 3.05, 0);
       torii.add(lantern);
 
-      group.add(torii);
+      themeLandmarksGroup.add(torii);
     });
-  } else if (decorationStyle === 'clockwork_gears') {
+  } else if (!simplified && decorationStyle === 'clockwork_gears') {
     // Composite Giant Interlocking Brass Clockwork Gears & Arcane Conduits
     const gearRimGeo = new THREE.TorusGeometry(2.5, 0.24, 10, 24);
     const gearHubGeo = new THREE.CylinderGeometry(0.75, 0.75, 0.42, 12);
@@ -1371,9 +1414,9 @@ export function buildArenaEnvironment(
         gear.add(tooth);
       }
 
-      group.add(gear);
+      themeLandmarksGroup.add(gear);
     });
-  } else if (decorationStyle === 'jade_pagodas') {
+  } else if (!simplified && decorationStyle === 'jade_pagodas') {
     // Composite Multi-Tiered Imperial Jade Pagodas with Golden Spires
     const tierBaseGeo = new THREE.CylinderGeometry(1.5, 1.75, 1.5, 6);
     const roofTierGeo = new THREE.ConeGeometry(2.55, 0.95, 6);
@@ -1415,9 +1458,9 @@ export function buildArenaEnvironment(
       spireTop.position.y = 6.2;
       pag.add(spireTop);
 
-      group.add(pag);
+      themeLandmarksGroup.add(pag);
     });
-  } else if (decorationStyle === 'nebula_rings') {
+  } else if (!simplified && decorationStyle === 'nebula_rings') {
     // Composite Floating Astral Monoliths Encircled by Tilted Glowing Astrolabe Rings
     const crystalCoreGeo = new THREE.OctahedronGeometry(1.45, 0);
     const outerRingGeo = new THREE.TorusGeometry(2.65, 0.09, 10, 36);
@@ -1446,12 +1489,12 @@ export function buildArenaEnvironment(
       r2.rotation.set(-Math.PI * 0.28, -idx * 0.5, 0.45);
       astro.add(r2);
 
-      group.add(astro);
+      themeLandmarksGroup.add(astro);
     });
   }
 
   // 7. Fractured Granite Boulders (3-tier LOD) & Instanced River Pebbles
-  const mossRockMat = createWorldMossRockMaterial(rockPbr);
+  const mossRockMat = createWorldMossRockMaterial(rockPbr, simplified);
   disposableMats.push(mossRockMat);
 
   const boulderHigh = createFracturedRockGeometry(1.0, 3, 21.4, 0.72);
@@ -1522,17 +1565,23 @@ export function buildArenaEnvironment(
   group.add(pebbleInst);
 
   // 8. Multi-Ring Realistic LOD Trees (34 Ancient Oaks & Highland Pines) + Instanced Ferns & Grass
-  const barkMat = new THREE.MeshStandardMaterial({
-    map: barkPbr.map,
-    normalMap: isLowPbrTier ? null : barkPbr.normalMap,
-    normalScale: new THREE.Vector2(1.65, 1.65),
-    roughnessMap: isLowPbrTier ? null : barkPbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : barkPbr.aoMap,
-    aoMapIntensity: 0.9,
-    color: themeId === 'frozen_kingdom' ? 0xcbd5e1 : 0xd6d3d1,
-    roughness: 0.86,
-    metalness: 0.03,
-  });
+  const barkColor = themeId === 'frozen_kingdom' ? 0xcbd5e1 : 0xd6d3d1;
+  const barkMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: barkPbr.map,
+        color: barkColor,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: barkPbr.map,
+        normalMap: isLowPbrTier ? null : barkPbr.normalMap,
+        normalScale: new THREE.Vector2(1.65, 1.65),
+        roughnessMap: isLowPbrTier ? null : barkPbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : barkPbr.aoMap,
+        aoMapIntensity: 0.9,
+        color: barkColor,
+        roughness: 0.86,
+        metalness: 0.03,
+      });
   const leafTint =
     themeId === 'frozen_kingdom'
       ? 0xbae6fd
@@ -1541,31 +1590,45 @@ export function buildArenaEnvironment(
         : themeId === 'celestial_sky'
           ? 0xfef08a
           : 0xffffff;
-  const leafMat = new THREE.MeshStandardMaterial({
-    map: foliageAtlas.map,
-    normalMap: isLowPbrTier ? null : foliageAtlas.normalMap,
-    normalScale: new THREE.Vector2(1.25, 1.25),
-    color: leafTint,
-    alphaTest: 0.42,
-    side: THREE.DoubleSide,
-    roughness: 0.62,
-    metalness: 0.04,
-  });
-  if (quality.tier !== 'potato') {
+  const leafMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: foliageAtlas.map,
+        color: leafTint,
+        alphaTest: 0.42,
+        side: THREE.DoubleSide,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: foliageAtlas.map,
+        normalMap: isLowPbrTier ? null : foliageAtlas.normalMap,
+        normalScale: new THREE.Vector2(1.25, 1.25),
+        color: leafTint,
+        alphaTest: 0.42,
+        side: THREE.DoubleSide,
+        roughness: 0.62,
+        metalness: 0.04,
+      });
+  if (!simplified && leafMat instanceof THREE.MeshStandardMaterial) {
     applyWindShader(leafMat, uWindTime, 0.09, 1.6);
   }
 
-  const fernMat = new THREE.MeshStandardMaterial({
-    map: foliageAtlas.map,
-    normalMap: isLowPbrTier ? null : foliageAtlas.normalMap,
-    normalScale: new THREE.Vector2(1.15, 1.15),
-    color: leafTint,
-    alphaTest: 0.38,
-    side: THREE.DoubleSide,
-    roughness: 0.62,
-    metalness: 0.03,
-  });
-  if (quality.tier !== 'potato') {
+  const fernMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: foliageAtlas.map,
+        color: leafTint,
+        alphaTest: 0.38,
+        side: THREE.DoubleSide,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: foliageAtlas.map,
+        normalMap: isLowPbrTier ? null : foliageAtlas.normalMap,
+        normalScale: new THREE.Vector2(1.15, 1.15),
+        color: leafTint,
+        alphaTest: 0.38,
+        side: THREE.DoubleSide,
+        roughness: 0.62,
+        metalness: 0.03,
+      });
+  if (!simplified && fernMat instanceof THREE.MeshStandardMaterial) {
     applyWindShader(fernMat, uWindTime, 0.07, 2.0);
   }
   disposableMats.push(barkMat, leafMat, fernMat);
@@ -1683,19 +1746,22 @@ export function buildArenaEnvironment(
   ensureUv2(grassTuftGeo);
   disposableGeos.push(grassTuftGeo);
 
-  const grassMat = new THREE.MeshStandardMaterial({
-    color:
-      themeId === 'frozen_kingdom'
-        ? 0xbae6fd
-        : themeId === 'atlantis_ocean'
-          ? 0x0d9488
-          : themeId === 'shadow_realm'
-            ? 0x6b21a8
-            : 0x4d7c0f,
-    roughness: 0.78,
-    metalness: 0.02,
-  });
-  if (quality.tier !== 'potato') {
+  const grassColor =
+    themeId === 'frozen_kingdom'
+      ? 0xbae6fd
+      : themeId === 'atlantis_ocean'
+        ? 0x0d9488
+        : themeId === 'shadow_realm'
+          ? 0x6b21a8
+          : 0x4d7c0f;
+  const grassMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ color: grassColor })
+    : new THREE.MeshStandardMaterial({
+        color: grassColor,
+        roughness: 0.78,
+        metalness: 0.02,
+      });
+  if (!simplified && grassMat instanceof THREE.MeshStandardMaterial) {
     applyWindShader(grassMat, uWindTime, 0.08, 2.2);
   }
   disposableMats.push(grassMat);
@@ -1754,15 +1820,16 @@ export function buildArenaEnvironment(
   if (sporeInst.instanceColor) sporeInst.instanceColor.needsUpdate = true;
   group.add(sporeInst);
 
-  // 10. Twin Northern Citadel Keeps & Cliff Outcrops (Built immediately so all presets enjoy full castles!)
+  // 10. Twin Northern Citadel Keeps & Cliff Outcrops (Skipped on Potato/Low when loadVistaGlbs is false to slash 25+ draw calls)
   const vistaGroup = new THREE.Group();
-  vistaGroup.visible = showCastle;
+  vistaGroup.visible = showCastle && quality.loadVistaGlbs;
   group.add(vistaGroup);
 
   const buildCitadelVistas = () => {
+    if (!quality.loadVistaGlbs) return;
     // Primary Northeast Sovereign Citadel Keep
     const eastCastle = buildFantasyCastleGeometryGroup();
-    applyCastlePbrMaterials(eastCastle, { stonePbr, slatePbr, timberPbr });
+    applyCastlePbrMaterials(eastCastle, { stonePbr, slatePbr, timberPbr }, simplified);
     eastCastle.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         obj.castShadow = shadows && !quality.shadowImportantOnly;
@@ -1776,7 +1843,7 @@ export function buildArenaEnvironment(
 
     // Secondary Northwest Bastion Keep flanking the waterfall gorge
     const westCastle = buildFantasyCastleGeometryGroup();
-    applyCastlePbrMaterials(westCastle, { stonePbr, slatePbr, timberPbr });
+    applyCastlePbrMaterials(westCastle, { stonePbr, slatePbr, timberPbr }, simplified);
     westCastle.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         obj.castShadow = shadows && !quality.shadowImportantOnly;
@@ -1807,13 +1874,25 @@ export function buildArenaEnvironment(
 
   const applyQuality = (cfg: QualityConfig) => {
     currentQuality = cfg;
-    const d = THREE.MathUtils.clamp(cfg.envDensity, 0.35, 1);
+    const isPotato = cfg.tier === 'potato' || cfg.simplifiedShaders;
+    const d = THREE.MathUtils.clamp(cfg.envDensity, 0.14, 1);
     const sh = cfg.shadowsEnabled && (boardConfig?.visualEffects.shadowsEnabled ?? true);
     const impOnly = cfg.shadowImportantOnly;
 
-    pebbleInst.count = showRocks ? Math.max(24, Math.round(pebbleCount * d)) : 0;
-    fernInst.count = showTrees ? Math.max(28, Math.round(fernCount * d)) : 0;
-    grassInst.count = showTrees ? Math.max(64, Math.round(grassCount * d)) : 0;
+    // On deep Potato Mode, hide secondary ground foliage/pebbles/mist/spores completely to eliminate draw calls & alpha-test overdraw
+    pebbleInst.visible = showRocks && !isPotato;
+    pebbleInst.count = showRocks && !isPotato ? Math.max(24, Math.round(pebbleCount * d)) : 0;
+    fernInst.visible = showTrees && !isPotato;
+    fernInst.count = showTrees && !isPotato ? Math.max(24, Math.round(fernCount * d)) : 0;
+    grassInst.visible = showTrees && !isPotato;
+    grassInst.count = showTrees && !isPotato ? Math.max(56, Math.round(grassCount * d)) : 0;
+    sporeInst.visible = !isPotato;
+    if (isPotato) {
+      mistInst.visible = false;
+      sporeInst.count = 0;
+    }
+    cascadeMesh.visible = showWaterfall && !isPotato;
+    themeLandmarksGroup.visible = !isPotato;
 
     terrainMesh.receiveShadow = sh;
     waterMesh.receiveShadow = sh;
@@ -1828,19 +1907,17 @@ export function buildArenaEnvironment(
       m.receiveShadow = sh;
     }
 
-    boulderLods.forEach((boulder, idx) => {
-      const keepOnTier = cfg.tier === 'potato' ? idx % 2 === 0 : true;
-      boulder.visible = showRocks && keepOnTier;
+    boulderLods.forEach((boulder) => {
+      boulder.visible = showRocks && !isPotato;
     });
 
     treeLods.forEach((tree, idx) => {
-      // Keep inner moat-bank trees; thin outer woodland ring on potato/low tiers to save draw calls
-      const keepOnTier =
-        cfg.tier === 'potato'
-          ? idx < 12 || idx % 2 === 0
-          : cfg.tier === 'low'
-            ? idx < 16 || idx % 3 !== 2
-            : true;
+      // Deep Potato Mode keeps only 4 key framing trees to slash ~50+ draw calls
+      const keepOnTier = isPotato
+        ? idx < 4
+        : cfg.tier === 'low'
+          ? idx < 14 || idx % 3 === 0
+          : true;
       tree.visible = showTrees && keepOnTier;
       tree.traverse((obj) => {
         if ((obj as THREE.Mesh).isMesh) {
@@ -1852,7 +1929,7 @@ export function buildArenaEnvironment(
 
     applyLodBiasToGroup(group, cfg.lodBias);
 
-    vistaGroup.visible = showCastle;
+    vistaGroup.visible = showCastle && cfg.loadVistaGlbs;
   };
 
   applyQuality(quality);
@@ -1866,8 +1943,13 @@ export function buildArenaEnvironment(
     uWindTime.value = elapsed;
     skyAtmosphere.update(elapsed, reducedEffects);
 
-    const minInterval =
-      currentQuality.tier === 'potato' ? 0.055 : currentQuality.tier === 'low' ? 0.035 : 0;
+    if (currentQuality.tier === 'potato' || currentQuality.simplifiedShaders) {
+      mistInst.visible = false;
+      sporeInst.visible = false;
+      return;
+    }
+
+    const minInterval = currentQuality.tier === 'low' ? 0.035 : 0;
     if (minInterval > 0 && elapsed - lastSecondaryUpdate < minInterval) {
       return;
     }
@@ -1875,8 +1957,7 @@ export function buildArenaEnvironment(
 
     const pRatio =
       THREE.MathUtils.clamp(currentQuality.particleBudget / 128, 0.14, 1) * userParticleDensity;
-    const showMist =
-      showWaterfall && !reducedEffects && pRatio > 0.2 && currentQuality.tier !== 'potato';
+    const showMist = showWaterfall && !reducedEffects && pRatio > 0.2;
     mistInst.visible = showMist;
     if (showMist) {
       const activeMist = Math.max(4, Math.round(mistCount * pRatio));
@@ -1904,10 +1985,13 @@ export function buildArenaEnvironment(
       0,
       Math.round(sporeCount * pRatio * (reducedEffects ? 0.45 : 1)),
     );
+    sporeInst.visible = activeSpores > 0;
     sporeInst.count = activeSpores;
-    // Animate all floating spores via GPU parent transform (zero per-frame Matrix4 loops or buffer uploads!)
-    sporeInst.rotation.y = elapsed * 0.055;
-    sporeInst.position.y = Math.sin(elapsed * 1.35) * 0.28;
+    if (activeSpores > 0) {
+      // Animate all floating spores via GPU parent transform (zero per-frame Matrix4 loops or buffer uploads!)
+      sporeInst.rotation.y = elapsed * 0.055;
+      sporeInst.position.y = Math.sin(elapsed * 1.35) * 0.28;
+    }
   };
 
   const updateSkyConfig = (nextCfg?: BoardConfig) => {

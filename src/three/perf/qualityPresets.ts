@@ -27,14 +27,16 @@ export interface QualityConfig {
   shadowMapSize: number;
   shadowImportantOnly: boolean;
   pbrTexSize: 256 | 512 | 1024;
+  envTexSize: 128 | 256 | 512 | 1024;
   boardAtlasSize: 1024 | 2048;
   anisotropyCap: number;
   postMode: 'none' | 'fxaa' | 'dof_fxaa' | 'bloom_dof_fxaa' | 'ultra_ssao';
   lodBias: number;
   particleBudget: number;
   envDensity: number;
-  terrainSegments: 48 | 64 | 96 | 128;
+  terrainSegments: 32 | 48 | 64 | 96 | 128;
   loadVistaGlbs: boolean;
+  simplifiedShaders: boolean;
 }
 
 export const QUALITY_PRESETS: Record<ResolvedQualityTier, QualityConfig> = {
@@ -42,64 +44,70 @@ export const QUALITY_PRESETS: Record<ResolvedQualityTier, QualityConfig> = {
     tier: 'potato',
     label: 'Super Ringan (Potato)',
     targetFps: 30,
-    minResScale: 0.62,
-    maxResScale: 0.84,
-    defaultResScale: 0.74,
-    antialias: false,
+    minResScale: 0.85,
+    maxResScale: 1.0,
+    defaultResScale: 0.94,
+    antialias: true,
     shadowsEnabled: false,
     shadowMapSize: 0,
     shadowImportantOnly: true,
     pbrTexSize: 256,
-    boardAtlasSize: 1024,
-    anisotropyCap: 1,
+    envTexSize: 128,
+    boardAtlasSize: 2048,
+    anisotropyCap: 4,
     postMode: 'none',
-    lodBias: 0.52,
-    particleBudget: 12,
-    envDensity: 0.2,
-    terrainSegments: 48,
+    lodBias: 0.55,
+    particleBudget: 8,
+    envDensity: 0.14,
+    terrainSegments: 32,
     loadVistaGlbs: false,
+    simplifiedShaders: true,
   },
   low: {
     tier: 'low',
     label: 'Hemat & Lancar (HP)',
     targetFps: 45,
-    minResScale: 0.72,
-    maxResScale: 0.92,
-    defaultResScale: 0.82,
-    antialias: false,
+    minResScale: 0.9,
+    maxResScale: 1.08,
+    defaultResScale: 1.0,
+    antialias: true,
     shadowsEnabled: false,
     shadowMapSize: 0,
     shadowImportantOnly: true,
-    pbrTexSize: 256,
-    boardAtlasSize: 1024,
-    anisotropyCap: 2,
+    pbrTexSize: 512,
+    envTexSize: 256,
+    boardAtlasSize: 2048,
+    anisotropyCap: 6,
     postMode: 'none',
-    lodBias: 0.68,
+    lodBias: 0.78,
     particleBudget: 20,
     envDensity: 0.3,
     terrainSegments: 48,
     loadVistaGlbs: false,
+    simplifiedShaders: false,
   },
   medium: {
     tier: 'medium',
     label: 'Seimbang (HD Ringan)',
     targetFps: 55,
-    minResScale: 0.82,
-    maxResScale: 1.0,
-    defaultResScale: 0.92,
+    minResScale: 0.92,
+    maxResScale: 1.08,
+    defaultResScale: 1.0,
     antialias: true,
     shadowsEnabled: true,
     shadowMapSize: 512,
     shadowImportantOnly: true,
-    pbrTexSize: 256,
-    boardAtlasSize: 1024,
-    anisotropyCap: 4,
+    pbrTexSize: 512,
+    envTexSize: 256,
+    boardAtlasSize: 2048,
+    anisotropyCap: 8,
     postMode: 'none',
-    lodBias: 0.85,
+    lodBias: 0.9,
     particleBudget: 36,
     envDensity: 0.48,
     terrainSegments: 48,
     loadVistaGlbs: true,
+    simplifiedShaders: false,
   },
   high: {
     tier: 'high',
@@ -113,6 +121,7 @@ export const QUALITY_PRESETS: Record<ResolvedQualityTier, QualityConfig> = {
     shadowMapSize: 1024,
     shadowImportantOnly: false,
     pbrTexSize: 512,
+    envTexSize: 512,
     boardAtlasSize: 2048,
     anisotropyCap: 12,
     postMode: 'bloom_dof_fxaa',
@@ -121,6 +130,7 @@ export const QUALITY_PRESETS: Record<ResolvedQualityTier, QualityConfig> = {
     envDensity: 0.78,
     terrainSegments: 64,
     loadVistaGlbs: true,
+    simplifiedShaders: false,
   },
   ultra: {
     tier: 'ultra',
@@ -134,6 +144,7 @@ export const QUALITY_PRESETS: Record<ResolvedQualityTier, QualityConfig> = {
     shadowMapSize: 2048,
     shadowImportantOnly: false,
     pbrTexSize: 1024,
+    envTexSize: 1024,
     boardAtlasSize: 2048,
     anisotropyCap: 16,
     postMode: 'ultra_ssao',
@@ -142,6 +153,7 @@ export const QUALITY_PRESETS: Record<ResolvedQualityTier, QualityConfig> = {
     envDensity: 1.0,
     terrainSegments: 128,
     loadVistaGlbs: true,
+    simplifiedShaders: false,
   },
 };
 

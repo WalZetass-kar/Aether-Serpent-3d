@@ -388,17 +388,51 @@ export function buildJumpMap(
   ladders?: SnakeOrLadder[],
   snakes?: SnakeOrLadder[],
 ): Map<number, SnakeOrLadder> {
-  const effectiveLadders = ladders && ladders.length > 0 ? ladders : LADDERS;
-  const effectiveSnakes = snakes && snakes.length > 0 ? snakes : SNAKES;
+  const effectiveLadders = Array.isArray(ladders) ? ladders : LADDERS;
+  const effectiveSnakes = Array.isArray(snakes) ? snakes : SNAKES;
   const map = new Map<number, SnakeOrLadder>();
-  for (const item of effectiveLadders) {
-    if (item.from > 1 && item.from < 100 && item.to > item.from && item.to <= 100) {
-      map.set(item.from, item);
+  for (let i = 0; i < effectiveLadders.length; i++) {
+    const item = effectiveLadders[i];
+    if (!item) continue;
+    const from = Math.round(Number(item.from));
+    const to = Math.round(Number(item.to));
+    if (
+      Number.isFinite(from) &&
+      Number.isFinite(to) &&
+      from > 1 &&
+      from < 100 &&
+      to > from &&
+      to <= 100
+    ) {
+      map.set(from, {
+        id: item.id || `L${i + 1}`,
+        from,
+        to,
+        name: item.name || `Tangga Suci #${i + 1}`,
+        type: 'ladder',
+      });
     }
   }
-  for (const item of effectiveSnakes) {
-    if (item.from > 1 && item.from < 100 && item.to >= 1 && item.to < item.from) {
-      map.set(item.from, item);
+  for (let i = 0; i < effectiveSnakes.length; i++) {
+    const item = effectiveSnakes[i];
+    if (!item) continue;
+    const from = Math.round(Number(item.from));
+    const to = Math.round(Number(item.to));
+    if (
+      Number.isFinite(from) &&
+      Number.isFinite(to) &&
+      from > 1 &&
+      from < 100 &&
+      to >= 1 &&
+      to < from
+    ) {
+      map.set(from, {
+        id: item.id || `S${i + 1}`,
+        from,
+        to,
+        name: item.name || `Ular Mistis #${i + 1}`,
+        type: 'snake',
+      });
     }
   }
   return map;
@@ -549,12 +583,19 @@ export function rollAdaptiveAIDice(
   for (let roll = 1; roll <= 6; roll++) {
     let landing = aiTile + roll;
     if (landing > 100) landing = 100 - (landing - 100);
-    const jump = activeJumpMap.get(landing);
     const special = SPECIAL_TILE_MAP.get(landing);
+    let postSpecialLanding = landing;
+    if (special?.type === 'boost') {
+      const target = landing + (special.delta ?? 4);
+      postSpecialLanding = target > 100 ? 100 - (target - 100) : target;
+    } else if (special?.type === 'curse') {
+      postSpecialLanding = Math.max(1, landing + (special.delta ?? -3));
+    }
+    const jump = activeJumpMap.get(postSpecialLanding);
     let utility = roll * 0.4;
-    if (landing === 100) utility += 12;
-    if (jump?.type === 'ladder') utility += 6;
-    if (jump?.type === 'snake') utility -= 6;
+    if (postSpecialLanding === 100 || landing === 100) utility += 12;
+    if (jump?.type === 'ladder' && jump.to > jump.from) utility += 6;
+    if (jump?.type === 'snake' && jump.to < jump.from) utility -= 6;
     if (special?.type === 'boost' || special?.type === 'extra_roll' || special?.type === 'shield') {
       utility += 3;
     }
@@ -613,6 +654,7 @@ export function resolveTurnMove(
     actorTeam?: TeamId;
     otherPlayers?: PlayerState[];
     customJumpMap?: Map<number, SnakeOrLadder>;
+    boardConfig?: { ladders?: SnakeOrLadder[]; snakes?: SnakeOrLadder[] };
   },
 ): TurnResolution {
   const pathTiles: number[] = [];
@@ -659,8 +701,29 @@ export function resolveTurnMove(
     }
   }
 
-  const activeJumpMap = context?.customJumpMap ?? JUMP_MAP;
-  const jumpTriggered = activeJumpMap.get(postSpecialTile) ?? null;
+  const activeJumpMap =
+    context?.customJumpMap !== undefined
+      ? context.customJumpMap
+      : context?.boardConfig
+        ? buildJumpMap(context.boardConfig.ladders, context.boardConfig.snakes)
+        : JUMP_MAP;
+
+  const candidateJump = activeJumpMap.get(postSpecialTile) ?? null;
+  const isValidJump =
+    candidateJump !== null &&
+    candidateJump.from === postSpecialTile &&
+    ((candidateJump.type === 'ladder' &&
+      candidateJump.from > 1 &&
+      candidateJump.from < 100 &&
+      candidateJump.to > candidateJump.from &&
+      candidateJump.to <= 100) ||
+      (candidateJump.type === 'snake' &&
+        candidateJump.from > 1 &&
+        candidateJump.from < 100 &&
+        candidateJump.to >= 1 &&
+        candidateJump.to < candidateJump.from));
+
+  const jumpTriggered = isValidJump ? candidateJump : null;
   let finalTile = postSpecialTile;
 
   if (jumpTriggered) {
@@ -1126,4 +1189,531 @@ export function isDiceSkinUnlocked(
   if (!def.requiredAchievementId) return true;
   return unlockedAchievements.includes(def.requiredAchievementId);
 }
+
+// ---------------------------------------------------------------------------
+// Custom Emote Sets for EmoteWheel (Unlocked via Achievement Progress)
+// ---------------------------------------------------------------------------
+
+export type EmoteTone = 'amber' | 'emerald' | 'sky' | 'violet' | 'rose' | 'orange';
+
+export type EmoteSetId =
+  | 'classic_aether'
+  | 'ember_valor'
+  | 'astral_oracle'
+  | 'serpent_guild'
+  | 'sovereign_crown';
+
+export interface EmoteWheelItem {
+  id: string;
+  label: string;
+  shortLabel: string;
+  icon: string;
+  payload: string;
+  tone: EmoteTone;
+  accentHex: string;
+  glowRgba: string;
+  isAngry?: boolean;
+}
+
+export type EmoteUnlockCondition =
+  | { type: 'starter' }
+  | { type: 'achievement_count'; count: number }
+  | { type: 'achievement_points'; points: number }
+  | { type: 'specific_achievements'; achievementIds: string[] }
+  | { type: 'category_count'; category: AchievementDef['category']; count: number };
+
+export interface EmoteSetDef {
+  id: EmoteSetId;
+  name: string;
+  subtitle: string;
+  description: string;
+  themeHex: string;
+  glowRgba: string;
+  unlockCondition: EmoteUnlockCondition;
+  requirementLabel: string;
+  items: EmoteWheelItem[];
+}
+
+export const EMOTE_SETS: EmoteSetDef[] = [
+  {
+    id: 'classic_aether',
+    name: 'Aether Klasik',
+    subtitle: 'Set Emote Bawaan Penjelajah',
+    description:
+      'Ekspresi arena klasik untuk menyapa lawan, merayakan keberhasilan, dan melampiaskan kejutan di papan 3D.',
+    themeHex: '#fbbf24',
+    glowRgba: 'rgba(251, 191, 36, 0.28)',
+    unlockCondition: { type: 'starter' },
+    requirementLabel: 'Terbuka Sejak Awal',
+    items: [
+      {
+        id: 'gg',
+        label: 'GG!',
+        shortLabel: 'GG',
+        icon: '🏆',
+        payload: '🏆 GG!',
+        tone: 'amber',
+        accentHex: '#fbbf24',
+        glowRgba: 'rgba(251, 191, 36, 0.34)',
+      },
+      {
+        id: 'thanks',
+        label: 'Thanks!',
+        shortLabel: 'Thanks',
+        icon: '🙏',
+        payload: '🙏 Thanks!',
+        tone: 'emerald',
+        accentHex: '#34d399',
+        glowRgba: 'rgba(52, 211, 153, 0.32)',
+      },
+      {
+        id: 'well_played',
+        label: 'Well Played!',
+        shortLabel: 'WP',
+        icon: '⚔️',
+        payload: '⚔️ Well Played!',
+        tone: 'sky',
+        accentHex: '#38bdf8',
+        glowRgba: 'rgba(56, 189, 248, 0.32)',
+      },
+      {
+        id: 'oops',
+        label: 'Oops!',
+        shortLabel: 'Oops',
+        icon: '😱',
+        payload: '😱 Oops!',
+        tone: 'violet',
+        accentHex: '#c084fc',
+        glowRgba: 'rgba(192, 132, 252, 0.34)',
+      },
+      {
+        id: 'angry',
+        label: 'Angry!',
+        shortLabel: 'Angry',
+        icon: '💢',
+        payload: '💢 Angry!',
+        tone: 'rose',
+        accentHex: '#fb7185',
+        glowRgba: 'rgba(251, 113, 133, 0.36)',
+        isAngry: true,
+      },
+      {
+        id: 'nice',
+        label: 'Nice!',
+        shortLabel: 'Nice',
+        icon: '🔥',
+        payload: '🔥 Nice!',
+        tone: 'orange',
+        accentHex: '#fb923c',
+        glowRgba: 'rgba(251, 146, 60, 0.34)',
+      },
+    ],
+  },
+  {
+    id: 'ember_valor',
+    name: 'Bara Ksatria',
+    subtitle: 'Semangat Pejuang Arena',
+    description:
+      'Set emote berapi-api bagi penantang yang berjaya memanaskan duel dengan serangan dan pertahanan.',
+    themeHex: '#fb923c',
+    glowRgba: 'rgba(251, 146, 60, 0.32)',
+    unlockCondition: { type: 'achievement_count', count: 2 },
+    requirementLabel: 'Buka minimal 2 Pencapaian apa saja',
+    items: [
+      {
+        id: 'ember_fire',
+        label: 'On Fire!',
+        shortLabel: 'On Fire',
+        icon: '❤️‍🔥',
+        payload: '❤️‍🔥 On Fire!',
+        tone: 'orange',
+        accentHex: '#fb923c',
+        glowRgba: 'rgba(251, 146, 60, 0.36)',
+      },
+      {
+        id: 'ember_strike',
+        label: 'Strike!',
+        shortLabel: 'Strike',
+        icon: '⚡',
+        payload: '⚡ Strike!',
+        tone: 'amber',
+        accentHex: '#fbbf24',
+        glowRgba: 'rgba(251, 191, 36, 0.34)',
+      },
+      {
+        id: 'ember_guard',
+        label: 'Shield Up!',
+        shortLabel: 'Guard',
+        icon: '🛡️',
+        payload: '🛡️ Shield Up!',
+        tone: 'sky',
+        accentHex: '#38bdf8',
+        glowRgba: 'rgba(56, 189, 248, 0.32)',
+      },
+      {
+        id: 'ember_boom',
+        label: 'Boom!',
+        shortLabel: 'Boom',
+        icon: '💥',
+        payload: '💥 Boom!',
+        tone: 'rose',
+        accentHex: '#fb7185',
+        glowRgba: 'rgba(251, 113, 133, 0.38)',
+        isAngry: true,
+      },
+      {
+        id: 'ember_respect',
+        label: 'Respect!',
+        shortLabel: 'Respect',
+        icon: '🫡',
+        payload: '🫡 Respect!',
+        tone: 'emerald',
+        accentHex: '#34d399',
+        glowRgba: 'rgba(52, 211, 153, 0.32)',
+      },
+      {
+        id: 'ember_bring_it',
+        label: 'Bring It!',
+        shortLabel: 'Challenge',
+        icon: '😤',
+        payload: '😤 Bring It!',
+        tone: 'violet',
+        accentHex: '#c084fc',
+        glowRgba: 'rgba(192, 132, 252, 0.34)',
+        isAngry: true,
+      },
+    ],
+  },
+  {
+    id: 'astral_oracle',
+    name: 'Mistis Astral',
+    subtitle: 'Bisikan Bintang & Takdir',
+    description:
+      'Simbol ramalan kosmik dan keajaiban bintang untuk memprediksi lemparan dadu penuh keberuntungan.',
+    themeHex: '#c084fc',
+    glowRgba: 'rgba(192, 132, 252, 0.32)',
+    unlockCondition: { type: 'achievement_points', points: 600 },
+    requirementLabel: 'Kumpulkan 600 Poin Pencapaian',
+    items: [
+      {
+        id: 'astral_bless',
+        label: 'Aether Bless!',
+        shortLabel: 'Bless',
+        icon: '✨',
+        payload: '✨ Aether Bless!',
+        tone: 'violet',
+        accentHex: '#c084fc',
+        glowRgba: 'rgba(192, 132, 252, 0.36)',
+      },
+      {
+        id: 'astral_foreseen',
+        label: 'Foreseen!',
+        shortLabel: 'Foreseen',
+        icon: '🔮',
+        payload: '🔮 Foreseen!',
+        tone: 'sky',
+        accentHex: '#38bdf8',
+        glowRgba: 'rgba(56, 189, 248, 0.34)',
+      },
+      {
+        id: 'astral_moonlit',
+        label: 'Moonlit!',
+        shortLabel: 'Moon',
+        icon: '🌙',
+        payload: '🌙 Moonlit!',
+        tone: 'amber',
+        accentHex: '#fbbf24',
+        glowRgba: 'rgba(251, 191, 36, 0.32)',
+      },
+      {
+        id: 'astral_twist',
+        label: 'Plot Twist!',
+        shortLabel: 'Twist',
+        icon: '🌀',
+        payload: '🌀 Plot Twist!',
+        tone: 'emerald',
+        accentHex: '#34d399',
+        glowRgba: 'rgba(52, 211, 153, 0.34)',
+      },
+      {
+        id: 'astral_meteor',
+        label: 'Meteor Roll!',
+        shortLabel: 'Meteor',
+        icon: '☄️',
+        payload: '☄️ Meteor Roll!',
+        tone: 'orange',
+        accentHex: '#fb923c',
+        glowRgba: 'rgba(251, 146, 60, 0.34)',
+      },
+      {
+        id: 'astral_cursed',
+        label: 'Cursed!',
+        shortLabel: 'Cursed',
+        icon: '💀',
+        payload: '💀 Cursed!',
+        tone: 'rose',
+        accentHex: '#fb7185',
+        glowRgba: 'rgba(251, 113, 133, 0.38)',
+        isAngry: true,
+      },
+    ],
+  },
+  {
+    id: 'serpent_guild',
+    name: 'Serikat Penakluk',
+    subtitle: 'Ahli Tangga & Penjinak Ular',
+    description:
+      'Set khusus bagi penjelajah yang menguasai pendakian tangga suci serta selamat dari bisa ular.',
+    themeHex: '#34d399',
+    glowRgba: 'rgba(52, 211, 153, 0.32)',
+    unlockCondition: {
+      type: 'specific_achievements',
+      achievementIds: ['ladder_climber', 'serpent_shield'],
+    },
+    requirementLabel: 'Buka Penakluk Tangga & Kebal Bisa Ular',
+    items: [
+      {
+        id: 'guild_ascend',
+        label: 'Ascend!',
+        shortLabel: 'Ascend',
+        icon: '🪜',
+        payload: '🪜 Ascend!',
+        tone: 'emerald',
+        accentHex: '#34d399',
+        glowRgba: 'rgba(52, 211, 153, 0.36)',
+      },
+      {
+        id: 'guild_hiss',
+        label: 'Hiss!',
+        shortLabel: 'Hiss',
+        icon: '🐍',
+        payload: '🐍 Hiss!',
+        tone: 'rose',
+        accentHex: '#fb7185',
+        glowRgba: 'rgba(251, 113, 133, 0.36)',
+        isAngry: true,
+      },
+      {
+        id: 'guild_fly',
+        label: 'Soar High!',
+        shortLabel: 'Soar',
+        icon: '🪽',
+        payload: '🪽 Soar High!',
+        tone: 'sky',
+        accentHex: '#38bdf8',
+        glowRgba: 'rgba(56, 189, 248, 0.34)',
+      },
+      {
+        id: 'guild_ward',
+        label: 'Warded!',
+        shortLabel: 'Warded',
+        icon: '🧿',
+        payload: '🧿 Warded!',
+        tone: 'amber',
+        accentHex: '#fbbf24',
+        glowRgba: 'rgba(251, 191, 36, 0.34)',
+      },
+      {
+        id: 'guild_lucky',
+        label: 'Lucky Six!',
+        shortLabel: 'Lucky',
+        icon: '🍀',
+        payload: '🍀 Lucky Six!',
+        tone: 'orange',
+        accentHex: '#fb923c',
+        glowRgba: 'rgba(251, 146, 60, 0.34)',
+      },
+      {
+        id: 'guild_magic',
+        label: 'Enchanted!',
+        shortLabel: 'Magic',
+        icon: '🪄',
+        payload: '🪄 Enchanted!',
+        tone: 'violet',
+        accentHex: '#c084fc',
+        glowRgba: 'rgba(192, 132, 252, 0.34)',
+      },
+    ],
+  },
+  {
+    id: 'sovereign_crown',
+    name: 'Mahkota Agung',
+    subtitle: 'Titah Penguasa Takhta',
+    description:
+      'Ekspresi eksklusif bagi sang grandmaster yang membuktikan ketangguhan di pencapaian kategori Mastery.',
+    themeHex: '#fde047',
+    glowRgba: 'rgba(253, 224, 71, 0.34)',
+    unlockCondition: { type: 'category_count', category: 'mastery', count: 3 },
+    requirementLabel: 'Selesaikan 3 Pencapaian Kategori Mastery',
+    items: [
+      {
+        id: 'crown_hail',
+        label: 'All Hail!',
+        shortLabel: 'Hail',
+        icon: '👑',
+        payload: '👑 All Hail!',
+        tone: 'amber',
+        accentHex: '#fde047',
+        glowRgba: 'rgba(253, 224, 71, 0.38)',
+      },
+      {
+        id: 'crown_gem',
+        label: 'Flawless!',
+        shortLabel: 'Flawless',
+        icon: '💎',
+        payload: '💎 Flawless!',
+        tone: 'sky',
+        accentHex: '#38bdf8',
+        glowRgba: 'rgba(56, 189, 248, 0.36)',
+      },
+      {
+        id: 'crown_dragon',
+        label: 'Dragon Roar!',
+        shortLabel: 'Roar',
+        icon: '🐉',
+        payload: '🐉 Dragon Roar!',
+        tone: 'emerald',
+        accentHex: '#34d399',
+        glowRgba: 'rgba(52, 211, 153, 0.34)',
+      },
+      {
+        id: 'crown_checkmate',
+        label: 'Checkmate!',
+        shortLabel: 'Check',
+        icon: '🔱',
+        payload: '🔱 Checkmate!',
+        tone: 'violet',
+        accentHex: '#c084fc',
+        glowRgba: 'rgba(192, 132, 252, 0.36)',
+      },
+      {
+        id: 'crown_wrath',
+        label: 'Royal Wrath!',
+        shortLabel: 'Wrath',
+        icon: '🌋',
+        payload: '🌋 Royal Wrath!',
+        tone: 'rose',
+        accentHex: '#fb7185',
+        glowRgba: 'rgba(251, 113, 133, 0.4)',
+        isAngry: true,
+      },
+      {
+        id: 'crown_legend',
+        label: 'Legendary!',
+        shortLabel: 'Legend',
+        icon: '🌟',
+        payload: '🌟 Legendary!',
+        tone: 'orange',
+        accentHex: '#fb923c',
+        glowRgba: 'rgba(251, 146, 60, 0.36)',
+      },
+    ],
+  },
+];
+
+export function getEmoteSetDef(setId?: string | null): EmoteSetDef {
+  return EMOTE_SETS.find((s) => s.id === setId) ?? EMOTE_SETS[0];
+}
+
+export function getAchievementPointsTotal(unlockedAchievements: string[]): number {
+  const unlockedSet = new Set(unlockedAchievements);
+  return ACHIEVEMENTS.reduce(
+    (sum, ach) => (unlockedSet.has(ach.id) ? sum + ach.points : sum),
+    0,
+  );
+}
+
+export interface EmoteSetUnlockStatus {
+  unlocked: boolean;
+  current: number;
+  target: number;
+  progressPct: number;
+  progressText: string;
+  requirementLabel: string;
+}
+
+export function getEmoteSetUnlockProgress(
+  setId: EmoteSetId,
+  unlockedAchievements: string[],
+): EmoteSetUnlockStatus {
+  const def = getEmoteSetDef(setId);
+  const unlockedSet = new Set(unlockedAchievements);
+  const cond = def.unlockCondition;
+
+  if (cond.type === 'starter') {
+    return {
+      unlocked: true,
+      current: 1,
+      target: 1,
+      progressPct: 100,
+      progressText: 'Terbuka',
+      requirementLabel: def.requirementLabel,
+    };
+  }
+
+  if (cond.type === 'achievement_count') {
+    const validUnlockedCount = ACHIEVEMENTS.filter((a) => unlockedSet.has(a.id)).length;
+    const current = Math.min(cond.count, validUnlockedCount);
+    const unlocked = validUnlockedCount >= cond.count;
+    return {
+      unlocked,
+      current,
+      target: cond.count,
+      progressPct: Math.min(100, Math.round((current / Math.max(1, cond.count)) * 100)),
+      progressText: `${current}/${cond.count} Pencapaian`,
+      requirementLabel: def.requirementLabel,
+    };
+  }
+
+  if (cond.type === 'achievement_points') {
+    const earnedPoints = getAchievementPointsTotal(unlockedAchievements);
+    const current = Math.min(cond.points, earnedPoints);
+    const unlocked = earnedPoints >= cond.points;
+    return {
+      unlocked,
+      current,
+      target: cond.points,
+      progressPct: Math.min(100, Math.round((current / Math.max(1, cond.points)) * 100)),
+      progressText: `${current.toLocaleString('id-ID')}/${cond.points.toLocaleString('id-ID')} Poin`,
+      requirementLabel: def.requirementLabel,
+    };
+  }
+
+  if (cond.type === 'specific_achievements') {
+    const completed = cond.achievementIds.filter((id) => unlockedSet.has(id)).length;
+    const target = cond.achievementIds.length;
+    const unlocked = completed >= target;
+    return {
+      unlocked,
+      current: completed,
+      target,
+      progressPct: Math.min(100, Math.round((completed / Math.max(1, target)) * 100)),
+      progressText: `${completed}/${target} Syarat`,
+      requirementLabel: def.requirementLabel,
+    };
+  }
+
+  // category_count
+  const categoryCompleted = ACHIEVEMENTS.filter(
+    (a) => a.category === cond.category && unlockedSet.has(a.id),
+  ).length;
+  const current = Math.min(cond.count, categoryCompleted);
+  const unlocked = categoryCompleted >= cond.count;
+  return {
+    unlocked,
+    current,
+    target: cond.count,
+    progressPct: Math.min(100, Math.round((current / Math.max(1, cond.count)) * 100)),
+    progressText: `${current}/${cond.count} Mastery`,
+    requirementLabel: def.requirementLabel,
+  };
+}
+
+export function isEmoteSetUnlocked(
+  setId: EmoteSetId,
+  unlockedAchievements: string[],
+): boolean {
+  return getEmoteSetUnlockProgress(setId, unlockedAchievements).unlocked;
+}
+
 

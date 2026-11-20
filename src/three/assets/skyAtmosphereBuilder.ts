@@ -626,10 +626,11 @@ export function buildSkyAtmosphere(
   // ---------------------------------------------------------------------------
   // 1. Atmospheric Sky Dome Shader (Day Scatter / Sunset Warmth / Night Milky Way + Aurora)
   // ---------------------------------------------------------------------------
+  const simplifiedSky = quality.simplifiedShaders;
   const skyGeo = new THREE.SphereGeometry(
     94,
-    quality.tier === 'potato' ? 20 : 34,
-    quality.tier === 'potato' ? 14 : 22,
+    simplifiedSky ? 12 : 34,
+    simplifiedSky ? 8 : 22,
   );
   const sunDirInitial = directionFromElevAzim(activeSpec.sunElevation, activeSpec.sunAzimuth, 1, new THREE.Vector3());
 
@@ -658,7 +659,20 @@ export function buildSkyAtmosphere(
         gl_Position = projectionMatrix * viewMatrix * wp;
       }
     `,
-    fragmentShader: `
+    fragmentShader: simplifiedSky
+      ? `
+      uniform vec3 uTopColor;
+      uniform vec3 uMidColor;
+      uniform vec3 uHorizonColor;
+      varying vec3 vDir;
+      void main() {
+        float h = clamp(normalize(vDir).y, 0.0, 1.0);
+        vec3 col = mix(uHorizonColor, uMidColor, smoothstep(0.0, 0.28, h));
+        col = mix(col, uTopColor, smoothstep(0.26, 0.88, h));
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+      : `
       uniform float uTime;
       uniform vec3 uTopColor;
       uniform vec3 uMidColor;
@@ -1113,6 +1127,7 @@ export function buildSkyAtmosphere(
 
     // Sun placement & visibility
     sunGroup.visible = isDay || isSunset;
+    sunOuterSprite.visible = !simplifiedSky;
     directionFromElevAzim(activeSpec.sunElevation, activeSpec.sunAzimuth, 78, sunGroup.position);
     sunDiscMat.color.setHex(activeSpec.sunColor);
     sunHaloMat.color.setHex(activeSpec.sunCoronaColor);
@@ -1124,23 +1139,23 @@ export function buildSkyAtmosphere(
     moonMat.color.setHex(activeSpec.moonColor);
     moonHaloMat.color.setHex(activeSpec.moonGlowColor);
 
-    // Clouds color & opacity
+    // Clouds color & opacity (keep lightweight instanced clouds)
     cloudMat.color.setHex(activeSpec.cloudColor);
     cloudMat.opacity = activeSpec.cloudOpacity;
 
-    // Soaring sky birds in daytime & sunset
-    const showBirds = isDay || isSunset;
+    // Soaring sky birds disabled on simplified Potato tier to save draw calls & matrix updates
+    const showBirds = !simplifiedSky && (isDay || isSunset);
     leftWingInst.visible = showBirds;
     rightWingInst.visible = showBirds;
     birdMat.color.setHex(activeSpec.birdColor);
 
-    // Rainbow arc above waterfall in bright daytime themes
-    rainbowMesh.visible = activeSpec.rainbowEnabled && activeShowWaterfall;
+    // Rainbow arc above waterfall disabled on simplified Potato tier
+    rainbowMesh.visible = !simplifiedSky && activeSpec.rainbowEnabled && activeShowWaterfall;
 
-    // Stars & Shooting stars in night (faint stars in sunset zenith)
+    // Stars & Shooting stars in night (shooting stars disabled in Potato mode)
     starPoints.visible = isNight || isSunset;
     starMat.uniforms.uGlobalAlpha.value = isNight ? 0.96 : 0.28;
-    shootingStarGroup.visible = isNight;
+    shootingStarGroup.visible = !simplifiedSky && isNight;
     for (let i = 0; i < shootingStars.length; i++) {
       shootingStars[i].tailMat.color.setHex(activeSpec.shootingStarColor);
     }

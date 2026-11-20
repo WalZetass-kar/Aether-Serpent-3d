@@ -11,7 +11,12 @@
    - Contains zero PII (`email`, phone, etc. forbidden by `keys().hasOnly(...)`).
    - `allow list` explicitly evaluates `resource.data.isPublic == true`.
    - Only the verified owner (`request.auth.uid == userId && email_verified == true`) may create, update, or delete their `publicProfiles/{userId}` document.
-4. **Temporal & Schema Integrity**:
+4. **PII-Free Public Community Boards (`/communityBoards/{boardId}`)**:
+   - Contains zero PII (`email`, etc. forbidden by `keys().hasOnly(...)`).
+   - `allow list` explicitly evaluates `resource.data.isPublished == true || isBootstrappedAdmin()`.
+   - Creation requires `isEmailVerified()`, `exists(/databases/.../users/$(request.auth.uid))`, `incoming().authorUid == request.auth.uid`, `incoming().id == boardId`, `incoming().downloads == 0`, and `incoming().isPublished == true`.
+   - Updates are action-partitioned: (a) author editing mutable board fields while keeping `downloads` unchanged, (b) verified players incrementing `downloads` by exactly `+1` (`affectedKeys().hasOnly(['downloads', 'updatedAt'])`), or (c) admin moderation of `isPublished`.
+5. **Temporal & Schema Integrity**:
    - All `createdAt` fields must equal `request.time` on `create` and remain immutable (`incoming().createdAt == existing().createdAt`) on `update`.
    - All `updatedAt` fields must equal `request.time` on both `create` and `update`.
    - Every string enforces bounded `.size()`, every list enforces bounded `.size()` and index-0 type check, and every `update` uses action-based `affectedKeys().hasOnly(...)`.
@@ -24,11 +29,12 @@
 5. **Identity Spoofing on Create**: Verified `bob` attempts `create('/users/bob', { uid: 'alice', ... })` -> DENIED.
 6. **Shadow / Ghost Field Injection (`isAdmin: true`)**: Verified `bob` sends `{ ..., isAdmin: true }` to `/users/bob` -> DENIED by `keys().hasOnly(...)`.
 7. **PII Leak into Public Profile**: Verified `bob` attempts `create('/publicProfiles/bob', { ..., email: 'bob@evil.com' })` -> DENIED.
-8. **Invalid / Poisoned Document ID**: Verified `bob` writes to `/users/bob/boards/bad..id..with$$chars` -> DENIED by `isValidId(boardId)`.
+8. **Invalid / Poisoned Document ID**: Verified `bob` writes to `/users/bob/boards/bad..id$$` -> DENIED by `isValidId(boardId)`.
 9. **Array Resource Exhaustion ("Denial of Wallet")**: Verified `bob` submits `unlockedAchievements` with 100 entries or integer elements -> DENIED by `.size() <= 24` & element check.
 10. **Immutable Field Tampering**: Verified `bob` updates `/users/bob` changing `uid`, `email`, or `createdAt` -> DENIED.
 11. **Client-Spoofed Timestamp**: Verified `bob` sets `updatedAt: new Date(0)` instead of `serverTimestamp()` (`request.time`) -> DENIED.
 12. **Orphaned Board Without Parent User**: Verified `bob` writes `/users/bob/boards/b1` when `/users/bob` does not exist -> DENIED by Master Gate `exists(...)`.
+13. **Community Board Author Spoofing & Download Inflation**: Verified `bob` attempts `create('/communityBoards/cb1', { authorUid: 'alice', downloads: 9999 })` or updates another author's board `name` -> DENIED by `isValidCommunityBoard` & action-based update gates.
 
 ## 3. Verification
-All 12 adversarial payloads are codifed in `firestore.rules.test.ts` and validated against the ESLint security rules plugin (`@firebase/eslint-plugin-security-rules`) prior to deployment.
+All adversarial payloads are codified in `firestore.rules.test.ts` and validated against the ESLint security rules plugin (`@firebase/eslint-plugin-security-rules`) prior to deployment.

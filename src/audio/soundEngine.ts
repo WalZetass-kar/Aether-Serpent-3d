@@ -8,6 +8,9 @@ export interface SoundSettings {
   boardEffectsEnabled: boolean;
   ambientBoardEnabled: boolean;
   ambientVolume: number;
+  spatialVoiceEnabled: boolean;
+  voiceVolume: number;
+  voiceActivityThreshold: number;
 }
 
 export const SOUND_SETTINGS_KEY = 'aether_serpent_sound_v1';
@@ -20,6 +23,9 @@ export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
   boardEffectsEnabled: true,
   ambientBoardEnabled: true,
   ambientVolume: 0.42,
+  spatialVoiceEnabled: true,
+  voiceVolume: 0.85,
+  voiceActivityThreshold: 0.35,
 };
 
 function clamp01(val: unknown, fallback: number): number {
@@ -54,6 +60,18 @@ export function loadSoundSettings(): SoundSettings {
           ? parsed.ambientBoardEnabled
           : DEFAULT_SOUND_SETTINGS.ambientBoardEnabled,
       ambientVolume: clamp01(parsed.ambientVolume, DEFAULT_SOUND_SETTINGS.ambientVolume),
+      spatialVoiceEnabled:
+        typeof parsed.spatialVoiceEnabled === 'boolean'
+          ? parsed.spatialVoiceEnabled
+          : DEFAULT_SOUND_SETTINGS.spatialVoiceEnabled,
+      voiceVolume: clamp01(parsed.voiceVolume, DEFAULT_SOUND_SETTINGS.voiceVolume),
+      voiceActivityThreshold: Math.max(
+        0.05,
+        Math.min(
+          0.95,
+          clamp01(parsed.voiceActivityThreshold, DEFAULT_SOUND_SETTINGS.voiceActivityThreshold),
+        ),
+      ),
     };
   } catch {
     return { ...DEFAULT_SOUND_SETTINGS };
@@ -187,6 +205,18 @@ class SoundEngine {
       boardEffectsEnabled: Boolean(next.boardEffectsEnabled),
       ambientBoardEnabled: Boolean(next.ambientBoardEnabled),
       ambientVolume: clamp01(next.ambientVolume, DEFAULT_SOUND_SETTINGS.ambientVolume),
+      spatialVoiceEnabled:
+        typeof next.spatialVoiceEnabled === 'boolean'
+          ? next.spatialVoiceEnabled
+          : DEFAULT_SOUND_SETTINGS.spatialVoiceEnabled,
+      voiceVolume: clamp01(next.voiceVolume, DEFAULT_SOUND_SETTINGS.voiceVolume),
+      voiceActivityThreshold: Math.max(
+        0.05,
+        Math.min(
+          0.95,
+          clamp01(next.voiceActivityThreshold, DEFAULT_SOUND_SETTINGS.voiceActivityThreshold),
+        ),
+      ),
     };
     if (this.userUnlocked || this.ctx) {
       this.syncContinuousLayers();
@@ -530,6 +560,58 @@ class SoundEngine {
         osc.stop(t + 0.8);
       });
     }
+  }
+
+  /**
+   * Plays a short spatialized chime orbiting left-to-right when 3D spatial voice is enabled,
+   * or a centered mono chime when disabled, so players can preview the difference immediately.
+   */
+  public previewSpatialVoice(spatialEnabled: boolean) {
+    this.userUnlocked = true;
+    const ctx = this.ensureContext(true);
+    if (!ctx || this.muted || this.settings.masterVolume <= 0.005) return;
+
+    const now = ctx.currentTime;
+    const vol = this.settings.masterVolume * Math.max(0.3, this.settings.voiceVolume) * 0.24;
+    const notes = [440, 554.37, 659.25];
+    const positionsX = [-4.2, 0, 4.2];
+
+    notes.forEach((freq, idx) => {
+      const t = now + idx * 0.22;
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.linearRampToValueAtTime(vol, t + 0.03);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+
+      osc.connect(env);
+
+      if (spatialEnabled && typeof ctx.createPanner === 'function') {
+        const panner = ctx.createPanner();
+        panner.panningModel = 'HRTF';
+        panner.distanceModel = 'inverse';
+        panner.refDistance = 2.0;
+        panner.maxDistance = 20;
+        panner.rolloffFactor = 1.2;
+        if (panner.positionX) {
+          panner.positionX.setValueAtTime(positionsX[idx], t);
+          panner.positionY.setValueAtTime(0.2, t);
+          panner.positionZ.setValueAtTime(-1.8, t);
+        } else {
+          panner.setPosition(positionsX[idx], 0.2, -1.8);
+        }
+        env.connect(panner);
+        panner.connect(ctx.destination);
+      } else {
+        env.connect(ctx.destination);
+      }
+
+      osc.start(t);
+      osc.stop(t + 0.36);
+    });
   }
 
   public playDiceRoll() {

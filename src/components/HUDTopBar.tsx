@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Camera, Compass, Home, Menu, MessageSquare, Smile, Sparkles, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { BookOpen, Camera, Compass, Eye, Home, Menu, MessageSquare, Mic, MicOff, PhoneOff, Smile, Sparkles, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import {
   BOARD_GAME_MODES,
   ONLINE_TURN_TIMEOUT_SEC,
@@ -7,10 +7,19 @@ import {
   type ConnectionMode,
   type DifficultyMode,
 } from '../../shared/gameConfig';
+import type { VoiceChatSnapshot } from '../audio/voiceChatEngine';
 import type { QualityPresetId } from '../three/perf/qualityPresets';
 import { AnimatedProgressRing } from './AnimatedProgressRing';
 import { useEmoteLongPress, type EmoteWheelAnchor } from './EmoteWheel';
 import { SerpentCrestEmblem } from './FantasyIcons';
+import { VoiceActivityBars } from './VoiceActivityBars';
+
+export interface VoiceHudParticipant {
+  id: string;
+  name: string;
+  inVoice: boolean;
+  muted: boolean;
+}
 
 interface HUDTopBarProps {
   mode: ConnectionMode;
@@ -28,6 +37,14 @@ interface HUDTopBarProps {
   isAnimating: boolean;
   graphicsPreset?: QualityPresetId;
   unreadChatCount?: number;
+  isSpectator?: boolean;
+  spectatorCount?: number;
+  voiceState?: VoiceChatSnapshot;
+  voicePeerCount?: number;
+  voiceParticipants?: VoiceHudParticipant[];
+  myPlayerId?: string;
+  onToggleVoiceMute?: () => void;
+  onLeaveVoice?: () => void;
   onQuickToggleLightweight?: () => void;
   onOpenChat?: () => void;
   onOpenEmoteWheel?: (anchor: EmoteWheelAnchor) => void;
@@ -61,6 +78,14 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
   isAnimating,
   graphicsPreset = 'auto',
   unreadChatCount = 0,
+  isSpectator = false,
+  spectatorCount = 0,
+  voiceState,
+  voicePeerCount = 0,
+  voiceParticipants = [],
+  myPlayerId,
+  onToggleVoiceMute,
+  onLeaveVoice,
   onQuickToggleLightweight,
   onOpenChat,
   onOpenEmoteWheel,
@@ -112,6 +137,70 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
           ? 'text-amber-300'
           : 'text-rose-300';
 
+  const showVoiceControls =
+    mode === 'online' && Boolean(onlineRoomCode) && !isSpectator && Boolean(onToggleVoiceMute);
+
+  const voiceStatusMeta = (() => {
+    const status = voiceState?.status ?? 'idle';
+    if (status === 'connected') {
+      return {
+        label: voiceState?.localSpeaking ? 'Berbicara' : voiceState?.spatialEnabled ? 'Suara 3D' : 'Suara Aktif',
+        actionLabel: 'Bisukan',
+        tone: 'border-emerald-400/55 bg-emerald-500/18 text-emerald-200',
+        statusColor: 'text-emerald-300',
+        isActiveMic: true,
+      };
+    }
+    if (status === 'muted') {
+      return {
+        label: 'Mic Dibisukan',
+        actionLabel: 'Aktifkan',
+        tone: 'border-rose-400/55 bg-rose-500/18 text-rose-200',
+        statusColor: 'text-rose-300',
+        isActiveMic: false,
+      };
+    }
+    if (status === 'connecting') {
+      return {
+        label: 'Menghubungkan',
+        actionLabel: 'Tunggu',
+        tone: 'border-amber-400/55 bg-amber-500/18 text-amber-200',
+        statusColor: 'text-amber-300',
+        isActiveMic: false,
+      };
+    }
+    if (status === 'denied' || status === 'error' || status === 'unsupported') {
+      return {
+        label: status === 'denied' ? 'Izin Mic Ditolak' : 'Suara Tidak Tersedia',
+        actionLabel: 'Coba Lagi',
+        tone: 'border-rose-500/50 bg-rose-950/55 text-rose-200',
+        statusColor: 'text-rose-300',
+        isActiveMic: false,
+      };
+    }
+    return {
+      label: voicePeerCount > 0 ? `Suara (${voicePeerCount})` : 'Suara Siap',
+      actionLabel: 'Aktifkan Mic',
+      tone: 'border-slate-700/85 bg-slate-950/90 text-slate-200',
+      statusColor: 'text-slate-300',
+      isActiveMic: false,
+    };
+  })();
+
+  const activeVoiceMeters = showVoiceControls && voiceState?.joined
+    ? voiceParticipants
+        .filter((vp) => vp.inVoice)
+        .map((vp) => {
+          const isSelf = vp.id === myPlayerId;
+          const level = isSelf ? voiceState.localLevel : (voiceState.peerLevels[vp.id] ?? 0);
+          const speaking = isSelf
+            ? voiceState.localSpeaking
+            : voiceState.speakingPeerIds.includes(vp.id);
+          const isMutedPeer = isSelf ? voiceState.isMuted : vp.muted;
+          return { ...vp, isSelf, level, speaking, isMutedPeer };
+        })
+    : [];
+
   return (
     <>
       <header className="pointer-events-none fixed safe-hud-top z-20 px-2 sm:px-4 pt-1.5 sm:pt-3 animate-hud-slide-in">
@@ -129,18 +218,26 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                     #{onlineRoomCode}
                   </span>
                 )}
+                {isSpectator && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-sky-400/50 bg-sky-500/20 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-extrabold text-sky-200 shrink-0">
+                    <Eye className="w-3 h-3 shrink-0" />
+                    <span>MENONTON</span>
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1 text-[9px] sm:text-[11px] text-slate-400 truncate">
                 <span className="truncate">{modeLabel}</span>
                 <span>·</span>
                 <span className="truncate">
-                  {mode === 'solo'
-                    ? difficulty === 'adaptive'
-                      ? `AI ${adaptiveTier}`
-                      : `AI ${difficulty}`
-                    : mode === 'local'
-                      ? 'Lokal'
-                      : 'Online'}
+                  {isSpectator
+                    ? `Read-Only${spectatorCount > 0 ? ` · ${spectatorCount} Penonton` : ''}`
+                    : mode === 'solo'
+                      ? difficulty === 'adaptive'
+                        ? `AI ${adaptiveTier}`
+                        : `AI ${difficulty}`
+                      : mode === 'local'
+                        ? 'Lokal'
+                        : 'Online'}
                 </span>
                 {mode === 'online' && pingMs !== null && (
                   <span className={`hidden sm:inline font-mono-num ${pingTone}`}>
@@ -252,6 +349,97 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
               </button>
             )}
 
+            {/* Voice Chat Status Indicator, Animated Volume Bars & Mute/Unmute (Strictly active online room only) */}
+            {showVoiceControls && (
+              <div className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md p-1 shadow-md">
+                <div
+                  className="hidden lg:flex items-center gap-1.5 px-2 text-[11px] font-semibold whitespace-nowrap"
+                  title={
+                    voiceState?.errorMessage ||
+                    `Status Obrolan Suara: ${voiceStatusMeta.label}${voiceState?.spatialEnabled ? ' · Audio Spasial 3D Aktif' : ''}`
+                  }
+                >
+                  {voiceState?.joined && (
+                    <VoiceActivityBars
+                      level={voiceState.localLevel}
+                      active={voiceState.localSpeaking}
+                      muted={voiceState.isMuted}
+                      size="xs"
+                      tone="emerald"
+                    />
+                  )}
+                  <span className={voiceStatusMeta.statusColor}>{voiceStatusMeta.label}</span>
+                  {voiceState?.joined && voicePeerCount > 0 && (
+                    <span className="font-mono-num text-[10px] text-slate-400">
+                      · {voicePeerCount}
+                    </span>
+                  )}
+                </div>
+                {activeVoiceMeters.length > 0 && (
+                  <div className="hidden xl:flex items-center gap-1 pl-1 pr-1.5 border-l border-slate-800/90">
+                    {activeVoiceMeters.slice(0, 4).map((vp) => (
+                      <div
+                        key={vp.id}
+                        title={`${vp.name}${vp.isMutedPeer ? ' (Dibisukan)' : vp.speaking ? ' (Berbicara)' : ' (Aktif)'}`}
+                        className={`inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold max-w-[92px] transition-colors ${
+                          vp.speaking && !vp.isMutedPeer
+                            ? 'border-emerald-400/55 bg-emerald-500/15 text-emerald-100'
+                            : 'border-slate-800 bg-slate-900/75 text-slate-300'
+                        }`}
+                      >
+                        <VoiceActivityBars
+                          level={vp.level}
+                          active={vp.speaking}
+                          muted={vp.isMutedPeer}
+                          size="xs"
+                          tone={vp.isSelf ? 'amber' : 'emerald'}
+                        />
+                        <span className="truncate">{vp.isSelf ? 'Anda' : vp.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={onToggleVoiceMute}
+                  disabled={voiceState?.status === 'connecting'}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg border min-h-[30px] px-2.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60 ${voiceStatusMeta.tone}`}
+                  title={
+                    voiceState?.joined
+                      ? voiceState.isMuted
+                        ? 'Aktifkan mikrofon (Unmute)'
+                        : 'Bisukan mikrofon (Mute)'
+                      : 'Gabung ke obrolan suara ruangan'
+                  }
+                  aria-label={
+                    voiceState?.joined
+                      ? voiceState.isMuted
+                        ? 'Aktifkan mikrofon'
+                        : 'Bisukan mikrofon'
+                      : 'Gabung obrolan suara'
+                  }
+                >
+                  {voiceStatusMeta.isActiveMic ? (
+                    <Mic className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <MicOff className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span className="hidden md:inline">{voiceStatusMeta.actionLabel}</span>
+                </button>
+                {voiceState?.joined && onLeaveVoice && (
+                  <button
+                    type="button"
+                    onClick={onLeaveVoice}
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/90 w-[30px] h-[30px] text-slate-400 hover:border-rose-400/50 hover:text-rose-300 transition-colors cursor-pointer shrink-0"
+                    title="Putuskan obrolan suara"
+                    aria-label="Putuskan obrolan suara"
+                  >
+                    <PhoneOff className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Tablet & Desktop Action Buttons */}
             {onOpenChat && (
               <button
@@ -327,12 +515,45 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             <button
               type="button"
               onClick={onReturnToMenu}
-              className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md min-h-[38px] px-2.5 md:px-3 text-xs font-semibold text-slate-200 hover:border-rose-400/50 hover:text-rose-200 transition-colors cursor-pointer"
-              title="Kembali ke Menu Utama"
+              className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-950/90 backdrop-blur-md min-h-[38px] px-2.5 md:px-3 text-xs font-semibold text-slate-200 hover:border-rose-400/50 hover:text-rose-200 transition-colors cursor-pointer whitespace-nowrap"
+              title={isSpectator ? 'Keluar dari Mode Penonton' : 'Kembali ke Menu Utama'}
             >
               <Home className="w-4 h-4 shrink-0" />
-              <span className="hidden md:inline">Menu</span>
+              <span className="hidden md:inline">{isSpectator ? 'Keluar' : 'Menu'}</span>
             </button>
+
+            {/* Mobile Quick Voice Mute/Unmute Button with live activity indicator (Strictly active online room only) */}
+            {showVoiceControls && (
+              <button
+                type="button"
+                onClick={onToggleVoiceMute}
+                disabled={voiceState?.status === 'connecting'}
+                aria-label={
+                  voiceState?.joined
+                    ? voiceState.isMuted
+                      ? 'Aktifkan mikrofon'
+                      : 'Bisukan mikrofon'
+                    : 'Gabung obrolan suara'
+                }
+                title={`Voice Chat: ${voiceStatusMeta.label}`}
+                className={`sm:hidden inline-flex items-center justify-center gap-1 rounded-xl border backdrop-blur-md h-9 px-2 shadow-md transition-colors cursor-pointer shrink-0 ${voiceStatusMeta.tone}`}
+              >
+                {voiceStatusMeta.isActiveMic ? (
+                  <Mic className="w-4 h-4 shrink-0" />
+                ) : (
+                  <MicOff className="w-4 h-4 shrink-0" />
+                )}
+                {voiceState?.joined && !voiceState.isMuted && (
+                  <VoiceActivityBars
+                    level={voiceState.localLevel}
+                    active={voiceState.localSpeaking}
+                    muted={voiceState.isMuted}
+                    size="xs"
+                    tone="emerald"
+                  />
+                )}
+              </button>
+            )}
 
             {/* Mobile Quick Chat Button (Tap: Chat, Long-Press: Emote Wheel) */}
             {onOpenChat && (
@@ -395,6 +616,88 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
             </div>
 
             <div className="space-y-2.5">
+              {showVoiceControls && (
+                <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1.5 font-bold text-slate-200">
+                      <span>Obrolan Suara</span>
+                      {voiceState?.joined && (
+                        <VoiceActivityBars
+                          level={voiceState.localLevel}
+                          active={voiceState.localSpeaking}
+                          muted={voiceState.isMuted}
+                          size="xs"
+                          tone="emerald"
+                        />
+                      )}
+                    </span>
+                    <span className={`text-[11px] font-semibold ${voiceStatusMeta.statusColor}`}>
+                      {voiceStatusMeta.label}
+                      {voiceState?.joined && voicePeerCount > 0 ? ` · ${voicePeerCount}` : ''}
+                    </span>
+                  </div>
+                  {activeVoiceMeters.length > 0 && (
+                    <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                      {activeVoiceMeters.map((vp) => (
+                        <div
+                          key={vp.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/65 px-2.5 py-1.5 text-[11px]"
+                        >
+                          <span className="font-semibold text-slate-200 truncate">
+                            {vp.isSelf ? `${vp.name} (Anda)` : vp.name}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 shrink-0">
+                            <VoiceActivityBars
+                              level={vp.level}
+                              active={vp.speaking}
+                              muted={vp.isMutedPeer}
+                              size="sm"
+                              tone={vp.isSelf ? 'amber' : 'emerald'}
+                            />
+                            <span
+                              className={`text-[10px] font-semibold ${
+                                vp.isMutedPeer
+                                  ? 'text-rose-300'
+                                  : vp.speaking
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400'
+                              }`}
+                            >
+                              {vp.isMutedPeer ? 'Mati' : vp.speaking ? 'Aktif' : 'Siap'}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onToggleVoiceMute}
+                      disabled={voiceState?.status === 'connecting'}
+                      className={`flex-1 inline-flex items-center justify-center gap-2 min-h-[40px] px-3 rounded-xl border text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer ${voiceStatusMeta.tone}`}
+                    >
+                      {voiceStatusMeta.isActiveMic ? (
+                        <Mic className="w-4 h-4 shrink-0" />
+                      ) : (
+                        <MicOff className="w-4 h-4 shrink-0" />
+                      )}
+                      <span>{voiceStatusMeta.actionLabel}</span>
+                    </button>
+                    {voiceState?.joined && onLeaveVoice && (
+                      <button
+                        type="button"
+                        onClick={onLeaveVoice}
+                        aria-label="Putuskan Obrolan Suara"
+                        className="inline-flex items-center justify-center min-w-[40px] min-h-[40px] rounded-xl border border-rose-500/40 bg-rose-950/40 text-rose-300 cursor-pointer shrink-0"
+                      >
+                        <PhoneOff className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {onQuickToggleLightweight && (
                 <button
                   type="button"
@@ -521,7 +824,7 @@ export const HUDTopBar: React.FC<HUDTopBarProps> = ({
                 className="w-full flex items-center gap-2.5 min-h-[44px] px-3.5 rounded-xl border border-rose-500/35 bg-rose-950/25 text-xs font-semibold text-rose-200"
               >
                 <Home className="w-4 h-4 text-rose-400" />
-                <span>Kembali ke Menu Utama</span>
+                <span>{isSpectator ? 'Keluar Mode Menonton' : 'Kembali ke Menu Utama'}</span>
               </button>
             </div>
           </aside>

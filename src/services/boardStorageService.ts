@@ -367,6 +367,38 @@ export function saveCustomBoard(board: BoardConfig): { state: BoardCollectionSta
   return { state, saved };
 }
 
+export function saveDownloadedCommunityBoard(
+  board: BoardConfig,
+  communityBoardId: string,
+  authorName: string,
+): { state: BoardCollectionState; saved: BoardConfig; alreadyExisted: boolean } {
+  const state = loadBoardCollection();
+  const now = Date.now();
+  const cleanCommunityId = communityBoardId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 70);
+  const localId = `community_${cleanCommunityId}`;
+  const existingIdx = state.customBoards.findIndex((b) => b.id === localId);
+  const alreadyExisted = existingIdx >= 0;
+
+  const saved: BoardConfig = {
+    ...cloneBoardConfig(board),
+    id: localId,
+    subtitle: board.subtitle || `Komunitas · oleh ${authorName}`,
+    isCustom: true,
+    createdAt: alreadyExisted ? state.customBoards[existingIdx].createdAt || now : now,
+    updatedAt: now,
+  };
+
+  if (alreadyExisted) {
+    state.customBoards[existingIdx] = saved;
+  } else {
+    state.customBoards = [saved, ...state.customBoards];
+  }
+
+  state.selectedBoardId = saved.id;
+  saveBoardCollection(state);
+  return { state, saved, alreadyExisted };
+}
+
 export function deleteCustomBoard(boardId: string): BoardCollectionState {
   const state = loadBoardCollection();
   state.customBoards = state.customBoards.filter((b) => b.id !== boardId);

@@ -297,7 +297,7 @@ export class AdaptivePerformanceManager {
   }
 
   public getEffectivePixelRatio(): number {
-    if (this.capabilities.isSoftwareGl) return 0.75;
+    if (this.capabilities.isSoftwareGl) return 0.95;
     const isMobileOrTabletViewport =
       typeof window !== 'undefined' &&
       (window.innerWidth < 1024 ||
@@ -305,21 +305,22 @@ export class AdaptivePerformanceManager {
     const tierCap =
       this.effectiveTier === 'potato'
         ? isMobileOrTabletViewport
-          ? 0.85
-          : 1.0
+          ? 1.12
+          : 1.18
         : this.effectiveTier === 'low'
           ? isMobileOrTabletViewport
-            ? 0.96
-            : 1.15
+            ? 1.24
+            : 1.32
           : this.effectiveTier === 'medium'
             ? isMobileOrTabletViewport
-              ? 1.1
-              : 1.35
+              ? 1.3
+              : 1.48
             : isMobileOrTabletViewport
-              ? 1.25
-              : 1.75;
+              ? 1.4
+              : 1.85;
+    const minFloor = this.effectiveTier === 'potato' ? 0.88 : 0.95;
     const baseDpr = Math.min(this.capabilities.devicePixelRatio || 1, tierCap);
-    return THREE.MathUtils.clamp(baseDpr * this.resScale, 0.6, tierCap);
+    return THREE.MathUtils.clamp(baseDpr * this.resScale, minFloor, tierCap);
   }
 
   public setPreset(preset: QualityPresetId, autoAdjust: boolean): { changed: boolean } {

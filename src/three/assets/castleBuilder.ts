@@ -230,54 +230,79 @@ export function applyCastlePbrMaterials(
     slatePbr: PbrTextureSet;
     timberPbr: PbrTextureSet;
   },
+  simplified = false,
 ): void {
-  const stoneMat = new THREE.MeshStandardMaterial({
-    map: textures.stonePbr.map,
-    normalMap: textures.stonePbr.normalMap,
-    normalScale: new THREE.Vector2(1.3, 1.3),
-    roughnessMap: textures.stonePbr.roughnessMap,
-    aoMap: textures.stonePbr.aoMap,
-    aoMapIntensity: 0.85,
-    color: 0xcbd5e1,
-    roughness: 0.84,
-    metalness: 0.05,
-  });
+  const stoneMat = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: textures.stonePbr.map,
+        color: 0xcbd5e1,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: textures.stonePbr.map,
+        normalMap: textures.stonePbr.normalMap,
+        normalScale: new THREE.Vector2(1.3, 1.3),
+        roughnessMap: textures.stonePbr.roughnessMap,
+        aoMap: textures.stonePbr.aoMap,
+        aoMapIntensity: 0.85,
+        color: 0xcbd5e1,
+        roughness: 0.84,
+        metalness: 0.05,
+      });
 
-  const slateMat = new THREE.MeshStandardMaterial({
-    map: textures.slatePbr.map,
-    normalMap: textures.slatePbr.normalMap,
-    normalScale: new THREE.Vector2(1.2, 1.2),
-    roughnessMap: textures.slatePbr.roughnessMap,
-    aoMap: textures.slatePbr.aoMap,
-    aoMapIntensity: 0.8,
-    color: 0xe2e8f0,
-    roughness: 0.55,
-    metalness: 0.14,
-  });
+  const slateMat = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: textures.slatePbr.map,
+        color: 0xe2e8f0,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: textures.slatePbr.map,
+        normalMap: textures.slatePbr.normalMap,
+        normalScale: new THREE.Vector2(1.2, 1.2),
+        roughnessMap: textures.slatePbr.roughnessMap,
+        aoMap: textures.slatePbr.aoMap,
+        aoMapIntensity: 0.8,
+        color: 0xe2e8f0,
+        roughness: 0.55,
+        metalness: 0.14,
+      });
 
-  const timberMat = new THREE.MeshStandardMaterial({
-    map: textures.timberPbr.map,
-    normalMap: textures.timberPbr.normalMap,
-    normalScale: new THREE.Vector2(1.1, 1.1),
-    roughnessMap: textures.timberPbr.roughnessMap,
-    aoMap: textures.timberPbr.aoMap,
-    aoMapIntensity: 0.85,
-    roughness: 0.85,
-    metalness: 0.05,
-  });
+  const timberMat = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: textures.timberPbr.map,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: textures.timberPbr.map,
+        normalMap: textures.timberPbr.normalMap,
+        normalScale: new THREE.Vector2(1.1, 1.1),
+        roughnessMap: textures.timberPbr.roughnessMap,
+        aoMap: textures.timberPbr.aoMap,
+        aoMapIntensity: 0.85,
+        roughness: 0.85,
+        metalness: 0.05,
+      });
 
-  const goldMat = new THREE.MeshStandardMaterial({
-    color: 0xf59e0b,
-    roughness: 0.28,
-    metalness: 0.88,
-  });
+  const goldMat = simplified
+    ? new THREE.MeshLambertMaterial({
+        color: 0xf59e0b,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        roughness: 0.28,
+        metalness: 0.88,
+      });
 
-  const glowMat = new THREE.MeshStandardMaterial({
-    color: 0xfef3c7,
-    emissive: 0xf59e0b,
-    emissiveIntensity: 2.35,
-    roughness: 0.2,
-  });
+  const glowMat = simplified
+    ? new THREE.MeshLambertMaterial({
+        color: 0xfef3c7,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 1.4,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: 0xfef3c7,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 2.35,
+        roughness: 0.2,
+      });
 
   castleGroup.traverse((obj) => {
     if (!(obj as THREE.Mesh).isMesh) return;

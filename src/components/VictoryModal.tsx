@@ -29,6 +29,7 @@ interface VictoryModalProps {
   winningTeam: TeamId | null;
   timeExpired: boolean;
   isLocalWinner: boolean;
+  isSpectator?: boolean;
   canRematch?: boolean;
   exitLabel?: string;
   globalRank: number | null;
@@ -46,6 +47,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   winningTeam,
   timeExpired,
   isLocalWinner,
+  isSpectator = false,
   canRematch = true,
   exitLabel = 'Menu Utama',
   globalRank,
@@ -353,20 +355,28 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
           <button
             type="button"
             onClick={onMainMenu}
-            className="sm:w-44 min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/35 bg-slate-800 text-amber-200 font-bold text-sm hover:bg-slate-700 hover:border-amber-400 transition-colors cursor-pointer whitespace-nowrap"
+            className={`${
+              isSpectator ? 'flex-1' : 'sm:w-44'
+            } min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/35 bg-slate-800 text-amber-200 font-bold text-sm hover:bg-slate-700 hover:border-amber-400 transition-colors cursor-pointer whitespace-nowrap`}
           >
             <Home className="w-4 h-4 text-amber-400" />
             {exitLabel}
           </button>
-          <button
-            type="button"
-            disabled={!canRematch}
-            onClick={onRematch}
-            className="flex-1 min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <RotateCcw className="w-4 h-4" />
-            {canRematch ? 'Main Lagi' : 'Menunggu Host Memulai Ulang...'}
-          </button>
+          {isSpectator ? (
+            <div className="flex-1 min-h-[46px] inline-flex items-center justify-center rounded-xl border border-sky-400/30 bg-sky-950/35 px-4 text-xs font-semibold text-sky-200 whitespace-nowrap">
+              Mode Penonton Selesai (Read-Only)
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={!canRematch}
+              onClick={onRematch}
+              className="flex-1 min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-4 h-4" />
+              {canRematch ? 'Main Lagi' : 'Menunggu Host Memulai Ulang...'}
+            </button>
+          )}
         </div>
       </div>
     </div>

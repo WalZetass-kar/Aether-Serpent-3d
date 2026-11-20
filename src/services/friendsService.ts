@@ -14,7 +14,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { PLAYER_ARCHETYPES, type DiceSkinId } from '../../shared/gameConfig';
+import { PLAYER_ARCHETYPES, type BoardGameMode, type DiceSkinId } from '../../shared/gameConfig';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
   deriveNumericFriendId,
@@ -79,6 +79,19 @@ export interface BackendFriendNotification {
 export interface SendFriendRequestResult {
   outcome: 'sent' | 'accepted_existing' | 'already_friends' | 'already_pending';
   backendNotified: boolean;
+}
+
+export interface FriendActiveMatch {
+  friendUid: string;
+  roomCode: string;
+  roomName: string;
+  boardName: string;
+  boardMode: BoardGameMode;
+  playerCount: number;
+  maxPlayers: number;
+  spectatorCount: number;
+  isPublic: boolean;
+  turnCount: number;
 }
 
 function clampArchetype(raw: unknown): number {
@@ -219,6 +232,76 @@ export async function acknowledgeBackendFriendNotifications(
   } catch {
     // non-fatal
   }
+}
+
+/**
+ * Queries the backend multiplayer server for friends who are currently inside
+ * a live 'playing' room so the FriendsListDrawer can display a 'Watch' button.
+ */
+export async function fetchFriendsActiveMatches(
+  user: User,
+  friendUids: string[],
+): Promise<Record<string, FriendActiveMatch>> {
+  const cleanUids = Array.from(new Set(friendUids.filter((id) => Boolean(id && id !== user.uid)))).slice(
+    0,
+    50,
+  );
+  if (!user.emailVerified || cleanUids.length === 0) {
+    return {};
+  }
+  try {
+    const token = await user.getIdToken();
+    const res = await fetch('/api/friends/active-matches', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ friendUids: cleanUids }),
+    });
+    if (!res.ok) return {};
+    const data = (await res.json()) as { matches?: Record<string, FriendActiveMatch> };
+    return data.matches && typeof data.matches === 'object' ? data.matches : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Polls live playing rooms for connected friends while the FriendsListDrawer is open.
+ */
+export function subscribeToFriendsActiveMatches(
+  user: User | null | undefined,
+  friendUids: string[],
+  enabled: boolean,
+  onUpdate: (matches: Record<string, FriendActiveMatch>) => void,
+): () => void {
+  const uniqueUids = Array.from(new Set(friendUids.filter((id) => Boolean(id && id !== user?.uid)))).slice(
+    0,
+    50,
+  );
+  if (!enabled || !user?.emailVerified || uniqueUids.length === 0) {
+    onUpdate({});
+    return () => {};
+  }
+
+  let active = true;
+  const syncNow = async () => {
+    const next = await fetchFriendsActiveMatches(user, uniqueUids);
+    if (active) {
+      onUpdate(next);
+    }
+  };
+
+  void syncNow();
+  const timer = window.setInterval(() => {
+    void syncNow();
+  }, 3000);
+
+  return () => {
+    active = false;
+    window.clearInterval(timer);
+  };
 }
 
 /**

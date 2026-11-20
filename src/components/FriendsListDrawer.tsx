@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth';
 import {
   ArrowLeft,
   DoorOpen,
+  Eye,
   MessageSquare,
   Search,
   Send,
@@ -13,7 +14,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { PLAYER_ARCHETYPES } from '../../shared/gameConfig';
+import { BOARD_GAME_MODES, PLAYER_ARCHETYPES } from '../../shared/gameConfig';
 import { deriveNumericFriendId } from '../services/firebaseAccountService';
 import {
   clearRoomInvite,
@@ -22,7 +23,9 @@ import {
   sendRoomInviteToFriend,
   subscribeToFriendChatMessages,
   subscribeToFriendships,
+  subscribeToFriendsActiveMatches,
   subscribeToFriendsPresence,
+  type FriendActiveMatch,
   type FriendChatMessage,
   type FriendPresence,
   type FriendshipItem,
@@ -41,6 +44,7 @@ interface FriendsListDrawerProps {
   onOpenFriendsModal: (tab: 'friends' | 'requests' | 'search') => void;
   onOpenAuth: (tab: 'login' | 'register') => void;
   onJoinInvitedRoom: (roomCode: string, friendshipId: string) => void;
+  onWatchMatch?: (roomCode: string, friend: FriendshipItem, match: FriendActiveMatch) => void;
   onNotify: (title: string, subtitle?: string) => void;
 }
 
@@ -91,12 +95,14 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
   onOpenFriendsModal,
   onOpenAuth,
   onJoinInvitedRoom,
+  onWatchMatch,
   onNotify,
 }) => {
   const [summary, setSummary] = useState<FriendshipSummary>(
     initialSummary ?? { friends: [], incomingRequests: [], outgoingRequests: [] },
   );
   const [presenceByUid, setPresenceByUid] = useState<Record<string, FriendPresence>>({});
+  const [activeMatchByUid, setActiveMatchByUid] = useState<Record<string, FriendActiveMatch>>({});
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -141,6 +147,17 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
     });
   }, [user, friendUidsKey]);
 
+  useEffect(() => {
+    if (!user?.emailVerified) {
+      setActiveMatchByUid({});
+      return;
+    }
+    const uids = friendUidsKey ? friendUidsKey.split(',') : [];
+    return subscribeToFriendsActiveMatches(user, uids, open, (nextMatches) => {
+      setActiveMatchByUid(nextMatches);
+    });
+  }, [open, user, friendUidsKey]);
+
   const activeChatFriend: FriendshipItem | null = useMemo(() => {
     if (!activeChatFriendId) return null;
     return summary.friends.find((f) => f.id === activeChatFriendId) ?? null;
@@ -177,6 +194,11 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
       if (a.hasPendingRoomInvite !== b.hasPendingRoomInvite) {
         return a.hasPendingRoomInvite ? -1 : 1;
       }
+      const playingA = Boolean(activeMatchByUid[a.friendUid]);
+      const playingB = Boolean(activeMatchByUid[b.friendUid]);
+      if (playingA !== playingB) {
+        return playingA ? -1 : 1;
+      }
       const statusA = presenceByUid[a.friendUid]?.status ?? 'offline';
       const statusB = presenceByUid[b.friendUid]?.status ?? 'offline';
       if (rank[statusA] !== rank[statusB]) {
@@ -184,7 +206,7 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
       }
       return a.friendName.localeCompare(b.friendName, 'id');
     });
-  }, [summary.friends, presenceByUid]);
+  }, [summary.friends, presenceByUid, activeMatchByUid]);
 
   const onlineCount = useMemo(
     () =>
@@ -506,11 +528,17 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
               ) : (
                 sortedFriends.map((friend) => {
                   const presence = presenceByUid[friend.friendUid];
-                  const status = presence?.status ?? 'offline';
+                  const activeMatch = activeMatchByUid[friend.friendUid];
+                  const status: OnlinePresenceStatus = activeMatch
+                    ? 'online'
+                    : (presence?.status ?? 'offline');
                   const pMeta = PRESENCE_META[status];
                   const arch = PLAYER_ARCHETYPES[friend.friendArchetype % PLAYER_ARCHETYPES.length];
                   const numericId = presence?.numericId || friend.friendNumericId;
                   const isConfirming = confirmRemoveId === friend.id;
+                  const matchModeLabel = activeMatch
+                    ? BOARD_GAME_MODES.find((m) => m.id === activeMatch.boardMode)?.label ?? 'Classic'
+                    : '';
 
                   return (
                     <div
@@ -518,7 +546,9 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
                       className={`rounded-2xl border p-3 space-y-2.5 transition-colors ${
                         friend.hasPendingRoomInvite
                           ? 'border-emerald-400/50 bg-emerald-950/20'
-                          : 'border-slate-800 bg-slate-900/80'
+                          : activeMatch
+                            ? 'border-sky-400/45 bg-sky-950/20'
+                            : 'border-slate-800 bg-slate-900/80'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2.5">
@@ -535,10 +565,16 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
                             </div>
                             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400 mt-0.5">
                               <span
-                                className={`inline-flex items-center gap-1 font-semibold ${pMeta.textClass}`}
+                                className={`inline-flex items-center gap-1 font-semibold ${
+                                  activeMatch ? 'text-sky-300' : pMeta.textClass
+                                }`}
                               >
-                                <span className={`w-1.5 h-1.5 rounded-full ${pMeta.dotClass}`} />
-                                <span>{pMeta.label}</span>
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    activeMatch ? 'bg-sky-400' : pMeta.dotClass
+                                  }`}
+                                />
+                                <span>{activeMatch ? 'Sedang Bermain' : pMeta.label}</span>
                               </span>
                               <span aria-hidden="true">·</span>
                               <span className="font-mono-num text-slate-300">#{numericId}</span>
@@ -548,6 +584,37 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
                           </div>
                         </div>
                       </div>
+
+                      {activeMatch && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-400/35 bg-slate-950/80 px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-sky-200 truncate">
+                              {activeMatch.roomName}{' '}
+                              <span className="font-mono-num text-amber-300">
+                                #{activeMatch.roomCode}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono-num truncate">
+                              {matchModeLabel} · {activeMatch.playerCount}/{activeMatch.maxPlayers} Pemain
+                              {activeMatch.spectatorCount > 0
+                                ? ` · ${activeMatch.spectatorCount} Penonton`
+                                : ''}
+                            </div>
+                          </div>
+                          {onWatchMatch && (
+                            <button
+                              type="button"
+                              onClick={() => onWatchMatch(activeMatch.roomCode, friend, activeMatch)}
+                              aria-label={`Watch ${friend.friendName}`}
+                              title="Tonton pertandingan secara langsung (Read-Only)"
+                              className="inline-flex items-center gap-1.5 min-h-[32px] rounded-lg bg-sky-400 px-3 py-1 text-[11px] font-bold text-slate-950 hover:bg-sky-300 cursor-pointer whitespace-nowrap shrink-0"
+                            >
+                              <Eye className="w-3.5 h-3.5 shrink-0" />
+                              <span>Watch</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {friend.hasPendingRoomInvite && (
                         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-400/40 bg-slate-950/85 px-3 py-2">
@@ -577,7 +644,7 @@ export const FriendsListDrawer: React.FC<FriendsListDrawerProps> = ({
                         </div>
                       )}
 
-                      {/* Action Bar: Quick Chat, Room Invite (if in room), and Remove Friend */}
+                      {/* Action Bar: Quick Chat, Room Invite (if in room), Watch, and Remove Friend */}
                       <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/70">
                         <div className="flex items-center gap-1.5">
                           <button

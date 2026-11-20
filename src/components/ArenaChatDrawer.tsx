@@ -17,6 +17,7 @@ interface ArenaChatDrawerProps {
   currentPlayerId: string;
   mode: ConnectionMode;
   roomCode: string | null;
+  readOnly?: boolean;
   onSendMessage: (text: string) => void;
 }
 
@@ -43,6 +44,7 @@ export const ArenaChatDrawer: React.FC<ArenaChatDrawerProps> = ({
   currentPlayerId,
   mode,
   roomCode,
+  readOnly = false,
   onSendMessage,
 }) => {
   const [draft, setDraft] = useState('');
@@ -78,13 +80,17 @@ export const ArenaChatDrawer: React.FC<ArenaChatDrawerProps> = ({
               Obrolan Pemain
             </h3>
             <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
-              {mode === 'online'
+              {readOnly
                 ? roomCode
-                  ? `Room #${roomCode} · Live Multiplayer`
-                  : 'Multiplayer Online'
-                : mode === 'local'
-                  ? 'Catatan Arena Lokal'
-                  : 'Obrolan Arena Solo'}
+                  ? `Room #${roomCode} · Mode Penonton (Read-Only)`
+                  : 'Mode Penonton (Read-Only)'
+                : mode === 'online'
+                  ? roomCode
+                    ? `Room #${roomCode} · Live Multiplayer`
+                    : 'Multiplayer Online'
+                  : mode === 'local'
+                    ? 'Catatan Arena Lokal'
+                    : 'Obrolan Arena Solo'}
             </p>
           </div>
         </div>
@@ -141,42 +147,50 @@ export const ArenaChatDrawer: React.FC<ArenaChatDrawerProps> = ({
         <div ref={listEndRef} />
       </div>
 
-      {/* Quick Phrases */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-slate-800/70 px-3 py-1.5 bg-slate-900/40 shrink-0">
-        {QUICK_CHAT_PHRASES.map((phrase) => (
-          <button
-            key={phrase}
-            type="button"
-            onClick={() => onSendMessage(phrase)}
-            className="shrink-0 whitespace-nowrap rounded-lg border border-slate-700/80 bg-slate-900 px-2 py-1 text-[10px] sm:text-[11px] font-medium text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
-          >
-            {phrase}
-          </button>
-        ))}
-      </div>
+      {readOnly ? (
+        <div className="border-t border-slate-800 px-3.5 py-2.5 bg-slate-950 text-center text-[11px] text-sky-300/90 shrink-0">
+          Mode Penonton (Read-Only) · Anda dapat membaca obrolan &amp; melihat gerakan papan secara langsung.
+        </div>
+      ) : (
+        <>
+          {/* Quick Phrases */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-slate-800/70 px-3 py-1.5 bg-slate-900/40 shrink-0">
+            {QUICK_CHAT_PHRASES.map((phrase) => (
+              <button
+                key={phrase}
+                type="button"
+                onClick={() => onSendMessage(phrase)}
+                className="shrink-0 whitespace-nowrap rounded-lg border border-slate-700/80 bg-slate-900 px-2 py-1 text-[10px] sm:text-[11px] font-medium text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
+              >
+                {phrase}
+              </button>
+            ))}
+          </div>
 
-      {/* Message Input */}
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-center gap-2 border-t border-slate-800 px-3 py-2.5 bg-slate-950 shrink-0"
-      >
-        <input
-          type="text"
-          maxLength={80}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Tulis pesan ke pemain..."
-          className="flex-1 min-w-0 min-h-[38px] rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim()}
-          aria-label="Kirim Pesan"
-          className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-amber-400 text-slate-950 hover:bg-amber-300 disabled:opacity-45 transition-colors cursor-pointer shrink-0"
-        >
-          <Send className="w-4 h-4" />
-        </button>
-      </form>
+          {/* Message Input */}
+          <form
+            onSubmit={handleSubmit}
+            className="flex items-center gap-2 border-t border-slate-800 px-3 py-2.5 bg-slate-950 shrink-0"
+          >
+            <input
+              type="text"
+              maxLength={80}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Tulis pesan ke pemain..."
+              className="flex-1 min-w-0 min-h-[38px] rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+            />
+            <button
+              type="submit"
+              disabled={!draft.trim()}
+              aria-label="Kirim Pesan"
+              className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-amber-400 text-slate-950 hover:bg-amber-300 disabled:opacity-45 transition-colors cursor-pointer shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </>
+      )}
     </section>
   );
 };

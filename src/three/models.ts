@@ -170,13 +170,43 @@ function getLadderPbr(
 }
 
 let sharedSnakeStaticMats: {
-  ivory: THREE.MeshStandardMaterial;
-  gullet: THREE.MeshStandardMaterial;
-  tongue: THREE.MeshStandardMaterial;
-  eye: THREE.MeshPhysicalMaterial;
+  ivory: THREE.Material;
+  gullet: THREE.Material;
+  tongue: THREE.Material;
+  eye: THREE.Material;
 } | null = null;
 
-function getSharedSnakeStaticMats(maxAnisotropy: number) {
+let sharedSnakeStaticMatsSimplified: {
+  ivory: THREE.Material;
+  gullet: THREE.Material;
+  tongue: THREE.Material;
+  eye: THREE.Material;
+} | null = null;
+
+function getSharedSnakeStaticMats(maxAnisotropy: number, simplified = false) {
+  if (simplified) {
+    if (!sharedSnakeStaticMatsSimplified) {
+      const ivory = new THREE.MeshLambertMaterial({ color: 0xfef9c3 });
+      ivory.userData.isSharedStatic = true;
+
+      const gullet = new THREE.MeshLambertMaterial({ color: 0x16070d });
+      gullet.userData.isSharedStatic = true;
+
+      const tongue = new THREE.MeshLambertMaterial({ color: 0xe11d48 });
+      tongue.userData.isSharedStatic = true;
+
+      const eye = new THREE.MeshLambertMaterial({
+        map: getDragonEyeTex(maxAnisotropy),
+        emissive: 0x92400e,
+        emissiveIntensity: 0.28,
+      });
+      eye.userData.isSharedStatic = true;
+
+      sharedSnakeStaticMatsSimplified = { ivory, gullet, tongue, eye };
+    }
+    return sharedSnakeStaticMatsSimplified;
+  }
+
   if (!sharedSnakeStaticMats) {
     const ivory = new THREE.MeshStandardMaterial({
       color: 0xfef9c3,
@@ -260,6 +290,13 @@ export function clearSharedArenaCaches(): void {
     sharedSnakeStaticMats.tongue.dispose();
     sharedSnakeStaticMats.eye.dispose();
     sharedSnakeStaticMats = null;
+  }
+  if (sharedSnakeStaticMatsSimplified) {
+    sharedSnakeStaticMatsSimplified.ivory.dispose();
+    sharedSnakeStaticMatsSimplified.gullet.dispose();
+    sharedSnakeStaticMatsSimplified.tongue.dispose();
+    sharedSnakeStaticMatsSimplified.eye.dispose();
+    sharedSnakeStaticMatsSimplified = null;
   }
 }
 
@@ -373,7 +410,7 @@ export interface SerpentBuildResult {
   jawGroup: THREE.Group;
   tongueMesh: THREE.Mesh;
   gulletTarget: THREE.Object3D;
-  bodyMaterial: THREE.MeshStandardMaterial;
+  bodyMaterial: THREE.MeshStandardMaterial | THREE.MeshLambertMaterial;
   baseHeadPos: THREE.Vector3;
   baseHeadQuat: THREE.Quaternion;
   setForcedLod0: (force: boolean) => void;
@@ -454,27 +491,35 @@ export function createFantasySnake(
   const bodyMetalness =
     matFinish === 'metallic_drake' ? 0.82 : matFinish === 'crystalline' ? 0.55 : 0.38;
 
+  const simplified = quality.simplifiedShaders;
   const isLowPbrTier = quality.tier === 'potato' || quality.tier === 'low';
-  const bodyMaterial = new THREE.MeshStandardMaterial({
-    map: scalePbr.map,
-    normalMap: isLowPbrTier ? null : scalePbr.normalMap,
-    normalScale: new THREE.Vector2(1.65, 1.65),
-    roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : scalePbr.aoMap,
-    metalnessMap: isLowPbrTier ? null : (scalePbr.metalnessMap ?? null),
-    aoMapIntensity: 0.92,
-    roughness: bodyRoughness,
-    metalness: bodyMetalness,
-    side: THREE.FrontSide,
-    transparent: false,
-    depthWrite: true,
-  });
+  const bodyMaterial: THREE.MeshStandardMaterial | THREE.MeshLambertMaterial = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: scalePbr.map,
+        side: THREE.FrontSide,
+        transparent: false,
+        depthWrite: true,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: scalePbr.map,
+        normalMap: isLowPbrTier ? null : scalePbr.normalMap,
+        normalScale: new THREE.Vector2(1.65, 1.65),
+        roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : scalePbr.aoMap,
+        metalnessMap: isLowPbrTier ? null : (scalePbr.metalnessMap ?? null),
+        aoMapIntensity: 0.92,
+        roughness: bodyRoughness,
+        metalness: bodyMetalness,
+        side: THREE.FrontSide,
+        transparent: false,
+        depthWrite: true,
+      });
 
   bodyMaterial.userData.uTime = { value: 0 };
   bodyMaterial.userData.uSwallowPos = { value: -1 };
   bodyMaterial.userData.uSwallowAmp = { value: 0 };
   bodyMaterial.userData.perpDir = { value: new THREE.Vector3(perp.x, 0, perp.z) };
-  if (quality.tier !== 'potato') {
+  if (!simplified) {
     bodyMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = bodyMaterial.userData.uTime;
       shader.uniforms.uSwallowPos = bodyMaterial.userData.uSwallowPos;
@@ -561,65 +606,71 @@ export function createFantasySnake(
   };
 
   const bronzePbr = getBronzePbr(maxAnisotropy, Math.min(512, quality.pbrTexSize) as 256 | 512);
-  const hornMat = new THREE.MeshStandardMaterial({
-    color: palette.horn,
-    normalMap: isLowPbrTier ? null : bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.85, 0.85),
-    roughnessMap: isLowPbrTier ? null : bronzePbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : bronzePbr.aoMap,
-    metalnessMap: isLowPbrTier ? null : (bronzePbr.metalnessMap ?? null),
-    aoMapIntensity: 0.78,
-    roughness: 0.28,
-    metalness: 0.84,
-  });
+  const hornMat: THREE.MeshStandardMaterial | THREE.MeshLambertMaterial = simplified
+    ? new THREE.MeshLambertMaterial({ color: palette.horn })
+    : new THREE.MeshStandardMaterial({
+        color: palette.horn,
+        normalMap: isLowPbrTier ? null : bronzePbr.normalMap,
+        normalScale: new THREE.Vector2(0.85, 0.85),
+        roughnessMap: isLowPbrTier ? null : bronzePbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : bronzePbr.aoMap,
+        metalnessMap: isLowPbrTier ? null : (bronzePbr.metalnessMap ?? null),
+        aoMapIntensity: 0.78,
+        roughness: 0.28,
+        metalness: 0.84,
+      });
   const spineMat = hornMat.clone();
   spineMat.userData.uTime = bodyMaterial.userData.uTime;
   spineMat.userData.uSwallowPos = bodyMaterial.userData.uSwallowPos;
   spineMat.userData.uSwallowAmp = bodyMaterial.userData.uSwallowAmp;
   spineMat.userData.perpDir = bodyMaterial.userData.perpDir;
-  if (quality.tier !== 'potato') {
+  if (!simplified) {
     spineMat.onBeforeCompile = bodyMaterial.onBeforeCompile;
   }
 
-  // 3-tier Body & Dorsal Spine LOD
+  // 3-tier Body & Dorsal Spine LOD (simplified low-poly single body without spines on Potato Mode)
   const bodyLod = new THREE.LOD();
   const lodBias = quality.lodBias;
 
   // LOD0: Hero detail (higher tubular resolution for full-board boss serpents like 99 -> 2)
-  const segLod0 = isMegaBoss ? 116 : 76;
-  const segLod1 = isMegaBoss ? 58 : 38;
-  const segLod2 = isMegaBoss ? 32 : 22;
+  const segLod0 = simplified ? (isMegaBoss ? 48 : 30) : isMegaBoss ? 116 : 76;
+  const segLod1 = simplified ? (isMegaBoss ? 28 : 18) : isMegaBoss ? 58 : 38;
+  const segLod2 = simplified ? (isMegaBoss ? 20 : 14) : isMegaBoss ? 32 : 22;
 
   const bodyLod0 = new THREE.Group();
   bodyLod0.userData.baseLodDist = 0;
   const bodyMesh0 = new THREE.Mesh(
-    createTaperedSplineGeometry(curve, segLod0, 18, bodyRadiusAt),
+    createTaperedSplineGeometry(curve, segLod0, simplified ? 8 : 18, bodyRadiusAt),
     bodyMaterial,
   );
   bodyMesh0.castShadow = shadows;
   bodyMesh0.receiveShadow = shadows;
   bodyLod0.add(bodyMesh0);
-  const spine0 = buildSpineMesh(1, spineMat);
-  if (spine0) bodyLod0.add(spine0);
+  if (!simplified) {
+    const spine0 = buildSpineMesh(1, spineMat);
+    if (spine0) bodyLod0.add(spine0);
+  }
 
   // LOD1: Medium distance (~55% fewer triangles)
   const bodyLod1 = new THREE.Group();
   bodyLod1.userData.baseLodDist = 14;
   const bodyMesh1 = new THREE.Mesh(
-    createTaperedSplineGeometry(curve, segLod1, 11, bodyRadiusAt),
+    createTaperedSplineGeometry(curve, segLod1, simplified ? 7 : 11, bodyRadiusAt),
     bodyMaterial,
   );
   bodyMesh1.castShadow = shadows;
   bodyMesh1.receiveShadow = shadows;
   bodyLod1.add(bodyMesh1);
-  const spine1 = buildSpineMesh(2, spineMat);
-  if (spine1) bodyLod1.add(spine1);
+  if (!simplified) {
+    const spine1 = buildSpineMesh(2, spineMat);
+    if (spine1) bodyLod1.add(spine1);
+  }
 
   // LOD2: Distant silhouette (~82% fewer triangles)
   const bodyLod2 = new THREE.Group();
   bodyLod2.userData.baseLodDist = 24;
   const bodyMesh2 = new THREE.Mesh(
-    createTaperedSplineGeometry(curve, segLod2, 8, bodyRadiusAt),
+    createTaperedSplineGeometry(curve, segLod2, simplified ? 6 : 8, bodyRadiusAt),
     bodyMaterial,
   );
   bodyMesh2.receiveShadow = shadows;
@@ -642,35 +693,39 @@ export function createFantasySnake(
   const baseHeadPos = headGroup.position.clone();
   const baseHeadQuat = headGroup.quaternion.clone();
 
-  const craniumMat = new THREE.MeshStandardMaterial({
-    map: scalePbr.map,
-    normalMap: isLowPbrTier ? null : scalePbr.normalMap,
-    normalScale: new THREE.Vector2(1.5, 1.5),
-    roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : scalePbr.aoMap,
-    metalnessMap: isLowPbrTier ? null : (scalePbr.metalnessMap ?? null),
-    aoMapIntensity: 0.88,
-    roughness: bodyRoughness,
-    metalness: bodyMetalness,
-  });
-  const bellyMat = new THREE.MeshStandardMaterial({
-    color: palette.belly,
-    normalMap: isLowPbrTier ? null : scalePbr.normalMap,
-    normalScale: new THREE.Vector2(0.95, 0.95),
-    roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
-    aoMap: isLowPbrTier ? null : scalePbr.aoMap,
-    aoMapIntensity: 0.75,
-    roughness: 0.52,
-    metalness: 0.14,
-  });
-  const sharedMats = getSharedSnakeStaticMats(maxAnisotropy);
+  const craniumMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ map: scalePbr.map })
+    : new THREE.MeshStandardMaterial({
+        map: scalePbr.map,
+        normalMap: isLowPbrTier ? null : scalePbr.normalMap,
+        normalScale: new THREE.Vector2(1.5, 1.5),
+        roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : scalePbr.aoMap,
+        metalnessMap: isLowPbrTier ? null : (scalePbr.metalnessMap ?? null),
+        aoMapIntensity: 0.88,
+        roughness: bodyRoughness,
+        metalness: bodyMetalness,
+      });
+  const bellyMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ color: palette.belly })
+    : new THREE.MeshStandardMaterial({
+        color: palette.belly,
+        normalMap: isLowPbrTier ? null : scalePbr.normalMap,
+        normalScale: new THREE.Vector2(0.95, 0.95),
+        roughnessMap: isLowPbrTier ? null : scalePbr.roughnessMap,
+        aoMap: isLowPbrTier ? null : scalePbr.aoMap,
+        aoMapIntensity: 0.75,
+        roughness: 0.52,
+        metalness: 0.14,
+      });
+  const sharedMats = getSharedSnakeStaticMats(maxAnisotropy, simplified);
   const ivoryMat = sharedMats.ivory;
   const gulletMat = sharedMats.gullet;
   const eyeMat = sharedMats.eye;
   const tongueMat = sharedMats.tongue;
 
-  const headDetail = quality.tier === 'potato' ? 1 : 2;
-  const radialDetail = quality.tier === 'potato' ? 8 : 12;
+  const headDetail = simplified ? 1 : 2;
+  const radialDetail = simplified ? 8 : 12;
 
   const toNonIndexedGeo = (g: THREE.BufferGeometry): THREE.BufferGeometry => {
     const out = g.index ? g.toNonIndexed() : g;
@@ -1000,6 +1055,7 @@ export function createEnchantedLadder(
   archLiftBoost = 0,
 ): LadderBuildResult {
   const shadows = quality.shadowsEnabled;
+  const simplified = quality.simplifiedShaders;
   const group = new THREE.Group();
   const ladderCfg = boardConfig?.ladderConfig;
   const widthScale = THREE.MathUtils.clamp(ladderCfg?.widthScale ?? 1.0, 0.75, 1.35);
@@ -1008,6 +1064,11 @@ export function createEnchantedLadder(
 
   const start = new THREE.Vector3(fromPos.x, 0.14, fromPos.z);
   const end = new THREE.Vector3(toPos.x, 0.14, toPos.z);
+  const rawDelta = new THREE.Vector3().subVectors(end, start);
+  const horizontalLen = Math.hypot(rawDelta.x, rawDelta.z);
+  if (horizontalLen < 0.05) {
+    end.x += 0.25;
+  }
   const mid = new THREE.Vector3().lerpVectors(start, end, 0.5);
   const baseLift =
     modelStyle === 'crystal_spire' ? 0.85 : modelStyle === 'royal_steps' ? 0.45 : 0.62;
@@ -1016,6 +1077,11 @@ export function createEnchantedLadder(
 
   const dir = new THREE.Vector3().subVectors(end, start).normalize();
   const perp = new THREE.Vector3(-dir.z, 0, dir.x);
+  if (perp.lengthSq() < 1e-6) {
+    perp.set(1, 0, 0);
+  } else {
+    perp.normalize();
+  }
   const halfWidth = 0.31 * widthScale;
 
   const ladderTexSize = Math.min(512, quality.pbrTexSize) as 256 | 512;
@@ -1038,56 +1104,101 @@ export function createEnchantedLadder(
     matStyle === 'temple_bronze' ||
     matStyle === 'gilded_brass';
 
-  const railMat = new THREE.MeshStandardMaterial({
-    map: ladderPbr.map,
-    normalMap: ladderPbr.normalMap,
-    normalScale: new THREE.Vector2(1.55, 1.55),
-    roughnessMap: ladderPbr.roughnessMap,
-    aoMap: ladderPbr.aoMap,
-    metalnessMap: ladderPbr.metalnessMap ?? null,
-    aoMapIntensity: 0.9,
-    color: 0xffffff,
-    roughness: isCrystalOrMarble ? 0.34 : isMetallicLadder ? 0.52 : 0.85,
-    metalness: isMetallicLadder ? 0.88 : isCrystalOrMarble ? 0.45 : 0.25,
-  });
-  const rungMat = new THREE.MeshStandardMaterial({
-    map: ladderPbr.map,
-    normalMap: ladderPbr.normalMap,
-    normalScale: new THREE.Vector2(1.4, 1.4),
-    roughnessMap: ladderPbr.roughnessMap,
-    aoMap: ladderPbr.aoMap,
-    metalnessMap: ladderPbr.metalnessMap ?? null,
-    aoMapIntensity: 0.86,
-    color: new THREE.Color(0xffffff).lerp(accentLadderColor, 0.14),
-    roughness: isCrystalOrMarble ? 0.3 : isMetallicLadder ? 0.48 : 0.82,
-    metalness: isMetallicLadder ? 0.85 : isCrystalOrMarble ? 0.42 : 0.22,
-  });
-  const ironBronzeMat = new THREE.MeshStandardMaterial({
-    color: accentLadderColor,
-    normalMap: bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.95, 0.95),
-    roughnessMap: bronzePbr.roughnessMap,
-    aoMap: bronzePbr.aoMap,
-    metalnessMap: bronzePbr.metalnessMap ?? null,
-    aoMapIntensity: 0.82,
-    roughness: 0.32,
-    metalness: 0.9,
-  });
-  const ropeMat = new THREE.MeshStandardMaterial({
-    color: accentLadderColor.clone().multiplyScalar(0.78),
-    normalMap: bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.75, 0.75),
-    roughnessMap: bronzePbr.roughnessMap,
-    aoMap: bronzePbr.aoMap,
-    aoMapIntensity: 0.75,
-    roughness: 0.78,
-    metalness: 0.18,
-  });
+  const railMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: ladderPbr.map,
+        color: 0xffffff,
+        emissive: primaryLadderColor.clone().lerp(accentLadderColor, 0.35),
+        emissiveIntensity: 0.22,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: ladderPbr.map,
+        normalMap: ladderPbr.normalMap,
+        normalScale: new THREE.Vector2(1.55, 1.55),
+        roughnessMap: ladderPbr.roughnessMap,
+        aoMap: ladderPbr.aoMap,
+        metalnessMap: ladderPbr.metalnessMap ?? null,
+        aoMapIntensity: 0.78,
+        color: 0xffffff,
+        emissive: primaryLadderColor.clone().lerp(accentLadderColor, 0.35),
+        emissiveIntensity: 0.14,
+        roughness: isCrystalOrMarble ? 0.34 : isMetallicLadder ? 0.48 : 0.78,
+        metalness: isMetallicLadder ? 0.72 : isCrystalOrMarble ? 0.4 : 0.22,
+      });
+  const rungMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        map: ladderPbr.map,
+        color: new THREE.Color(0xffffff).lerp(accentLadderColor, 0.22),
+        emissive: accentLadderColor,
+        emissiveIntensity: 0.24,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: ladderPbr.map,
+        normalMap: ladderPbr.normalMap,
+        normalScale: new THREE.Vector2(1.4, 1.4),
+        roughnessMap: ladderPbr.roughnessMap,
+        aoMap: ladderPbr.aoMap,
+        metalnessMap: ladderPbr.metalnessMap ?? null,
+        aoMapIntensity: 0.75,
+        color: new THREE.Color(0xffffff).lerp(accentLadderColor, 0.22),
+        emissive: accentLadderColor,
+        emissiveIntensity: 0.16,
+        roughness: isCrystalOrMarble ? 0.3 : isMetallicLadder ? 0.45 : 0.76,
+        metalness: isMetallicLadder ? 0.68 : isCrystalOrMarble ? 0.38 : 0.2,
+      });
+  const ironBronzeMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        color: accentLadderColor,
+        emissive: accentLadderColor,
+        emissiveIntensity: 0.2,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: accentLadderColor,
+        emissive: accentLadderColor,
+        emissiveIntensity: 0.14,
+        normalMap: bronzePbr.normalMap,
+        normalScale: new THREE.Vector2(0.95, 0.95),
+        roughnessMap: bronzePbr.roughnessMap,
+        aoMap: bronzePbr.aoMap,
+        metalnessMap: bronzePbr.metalnessMap ?? null,
+        aoMapIntensity: 0.76,
+        roughness: 0.34,
+        metalness: 0.76,
+      });
+  const ropeMat: THREE.Material | null = simplified
+    ? null
+    : new THREE.MeshStandardMaterial({
+        color: accentLadderColor.clone().multiplyScalar(0.84),
+        normalMap: bronzePbr.normalMap,
+        normalScale: new THREE.Vector2(0.75, 0.75),
+        roughnessMap: bronzePbr.roughnessMap,
+        aoMap: bronzePbr.aoMap,
+        aoMapIntensity: 0.72,
+        roughness: 0.74,
+        metalness: 0.18,
+      });
+
+  const safeMergeGeos = (geos: THREE.BufferGeometry[]): THREE.BufferGeometry | null => {
+    if (geos.length === 0) return null;
+    const normalized = geos.map((g) => {
+      const ni = g.index ? g.toNonIndexed() : g;
+      if (ni !== g) g.dispose();
+      ensureUv2(ni);
+      return ni;
+    });
+    const merged = BufferGeometryUtils.mergeGeometries(normalized, false);
+    normalized.forEach((g) => g.dispose());
+    if (merged) {
+      merged.computeBoundingBox();
+      merged.computeBoundingSphere();
+    }
+    return merged;
+  };
 
   // Merge both side stiles -> 1 draw call
   const railGeos: THREE.BufferGeometry[] = [];
   const bronzeGeos: THREE.BufferGeometry[] = [];
-  const capBaseGeo = new THREE.CylinderGeometry(0.088, 0.095, 0.1, 8);
+  const capBaseGeo = new THREE.CylinderGeometry(0.088, 0.095, 0.1, simplified ? 6 : 8);
   ensureUv2(capBaseGeo);
 
   [-1, 1].forEach((side) => {
@@ -1098,7 +1209,7 @@ export function createEnchantedLadder(
     const railCurve = new THREE.CatmullRomCurve3([p0, p1, p2]);
     const railGeo = createBeveledTimberRailGeo(
       railCurve,
-      quality.tier === 'potato' ? 16 : 26,
+      simplified ? 12 : 26,
       0.068,
       0.056,
     );
@@ -1112,12 +1223,13 @@ export function createEnchantedLadder(
   });
   capBaseGeo.dispose();
 
-  const mergedRails = BufferGeometryUtils.mergeGeometries(railGeos, false);
-  railGeos.forEach((g) => g.dispose());
-  const railMesh = new THREE.Mesh(mergedRails, railMat);
-  railMesh.castShadow = shadows;
-  railMesh.receiveShadow = shadows;
-  group.add(railMesh);
+  const mergedRails = safeMergeGeos(railGeos);
+  if (mergedRails) {
+    const railMesh = new THREE.Mesh(mergedRails, railMat);
+    railMesh.castShadow = shadows;
+    railMesh.receiveShadow = shadows;
+    group.add(railMesh);
+  }
 
   const totalDist = start.distanceTo(end);
   const rungCount = Math.max(5, Math.floor(totalDist / 0.68));
@@ -1128,14 +1240,16 @@ export function createEnchantedLadder(
     new THREE.Vector2(0.052, halfWidth * 0.55),
     new THREE.Vector2(0.056, halfWidth + 0.03),
   ];
-  const rungBaseGeo = new THREE.LatheGeometry(rungProfile, quality.tier === 'potato' ? 8 : 12);
+  const rungBaseGeo = new THREE.LatheGeometry(rungProfile, simplified ? 6 : 12);
   ensureUv2(rungBaseGeo);
 
   const bandBaseGeo = new THREE.BoxGeometry(0.145, 0.08, 0.145);
   ensureUv2(bandBaseGeo);
-  const ropeBaseGeo = new THREE.TorusGeometry(0.064, 0.016, 5, 10);
-  ropeBaseGeo.rotateX(Math.PI / 2);
-  ensureUv2(ropeBaseGeo);
+  const ropeBaseGeo = simplified ? null : new THREE.TorusGeometry(0.064, 0.016, 5, 10);
+  if (ropeBaseGeo) {
+    ropeBaseGeo.rotateX(Math.PI / 2);
+    ensureUv2(ropeBaseGeo);
+  }
 
   const yAxis = new THREE.Vector3(0, 1, 0);
   const rungPositions: THREE.Vector3[] = [];
@@ -1157,63 +1271,69 @@ export function createEnchantedLadder(
     rg.applyMatrix4(mTmp);
     rungGeos.push(rg);
 
-    [-1, 1].forEach((side) => {
-      vPosTmp.copy(pos).addScaledVector(perp, side * halfWidth);
-      mTmp.compose(vPosTmp, qTmp, unitScale);
-      const cg = bandBaseGeo.clone();
-      cg.applyMatrix4(mTmp);
-      bronzeGeos.push(cg);
+    if (!simplified) {
+      [-1, 1].forEach((side) => {
+        vPosTmp.copy(pos).addScaledVector(perp, side * halfWidth);
+        mTmp.compose(vPosTmp, qTmp, unitScale);
+        const cg = bandBaseGeo.clone();
+        cg.applyMatrix4(mTmp);
+        bronzeGeos.push(cg);
 
-      vPosTmp.copy(pos).addScaledVector(perp, side * (halfWidth - 0.065));
-      mTmp.compose(vPosTmp, qTmp, unitScale);
-      const rlg = ropeBaseGeo.clone();
-      rlg.applyMatrix4(mTmp);
-      ropeGeos.push(rlg);
-    });
+        if (ropeBaseGeo) {
+          vPosTmp.copy(pos).addScaledVector(perp, side * (halfWidth - 0.065));
+          mTmp.compose(vPosTmp, qTmp, unitScale);
+          const rlg = ropeBaseGeo.clone();
+          rlg.applyMatrix4(mTmp);
+          ropeGeos.push(rlg);
+        }
+      });
+    }
   }
   rungBaseGeo.dispose();
   bandBaseGeo.dispose();
-  ropeBaseGeo.dispose();
+  ropeBaseGeo?.dispose();
 
   // Carved Stone & Bronze Anchor Sockets merged into bronzeGeos
-  const socketRingBase = new THREE.TorusGeometry(0.45, 0.034, 6, 20);
+  const socketRingBase = new THREE.TorusGeometry(0.45, 0.034, 5, simplified ? 12 : 20);
   socketRingBase.rotateX(Math.PI / 2);
   ensureUv2(socketRingBase);
   [start, end].forEach((pt) => {
     const sg = socketRingBase.clone();
-    sg.translate(pt.x, 0.052, pt.z);
+    sg.translate(pt.x, 0.064, pt.z);
     bronzeGeos.push(sg);
   });
   socketRingBase.dispose();
 
-  if (rungGeos.length > 0) {
-    const mergedRungs = BufferGeometryUtils.mergeGeometries(rungGeos, false);
-    rungGeos.forEach((g) => g.dispose());
+  const mergedRungs = safeMergeGeos(rungGeos);
+  if (mergedRungs) {
     const rungsMesh = new THREE.Mesh(mergedRungs, rungMat);
     rungsMesh.castShadow = shadows;
     rungsMesh.receiveShadow = shadows;
     group.add(rungsMesh);
   }
 
-  if (bronzeGeos.length > 0) {
-    const mergedBronze = BufferGeometryUtils.mergeGeometries(bronzeGeos, false);
-    bronzeGeos.forEach((g) => g.dispose());
+  const mergedBronze = safeMergeGeos(bronzeGeos);
+  if (mergedBronze) {
     const bronzeMesh = new THREE.Mesh(mergedBronze, ironBronzeMat);
     bronzeMesh.castShadow = shadows;
     group.add(bronzeMesh);
   }
 
-  if (ropeGeos.length > 0) {
-    const mergedRopes = BufferGeometryUtils.mergeGeometries(ropeGeos, false);
-    ropeGeos.forEach((g) => g.dispose());
-    const ropesMesh = new THREE.Mesh(mergedRopes, ropeMat);
-    group.add(ropesMesh);
+  if (ropeMat && ropeGeos.length > 0) {
+    const mergedRopes = safeMergeGeos(ropeGeos);
+    if (mergedRopes) {
+      const ropesMesh = new THREE.Mesh(mergedRopes, ropeMat);
+      group.add(ropesMesh);
+    }
   }
 
   return { group, curve: climbCurve, rungPositions, climbForward: dir };
 }
 
-export function createSpecialShrineProp(type: SpecialTileType): THREE.Group {
+export function createSpecialShrineProp(
+  type: SpecialTileType,
+  simplified = false,
+): THREE.Group {
   const group = new THREE.Group();
 
   const colorMap: Record<SpecialTileType, { color: number; emissive: number }> = {
@@ -1224,24 +1344,34 @@ export function createSpecialShrineProp(type: SpecialTileType): THREE.Group {
   };
   const cfg = colorMap[type];
 
-  const plinthMat = new THREE.MeshStandardMaterial({
-    color: 0x1e293b,
-    roughness: 0.74,
-    metalness: 0.24,
-  });
-  const brassMat = new THREE.MeshStandardMaterial({
-    color: 0xd97706,
-    roughness: 0.24,
-    metalness: 0.88,
-  });
-  const gemMat = new THREE.MeshPhysicalMaterial({
-    color: cfg.color,
-    emissive: cfg.emissive,
-    emissiveIntensity: 0.45,
-    roughness: 0.14,
-    metalness: 0.2,
-    clearcoat: 1.0,
-  });
+  const plinthMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ color: 0x1e293b })
+    : new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.74,
+        metalness: 0.24,
+      });
+  const brassMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({ color: 0xd97706 })
+    : new THREE.MeshStandardMaterial({
+        color: 0xd97706,
+        roughness: 0.24,
+        metalness: 0.88,
+      });
+  const gemMat: THREE.Material = simplified
+    ? new THREE.MeshLambertMaterial({
+        color: cfg.color,
+        emissive: cfg.emissive,
+        emissiveIntensity: 0.48,
+      })
+    : new THREE.MeshPhysicalMaterial({
+        color: cfg.color,
+        emissive: cfg.emissive,
+        emissiveIntensity: 0.45,
+        roughness: 0.14,
+        metalness: 0.2,
+        clearcoat: 1.0,
+      });
 
   const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.19, 0.08, 6), plinthMat);
   plinth.position.y = 0.04;
@@ -1476,19 +1606,25 @@ export function buildBeveledStoneBoard(
           : 0.68;
   const plinthMetalness = boardMatFinish === 'metallic' ? 0.65 : boardMatFinish === 'glossy' ? 0.25 : 0.18;
 
+  const simplifiedBoard = quality.simplifiedShaders;
   const isLowBoardTier = quality.tier === 'potato' || quality.tier === 'low';
-  const plinthMat = new THREE.MeshStandardMaterial({
-    map: stonePlinthPbr.map,
-    normalMap: isLowBoardTier ? null : stonePlinthPbr.normalMap,
-    normalScale: new THREE.Vector2(1.3, 1.3),
-    roughnessMap: isLowBoardTier ? null : stonePlinthPbr.roughnessMap,
-    aoMap: isLowBoardTier ? null : stonePlinthPbr.aoMap,
-    metalnessMap: isLowBoardTier ? null : (stonePlinthPbr.metalnessMap ?? null),
-    aoMapIntensity: 0.88,
-    color: primaryBoardColor.clone().offsetHSL(0, 0, 0.14),
-    roughness: plinthRoughness,
-    metalness: plinthMetalness,
-  });
+  const plinthMat: THREE.Material = simplifiedBoard
+    ? new THREE.MeshLambertMaterial({
+        map: stonePlinthPbr.map,
+        color: primaryBoardColor.clone().offsetHSL(0, 0, 0.14),
+      })
+    : new THREE.MeshStandardMaterial({
+        map: stonePlinthPbr.map,
+        normalMap: isLowBoardTier ? null : stonePlinthPbr.normalMap,
+        normalScale: new THREE.Vector2(1.3, 1.3),
+        roughnessMap: isLowBoardTier ? null : stonePlinthPbr.roughnessMap,
+        aoMap: isLowBoardTier ? null : stonePlinthPbr.aoMap,
+        metalnessMap: isLowBoardTier ? null : (stonePlinthPbr.metalnessMap ?? null),
+        aoMapIntensity: 0.88,
+        color: primaryBoardColor.clone().offsetHSL(0, 0, 0.14),
+        roughness: plinthRoughness,
+        metalness: plinthMetalness,
+      });
 
   const outerSpan = (boardSpan + 1.55) * plinthSizeScale;
   const plinthGeo =
@@ -1514,14 +1650,16 @@ export function buildBeveledStoneBoard(
     boardGroup.add(lowerStep);
   }
 
-  const bronzeMat = new THREE.MeshStandardMaterial({
-    color: secondaryBoardColor,
-    normalMap: isLowBoardTier ? null : bronzePbr.normalMap,
-    normalScale: new THREE.Vector2(0.8, 0.8),
-    roughnessMap: isLowBoardTier ? null : bronzePbr.roughnessMap,
-    roughness: 0.28,
-    metalness: 0.88,
-  });
+  const bronzeMat: THREE.Material = simplifiedBoard
+    ? new THREE.MeshLambertMaterial({ color: secondaryBoardColor })
+    : new THREE.MeshStandardMaterial({
+        color: secondaryBoardColor,
+        normalMap: isLowBoardTier ? null : bronzePbr.normalMap,
+        normalScale: new THREE.Vector2(0.8, 0.8),
+        roughnessMap: isLowBoardTier ? null : bronzePbr.roughnessMap,
+        roughness: 0.28,
+        metalness: 0.88,
+      });
   const bezelGeo = new THREE.BoxGeometry(boardSpan + 0.46, 0.56, boardSpan + 0.46);
   ensureUv2(bezelGeo);
   const goldBezel = new THREE.Mesh(bezelGeo, bronzeMat);
@@ -1551,7 +1689,9 @@ export function buildBeveledStoneBoard(
 
   const mortarBed = new THREE.Mesh(
     new THREE.BoxGeometry(boardSpan + 0.08, 0.16, boardSpan + 0.08),
-    new THREE.MeshStandardMaterial({ color: primaryBoardColor, roughness: 0.94, metalness: 0.04 }),
+    simplifiedBoard
+      ? new THREE.MeshLambertMaterial({ color: primaryBoardColor })
+      : new THREE.MeshStandardMaterial({ color: primaryBoardColor, roughness: 0.94, metalness: 0.04 }),
   );
   mortarBed.position.y = -0.15;
   mortarBed.receiveShadow = shadows;
@@ -1613,17 +1753,19 @@ export function buildBeveledStoneBoard(
           : 0.72;
   const tileMetalness = tileMatFinish === 'metallic' ? 0.75 : tileMatFinish === 'glossy' ? 0.36 : 0.28;
 
-  const stoneBaseMat = new THREE.MeshStandardMaterial({
-    normalMap: isLowBoardTier ? null : stonePlinthPbr.normalMap,
-    normalScale: new THREE.Vector2(1.15, 1.15),
-    roughnessMap: isLowBoardTier ? null : stonePlinthPbr.roughnessMap,
-    aoMap: isLowBoardTier ? null : stonePlinthPbr.aoMap,
-    metalnessMap: isLowBoardTier ? null : (stonePlinthPbr.metalnessMap ?? null),
-    aoMapIntensity: 0.82,
-    color: 0xffffff,
-    roughness: tileRoughness,
-    metalness: tileMetalness,
-  });
+  const stoneBaseMat: THREE.Material = simplifiedBoard
+    ? new THREE.MeshLambertMaterial({ color: 0xffffff })
+    : new THREE.MeshStandardMaterial({
+        normalMap: isLowBoardTier ? null : stonePlinthPbr.normalMap,
+        normalScale: new THREE.Vector2(1.15, 1.15),
+        roughnessMap: isLowBoardTier ? null : stonePlinthPbr.roughnessMap,
+        aoMap: isLowBoardTier ? null : stonePlinthPbr.aoMap,
+        metalnessMap: isLowBoardTier ? null : (stonePlinthPbr.metalnessMap ?? null),
+        aoMapIntensity: 0.82,
+        color: 0xffffff,
+        roughness: tileRoughness,
+        metalness: tileMetalness,
+      });
   const tileBasesInst = new THREE.InstancedMesh(stoneGeo, stoneBaseMat, 100);
   tileBasesInst.receiveShadow = shadows;
   tileBasesInst.castShadow = shadows && !quality.shadowImportantOnly;
@@ -1687,22 +1829,31 @@ export function buildBeveledStoneBoard(
 
   const glowIntensity = boardConfig?.visualEffects.glowIntensity ?? 0.55;
   const tileEffect = tConfig?.visualEffect ?? 'subtle_rune_glow';
-  const atlasMat = new THREE.MeshStandardMaterial({
-    map: boardTilePbr.map,
-    normalMap: quality.tier === 'potato' ? null : boardTilePbr.normalMap,
-    normalScale: new THREE.Vector2(1.45, 1.45),
-    roughnessMap: isLowBoardTier ? null : boardTilePbr.roughnessMap,
-    aoMap: isLowBoardTier ? null : boardTilePbr.aoMap,
-    metalnessMap: isLowBoardTier ? null : (boardTilePbr.metalnessMap ?? null),
-    aoMapIntensity: 0.88,
-    roughness: tileRoughness,
-    metalness: tileMetalness,
-    emissive: tileEffect === 'none' ? new THREE.Color(0x000000) : secondaryBoardColor,
-    emissiveIntensity: tileEffect === 'none' ? 0 : glowIntensity * 0.08,
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
-  });
+  const atlasMat: THREE.Material = simplifiedBoard
+    ? new THREE.MeshLambertMaterial({
+        map: boardTilePbr.map,
+        emissive: tileEffect === 'none' ? new THREE.Color(0x000000) : secondaryBoardColor,
+        emissiveIntensity: tileEffect === 'none' ? 0 : glowIntensity * 0.08,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+    : new THREE.MeshStandardMaterial({
+        map: boardTilePbr.map,
+        normalMap: quality.tier === 'potato' ? null : boardTilePbr.normalMap,
+        normalScale: new THREE.Vector2(1.45, 1.45),
+        roughnessMap: isLowBoardTier ? null : boardTilePbr.roughnessMap,
+        aoMap: isLowBoardTier ? null : boardTilePbr.aoMap,
+        metalnessMap: isLowBoardTier ? null : (boardTilePbr.metalnessMap ?? null),
+        aoMapIntensity: 0.88,
+        roughness: tileRoughness,
+        metalness: tileMetalness,
+        emissive: tileEffect === 'none' ? new THREE.Color(0x000000) : secondaryBoardColor,
+        emissiveIntensity: tileEffect === 'none' ? 0 : glowIntensity * 0.08,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
   atlasMat.userData.ownedPbrSet = boardTilePbr;
   const capsMesh = new THREE.Mesh(mergedCaps, atlasMat);
   capsMesh.receiveShadow = shadows;
@@ -1734,20 +1885,26 @@ export function buildBeveledStoneBoard(
   boardGroup.add(tileHighlight);
 
   const finishPos = tileToWorld(100);
-  const crownRing = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.048, 8, 24), bronzeMat);
+  const crownRing = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.048, 8, simplifiedBoard ? 14 : 24), bronzeMat);
   crownRing.rotation.x = Math.PI / 2;
   crownRing.position.set(finishPos.x, 0.05, finishPos.z);
   boardGroup.add(crownRing);
 
   const cornerPillarBaseGeo = new THREE.CylinderGeometry(0.035, 0.055, 0.26, 6);
   const finialGemBaseGeo = new THREE.OctahedronGeometry(0.055, 0);
-  const finialGemMat = new THREE.MeshStandardMaterial({
-    color: 0xfef08a,
-    emissive: secondaryBoardColor,
-    emissiveIntensity: 0.55,
-    roughness: 0.16,
-    metalness: 0.25,
-  });
+  const finialGemMat: THREE.Material = simplifiedBoard
+    ? new THREE.MeshLambertMaterial({
+        color: 0xfef08a,
+        emissive: secondaryBoardColor,
+        emissiveIntensity: 0.55,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: 0xfef08a,
+        emissive: secondaryBoardColor,
+        emissiveIntensity: 0.55,
+        roughness: 0.16,
+        metalness: 0.25,
+      });
   const finishPillarGeos: THREE.BufferGeometry[] = [];
   const finishGemGeos: THREE.BufferGeometry[] = [];
   [

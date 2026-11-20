@@ -1,6 +1,7 @@
 import {
   ACHIEVEMENTS,
   DICE_SKINS,
+  EMOTE_SETS,
   PLAYER_ARCHETYPES,
   STARTER_PAWN_INDICES,
   generateUniqueDevicePlayerName,
@@ -8,11 +9,13 @@ import {
   getPawnUnlockCost,
   getTodayDateString,
   isDiceSkinUnlocked,
+  isEmoteSetUnlocked,
   isPawnUnlocked,
   type BoardGameMode,
   type ConnectionMode,
   type DiceSkinId,
   type DifficultyMode,
+  type EmoteSetId,
 } from '../../shared/gameConfig';
 import { STARTER_UNLOCKED_BOARD_IDS } from '../../shared/boardThemes';
 
@@ -43,6 +46,7 @@ export interface PlayerProfile {
   name: string;
   archetypeIndex: number;
   diceSkinId: DiceSkinId;
+  emoteSetId: EmoteSetId;
   totalGames: number;
   wins: number;
   losses: number;
@@ -196,6 +200,7 @@ function createDefaultProfile(): PlayerProfile {
     name: uniqueName,
     archetypeIndex: archSeed,
     diceSkinId: 'royal_obsidian',
+    emoteSetId: 'classic_aether',
     totalGames: 0,
     wins: 0,
     losses: 0,
@@ -256,6 +261,18 @@ export function loadProfile(): PlayerProfile {
       ? candidateSkin
       : 'royal_obsidian';
 
+    const validEmoteSetIds = new Set<string>(EMOTE_SETS.map((s) => s.id));
+    const candidateEmoteSet: EmoteSetId =
+      parsed.emoteSetId && validEmoteSetIds.has(parsed.emoteSetId)
+        ? parsed.emoteSetId
+        : 'classic_aether';
+    const resolvedEmoteSet: EmoteSetId = isEmoteSetUnlocked(
+      candidateEmoteSet,
+      unlockedAchievements,
+    )
+      ? candidateEmoteSet
+      : 'classic_aether';
+
     const resolvedPlayerId = parsed.playerId || base.playerId;
     const rawName = (parsed.name || '').trim();
     const isGenericName = !rawName || GENERIC_DEFAULT_NAMES.has(rawName.toLowerCase());
@@ -269,6 +286,7 @@ export function loadProfile(): PlayerProfile {
       playerId: resolvedPlayerId,
       name: resolvedName,
       diceSkinId: resolvedSkin,
+      emoteSetId: resolvedEmoteSet,
       loginStreak:
         typeof parsed.loginStreak === 'number' && Number.isFinite(parsed.loginStreak)
           ? Math.max(1, Math.floor(parsed.loginStreak))

@@ -62,7 +62,7 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'uid', 'email', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'uid', 'email', 'displayName', 'archetypeIndex', 'diceSkinId', 'emoteSetId',
           'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
           'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
           'onlineWins', 'unlockedAchievements', 'dailyStreak',
@@ -77,6 +77,7 @@ service cloud.firestore {
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
         && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 13
         && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
+        && (!('emoteSetId' in data) || (data.emoteSetId is string && data.emoteSetId.size() >= 1 && data.emoteSetId.size() <= 40 && data.emoteSetId in ['classic_aether', 'ember_valor', 'astral_oracle', 'serpent_guild', 'sovereign_crown']))
         && data.totalGames is int && data.totalGames >= 0 && data.totalGames <= 1000000
         && data.wins is int && data.wins >= 0 && data.wins <= 1000000
         && data.losses is int && data.losses >= 0 && data.losses <= 1000000
@@ -321,6 +322,52 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidCommunityBoard(data, boardId) {
+      return data.keys().hasAll([
+          'id', 'authorUid', 'authorName', 'name', 'subtitle', 'description',
+          'themeId', 'previewSwatches', 'ladders', 'snakes',
+          'boardSettings', 'tileConfig', 'snakeConfig', 'ladderConfig',
+          'environmentConfig', 'visualEffects',
+          'isPublished', 'downloads', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'authorUid', 'authorName', 'name', 'subtitle', 'description',
+          'themeId', 'previewSwatches', 'ladders', 'snakes',
+          'boardSettings', 'tileConfig', 'snakeConfig', 'ladderConfig',
+          'environmentConfig', 'visualEffects',
+          'isPublished', 'downloads', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == boardId && isValidId(data.id) && data.id.size() <= 80
+        && data.authorUid is string && isValidId(data.authorUid)
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 32
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 60
+        && data.subtitle is string && data.subtitle.size() <= 100
+        && data.description is string && data.description.size() <= 240
+        && data.themeId is string && data.themeId.size() >= 1 && data.themeId.size() <= 40
+        && data.previewSwatches is list && data.previewSwatches.size() == 3
+        && data.previewSwatches[0] is string && data.previewSwatches[0].size() <= 16
+        && data.ladders is list && data.ladders.size() <= 20
+        && (data.ladders.size() == 0 || data.ladders[0] is map)
+        && data.snakes is list && data.snakes.size() <= 20
+        && (data.snakes.size() == 0 || data.snakes[0] is map)
+        && data.boardSettings is map
+        && data.boardSettings.keys().hasOnly(['shape', 'sizeScale', 'material', 'primaryColor', 'secondaryColor'])
+        && data.tileConfig is map
+        && data.tileConfig.keys().hasOnly(['shape', 'primaryColor', 'alternateColor', 'textureStyle', 'material', 'numeralStyle', 'visualEffect'])
+        && data.snakeConfig is map
+        && data.snakeConfig.keys().hasOnly(['primaryColor', 'stripeColor', 'bellyColor', 'hornColor', 'headModel', 'scalePattern', 'sizeScale', 'materialFinish'])
+        && data.ladderConfig is map
+        && data.ladderConfig.keys().hasOnly(['materialStyle', 'primaryColor', 'accentColor', 'modelStyle', 'widthScale'])
+        && data.environmentConfig is map
+        && data.environmentConfig.keys().hasOnly(['skyPreset', 'showTrees', 'showRocks', 'showCastle', 'showWaterfall', 'decorations', 'fogIntensity', 'lightingPreset'])
+        && data.visualEffects is map
+        && data.visualEffects.keys().hasOnly(['particleStyle', 'particleDensity', 'glowIntensity', 'ambientIntensity', 'shadowsEnabled'])
+        && data.isPublished is bool
+        && data.downloads is int && data.downloads >= 0 && data.downloads <= 10000000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // -------------------------------------------------------------------------
     // /users/{userId} — Private PII & Account State (Owner + Verified Admin)
     // -------------------------------------------------------------------------
@@ -347,11 +394,11 @@ service cloud.firestore {
             && (!('aetherCoins' in incoming()) || !('aetherCoins' in existing()) || incoming().aetherCoins <= existing().aetherCoins + 500)
             && (
               incoming().diff(existing()).affectedKeys().hasOnly([
-                'displayName', 'archetypeIndex', 'diceSkinId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId', 'updatedAt'
+                'displayName', 'archetypeIndex', 'diceSkinId', 'emoteSetId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId', 'updatedAt'
               ])
               ||
               incoming().diff(existing()).affectedKeys().hasOnly([
-                'displayName', 'archetypeIndex', 'diceSkinId',
+                'displayName', 'archetypeIndex', 'diceSkinId', 'emoteSetId',
                 'totalGames', 'wins', 'losses', 'bestScore', 'fastestWinTurns',
                 'laddersClimbed', 'snakesBitten', 'shieldsUsed', 'specialTilesHit',
                 'onlineWins', 'unlockedAchievements', 'dailyStreak',
@@ -713,6 +760,65 @@ service cloud.firestore {
           && isAdmin()
           && exists(/databases/$(database)/documents/friendships/$(pairId));
       }
+    }
+
+    // -------------------------------------------------------------------------
+    // /communityBoards/{boardId} — PII-Free Shared Community 3D Boards
+    // -------------------------------------------------------------------------
+    match /communityBoards/{boardId} {
+      allow get: if isValidId(boardId) && (
+        isAdmin()
+        || (resource != null && resource.data.isPublished == true)
+        || (isEmailVerified() && (resource == null || resource.data.authorUid == request.auth.uid))
+      );
+
+      allow list: if resource.data.isPublished == true || isBootstrappedAdmin();
+
+      allow create: if isValidId(boardId)
+        && isEmailVerified()
+        && isValidCommunityBoard(incoming(), boardId)
+        && incoming().authorUid == request.auth.uid
+        && incoming().downloads == 0
+        && incoming().isPublished == true
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      allow update: if isValidId(boardId)
+        && isEmailVerified()
+        && isValidCommunityBoard(incoming(), boardId)
+        && incoming().id == existing().id
+        && incoming().authorUid == existing().authorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().authorUid == request.auth.uid
+            && incoming().downloads == existing().downloads
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'authorName', 'name', 'subtitle', 'description', 'themeId',
+              'previewSwatches', 'ladders', 'snakes',
+              'boardSettings', 'tileConfig', 'snakeConfig', 'ladderConfig',
+              'environmentConfig', 'visualEffects',
+              'isPublished', 'updatedAt'
+            ])
+          )
+          ||
+          (
+            existing().isPublished == true
+            && incoming().downloads == existing().downloads + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['downloads', 'updatedAt'])
+          )
+          ||
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['isPublished', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(boardId)
+        && isEmailVerified()
+        && (existing().authorUid == request.auth.uid || isAdmin());
     }
   }
 }

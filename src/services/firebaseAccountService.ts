@@ -13,8 +13,15 @@ import {
   where,
 } from 'firebase/firestore';
 import type { BoardConfig } from '../../shared/boardThemes';
-import type { BoardGameMode, DiceSkinId, PlayerState } from '../../shared/gameConfig';
-import { DICE_SKINS, PLAYER_ARCHETYPES, STARTER_PAWN_INDICES, isDiceSkinUnlocked } from '../../shared/gameConfig';
+import type { BoardGameMode, DiceSkinId, EmoteSetId, PlayerState } from '../../shared/gameConfig';
+import {
+  DICE_SKINS,
+  EMOTE_SETS,
+  PLAYER_ARCHETYPES,
+  STARTER_PAWN_INDICES,
+  isDiceSkinUnlocked,
+  isEmoteSetUnlocked,
+} from '../../shared/gameConfig';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import type { PlayerProfile } from './storageService';
 
@@ -78,6 +85,15 @@ export async function loadProfileFromFirebase(user: User): Promise<Partial<Playe
       ? candidateSkin
       : 'royal_obsidian';
 
+    const validEmoteSets = new Set<string>(EMOTE_SETS.map((s) => s.id));
+    const rawEmoteSet = typeof data.emoteSetId === 'string' ? data.emoteSetId : 'classic_aether';
+    const candidateEmoteSet = validEmoteSets.has(rawEmoteSet)
+      ? (rawEmoteSet as EmoteSetId)
+      : 'classic_aether';
+    const resolvedEmoteSet = isEmoteSetUnlocked(candidateEmoteSet, unlockedAchievements)
+      ? candidateEmoteSet
+      : 'classic_aether';
+
     return {
       playerId: user.uid,
       name: sanitizeDisplayName(typeof data.displayName === 'string' ? data.displayName : user.displayName),
@@ -88,6 +104,7 @@ export async function loadProfileFromFirebase(user: User): Promise<Partial<Playe
           ? Math.floor(data.archetypeIndex)
           : 0,
       diceSkinId: resolvedSkin,
+      emoteSetId: resolvedEmoteSet,
       totalGames: typeof data.totalGames === 'number' ? Math.max(0, Math.floor(data.totalGames)) : 0,
       wins: typeof data.wins === 'number' ? Math.max(0, Math.floor(data.wins)) : 0,
       losses: typeof data.losses === 'number' ? Math.max(0, Math.floor(data.losses)) : 0,
@@ -186,6 +203,13 @@ export async function syncProfileToFirebase(
     .slice(0, PLAYER_ARCHETYPES.length);
 
   const safeNumericId = deriveNumericFriendId(user.uid);
+  const validEmoteSetIds = new Set<string>(EMOTE_SETS.map((s) => s.id));
+  const candidateEmoteSet: EmoteSetId = validEmoteSetIds.has(profile.emoteSetId)
+    ? profile.emoteSetId
+    : 'classic_aether';
+  const safeEmoteSetId: EmoteSetId = isEmoteSetUnlocked(candidateEmoteSet, safeAchievements)
+    ? candidateEmoteSet
+    : 'classic_aether';
 
   try {
     const existingSnap = await getDoc(userRef);
@@ -197,6 +221,7 @@ export async function syncProfileToFirebase(
         numericId: safeNumericId,
         archetypeIndex: safeArch,
         diceSkinId: profile.diceSkinId,
+        emoteSetId: safeEmoteSetId,
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
         wins: Math.max(0, Math.floor(profile.wins)),
         losses: Math.max(0, Math.floor(profile.losses)),
@@ -226,6 +251,7 @@ export async function syncProfileToFirebase(
         numericId: safeNumericId,
         archetypeIndex: safeArch,
         diceSkinId: profile.diceSkinId,
+        emoteSetId: safeEmoteSetId,
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
         wins: Math.max(0, Math.floor(profile.wins)),
         losses: Math.max(0, Math.floor(profile.losses)),

@@ -22,7 +22,9 @@ export interface SequenceHostContext {
   pawnArchetypes: Map<string, number>;
   pawnTargets: Map<string, THREE.Vector3>;
   snakesById: Map<string, SerpentBuildResult>;
+  snakesByFromTile?: Map<number, SerpentBuildResult>;
   laddersById: Map<string, LadderBuildResult>;
+  laddersByFromTile?: Map<number, LadderBuildResult>;
   diceGroup: THREE.Group;
   diceBasePos: THREE.Vector3;
   cameraController: DynamicCameraController;
@@ -331,6 +333,9 @@ export class AnimationSequenceController {
       );
       this.host.pawnTargets.set(playerId, new THREE.Vector3(postWorld.x, 0, postWorld.z));
       handle.playClip('idle', 0.14);
+      if (res.jumpTriggered) {
+        await this.sleep(190);
+      }
     } else {
       await this.sleep(360);
     }
@@ -355,7 +360,9 @@ export class AnimationSequenceController {
     if (!res.jumpTriggered) return;
     this.state = 'ladder_climb';
 
-    const ladder = this.host.laddersById.get(res.jumpTriggered.id);
+    const ladder =
+      this.host.laddersByFromTile?.get(res.jumpTriggered.from) ??
+      this.host.laddersById.get(res.jumpTriggered.id);
     const startWorld = tileToWorld(res.jumpTriggered.from);
     const endWorld = tileToWorld(res.jumpTriggered.to);
     const archIdx = cb.archetypeIndex ?? this.host.pawnArchetypes.get(playerId) ?? 0;
@@ -494,7 +501,9 @@ export class AnimationSequenceController {
     if (!res.jumpTriggered) return;
     this.state = 'snake_eat';
 
-    const snake = this.host.snakesById.get(res.jumpTriggered.id);
+    const snake =
+      this.host.snakesByFromTile?.get(res.jumpTriggered.from) ??
+      this.host.snakesById.get(res.jumpTriggered.id);
     const headWorld = tileToWorld(res.jumpTriggered.from);
     const tailWorld = tileToWorld(res.jumpTriggered.to);
 

@@ -251,7 +251,8 @@ export function createBoardStonePbrSet(
         ? 'Georgia, serif'
         : '"JetBrains Mono", monospace';
   const primaryBoardHex = boardConfig?.boardSettings.primaryColor ?? '#0f172a';
-  const cacheKey = `${size}:${boardConfig?.themeId ?? 'default'}:${primaryTileHex}:${alternateTileHex}:${texStyle}:${numeralStyle}:${primaryBoardHex}`;
+  const jumpSig = `${(boardConfig?.ladders ?? []).map((l) => `${l.from}>${l.to}`).join(',')}|${(boardConfig?.snakes ?? []).map((s) => `${s.from}>${s.to}`).join(',')}`;
+  const cacheKey = `${size}:${boardConfig?.themeId ?? 'default'}:${primaryTileHex}:${alternateTileHex}:${texStyle}:${numeralStyle}:${primaryBoardHex}:${jumpSig}`;
 
   let canvas = boardStoneCanvasCache.get(cacheKey);
   if (!canvas) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Activity,
   Camera,
@@ -7,6 +7,7 @@ import {
   Dices,
   Eye,
   Gauge,
+  Headphones,
   MousePointerClick,
   Music,
   Play,
@@ -23,6 +24,8 @@ import {
   soundEngine,
   type SoundSettings,
 } from '../audio/soundEngine';
+import type { VoiceChatSnapshot } from '../audio/voiceChatEngine';
+import { VoiceActivityBars } from './VoiceActivityBars';
 import {
   DEFAULT_CAMERA_SETTINGS,
   type CameraMode,
@@ -38,6 +41,7 @@ import type { DeviceCapabilitiesReport } from '../three/perf/PerformanceManager'
 
 interface CameraSettingsModalProps {
   open: boolean;
+  initialTab?: 'camera' | 'sound' | 'graphics';
   onClose: () => void;
   settings: CameraSettings;
   onChange: (next: CameraSettings) => void;
@@ -49,6 +53,7 @@ interface CameraSettingsModalProps {
   muted: boolean;
   onSoundChange: (next: SoundSettings) => void;
   onToggleMute: () => void;
+  voiceState?: VoiceChatSnapshot;
 }
 
 const CAMERA_MODES: Array<{ id: CameraMode; label: string; desc: string }> = [
@@ -113,6 +118,7 @@ const GRAPHICS_PRESET_OPTIONS: Array<{
 
 export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
   open,
+  initialTab = 'camera',
   onClose,
   settings,
   onChange,
@@ -124,8 +130,15 @@ export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
   muted,
   onSoundChange,
   onToggleMute,
+  voiceState,
 }) => {
-  const [activeTab, setActiveTab] = useState<'camera' | 'sound' | 'graphics'>('camera');
+  const [activeTab, setActiveTab] = useState<'camera' | 'sound' | 'graphics'>(initialTab);
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(initialTab);
+    }
+  }, [open, initialTab]);
 
   if (!open) return null;
 
@@ -744,6 +757,168 @@ export const CameraSettingsModal: React.FC<CameraSettingsModalProps> = ({
                         />
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3D Spatial Audio for Voice Chat */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-300">Obrolan Suara Daring</span>
+                  <span className="text-[11px] text-slate-400">
+                    {soundSettings.spatialVoiceEnabled ? 'Mode Spasial 3D (HRTF)' : 'Mode Stereo Standar'}
+                  </span>
+                </div>
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <Headphones className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-slate-100">
+                          Audio Spasial 3D untuk Voice Chat
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                          Dengarkan suara pemain lain sesuai posisi 3D pion mereka di papan permainan secara real-time.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={muted}
+                        onClick={() =>
+                          soundEngine.previewSpatialVoice(soundSettings.spatialVoiceEnabled)
+                        }
+                        title="Uji efek audio spasial 3D kiri-kanan"
+                        className="min-h-[34px] px-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 text-[11px] font-semibold text-slate-200 hover:border-emerald-400/50 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        <Play className="w-3 h-3" />
+                        <span>Tes 3D</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={soundSettings.spatialVoiceEnabled}
+                        aria-label="Aktifkan Audio Spasial 3D untuk Voice Chat"
+                        onClick={() => {
+                          const nextVal = !soundSettings.spatialVoiceEnabled;
+                          patchSound({ spatialVoiceEnabled: nextVal });
+                          soundEngine.playUiToggle(nextVal);
+                        }}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                          soundSettings.spatialVoiceEnabled
+                            ? 'border-emerald-400/70 bg-emerald-500'
+                            : 'border-slate-700 bg-slate-800'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 rounded-full bg-slate-950 transition-transform duration-150 ${
+                            soundSettings.spatialVoiceEnabled ? 'translate-x-5.5' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`pl-7 pt-1 space-y-3.5 ${muted ? 'opacity-50' : ''}`}>
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] mb-1">
+                        <span className="text-slate-400">Volume Obrolan Suara</span>
+                        <span className="font-mono-num text-emerald-300">
+                          {Math.round(soundSettings.voiceVolume * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={10}
+                        max={100}
+                        step={5}
+                        value={Math.round(soundSettings.voiceVolume * 100)}
+                        onChange={(e) =>
+                          patchSound({ voiceVolume: Number(e.target.value) / 100 })
+                        }
+                        className="w-full accent-emerald-400 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Voice Activity Sensitivity (Noise Gate Threshold) Slider */}
+                    <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="font-semibold text-slate-200">
+                          Sensitivitas Aktivitas Suara (Noise Gate)
+                        </span>
+                        <span className="font-mono-num text-amber-300 shrink-0">
+                          {Math.round(soundSettings.voiceActivityThreshold * 100)}% ·{' '}
+                          {soundSettings.voiceActivityThreshold <= 0.25
+                            ? 'Sangat Sensitif'
+                            : soundSettings.voiceActivityThreshold >= 0.65
+                              ? 'Ketat (Anti-Bising)'
+                              : 'Seimbang'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Atur ambang batas noise gate untuk mencegah suara latar (kipas, ketikan) memicu mikrofon otomatis.
+                      </p>
+                      <input
+                        type="range"
+                        min={5}
+                        max={95}
+                        step={5}
+                        aria-label="Sensitivitas Aktivitas Suara (Noise Gate)"
+                        value={Math.round(soundSettings.voiceActivityThreshold * 100)}
+                        onChange={(e) =>
+                          patchSound({ voiceActivityThreshold: Number(e.target.value) / 100 })
+                        }
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                        <span>Peka (Ambang Rendah)</span>
+                        <span>Anti-Bising (Ambang Tinggi)</span>
+                      </div>
+
+                      {voiceState?.joined && (
+                        <div className="pt-1.5 space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="inline-flex items-center gap-1.5 text-slate-300 font-medium">
+                              <VoiceActivityBars
+                                level={voiceState.localLevel}
+                                active={voiceState.localSpeaking}
+                                muted={voiceState.isMuted}
+                                size="xs"
+                                tone="emerald"
+                              />
+                              <span>
+                                {voiceState.isMuted
+                                  ? 'Mikrofon dibisukan'
+                                  : voiceState.localSpeaking
+                                    ? 'Suara melewati gate (Aktif)'
+                                    : 'Di bawah ambang gate (Hening)'}
+                              </span>
+                            </span>
+                            <span className="font-mono-num text-slate-400">
+                              Input {Math.round(voiceState.localLevel * 100)}%
+                            </span>
+                          </div>
+                          <div className="relative h-2 w-full rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                            <div
+                              className={`h-full transition-[width] duration-75 ${
+                                voiceState.localSpeaking ? 'bg-emerald-400' : 'bg-slate-500/70'
+                              }`}
+                              style={{ width: `${Math.round(voiceState.localLevel * 100)}%` }}
+                            />
+                            <div
+                              className="absolute top-0 bottom-0 w-0.5 bg-amber-300 shadow-[0_0_6px_rgba(251,191,36,0.9)]"
+                              style={{
+                                left: `${Math.round(soundSettings.voiceActivityThreshold * 100)}%`,
+                              }}
+                              title="Ambang batas Noise Gate"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

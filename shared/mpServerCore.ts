@@ -346,6 +346,27 @@ export interface SocketLike {
 
 export const ROOM_INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 menit tanpa pergerakan -> tutup otomatis
 
+export interface RoomSpectator {
+  id: string;
+  name: string;
+  joinedAt: number;
+}
+
+export interface RoomVoicePeer {
+  playerId: string;
+  muted: boolean;
+  joinedAt: number;
+}
+
+export interface RoomVoiceSignal {
+  id: string;
+  fromId: string;
+  toId: string;
+  signalType: 'offer' | 'answer' | 'ice';
+  payload: unknown;
+  ts: number;
+}
+
 export interface MultiplayerRoom {
   code: string;
   name: string;
@@ -368,6 +389,9 @@ export interface MultiplayerRoom {
   chatMessages: RoomChatLog[];
   kickedPlayerIds: string[];
   kickedReasons?: Record<string, string>;
+  spectators: Map<string, RoomSpectator>;
+  voicePeers: Map<string, RoomVoicePeer>;
+  pendingVoiceSignals: Map<string, RoomVoiceSignal[]>;
   clients: Map<string, SocketLike>;
   createdAt: number;
   updatedAt: number;
@@ -410,13 +434,29 @@ function loadRoomsFromTmpCache(): void {
   try {
     if (!fs.existsSync(ROOMS_PATH)) return;
     const raw = fs.readFileSync(ROOMS_PATH, 'utf-8');
-    const parsed = JSON.parse(raw) as Array<Omit<MultiplayerRoom, 'clients'>>;
+    const parsed = JSON.parse(raw) as Array<
+      Omit<MultiplayerRoom, 'clients' | 'spectators' | 'voicePeers' | 'pendingVoiceSignals'> & {
+        spectators?: RoomSpectator[];
+      }
+    >;
     if (!Array.isArray(parsed)) return;
     const cutoff = Date.now() - ROOM_INACTIVITY_TIMEOUT_MS;
     for (const item of parsed) {
       const lastAct = item?.lastActivityAt ?? item?.updatedAt ?? item?.createdAt ?? 0;
       if (!item || !item.code || lastAct < cutoff) continue;
       if (!rooms.has(item.code)) {
+        const specMap = new Map<string, RoomSpectator>();
+        if (Array.isArray(item.spectators)) {
+          for (const s of item.spectators) {
+            if (s && s.id) {
+              specMap.set(s.id, {
+                id: String(s.id),
+                name: String(s.name || 'Penonton'),
+                joinedAt: Number(s.joinedAt) || Date.now(),
+              });
+            }
+          }
+        }
         rooms.set(item.code, {
           ...item,
           designatedWinnerId:
@@ -430,6 +470,9 @@ function loadRoomsFromTmpCache(): void {
             item.kickedReasons && typeof item.kickedReasons === 'object'
               ? item.kickedReasons
               : {},
+          spectators: specMap,
+          voicePeers: new Map(),
+          pendingVoiceSignals: new Map(),
           lastActivityAt: lastAct,
           clients: new Map(),
         });
@@ -467,6 +510,7 @@ function saveRoomsToTmpCache(): void {
       chatMessages: r.chatMessages.slice(-24),
       kickedPlayerIds: r.kickedPlayerIds,
       kickedReasons: r.kickedReasons ?? {},
+      spectators: Array.from(r.spectators.values()),
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       lastActivityAt: r.lastActivityAt || r.updatedAt || r.createdAt,
@@ -509,7 +553,49 @@ export function serializeRoom(room: MultiplayerRoom) {
     lastEventId: room.lastEventId,
     turnEvents: room.turnEvents.slice(-6),
     chatMessages: room.chatMessages.slice(-24),
+    spectatorCount: room.spectators.size,
+    spectators: Array.from(room.spectators.values()).slice(0, 20),
+    voicePeers: Array.from(room.voicePeers.values()).map((v) => ({
+      playerId: v.playerId,
+      muted: v.muted,
+    })),
   };
+}
+
+export function relayRoomVoiceSignal(
+  room: MultiplayerRoom,
+  fromId: string,
+  toId: string,
+  signalType: 'offer' | 'answer' | 'ice',
+  payload: unknown,
+): boolean {
+  const cleanTo = String(toId || '').trim();
+  if (!cleanTo || cleanTo === fromId) return false;
+  if (!room.players.some((p) => p.id === cleanTo)) return false;
+
+  const signal: RoomVoiceSignal = {
+    id: crypto.randomUUID(),
+    fromId,
+    toId: cleanTo,
+    signalType,
+    payload,
+    ts: Date.now(),
+  };
+
+  const targetWs = room.clients.get(cleanTo);
+  if (targetWs && targetWs.readyState === 1) {
+    try {
+      targetWs.send(JSON.stringify({ type: 'voice:signal', signal }));
+      return true;
+    } catch {
+      // fall through to HTTP signal queue
+    }
+  }
+
+  const cutoff = Date.now() - 30_000;
+  const existing = (room.pendingVoiceSignals.get(cleanTo) || []).filter((s) => s.ts >= cutoff);
+  room.pendingVoiceSignals.set(cleanTo, [...existing.slice(-39), signal]);
+  return true;
 }
 
 export function mergeRoomWithClientBackup(
@@ -712,6 +798,15 @@ export function rehydrateRoomFromSnapshotIfNeeded(
     return undefined;
   }
 
+  const specMap = new Map<string, RoomSpectator>();
+  if (Array.isArray(s.spectators)) {
+    for (const sp of s.spectators) {
+      if (sp && typeof sp === 'object' && typeof (sp as RoomSpectator).id === 'string') {
+        specMap.set((sp as RoomSpectator).id, sp as RoomSpectator);
+      }
+    }
+  }
+
   const rehydrated: MultiplayerRoom = {
     code: cleanCode,
     name: String(s.name || 'Arena Aether'),
@@ -739,6 +834,9 @@ export function rehydrateRoomFromSnapshotIfNeeded(
     chatMessages: Array.isArray(s.chatMessages) ? s.chatMessages : [],
     kickedPlayerIds: [],
     kickedReasons: {},
+    spectators: specMap,
+    voicePeers: new Map(),
+    pendingVoiceSignals: new Map(),
     clients: new Map(),
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -1331,11 +1429,17 @@ export function evictPlayerFromOtherRooms(playerId: string, keepRoomCode?: strin
   let mutated = false;
   for (const [otherCode, otherRoom] of Array.from(rooms.entries())) {
     if (keepRoomCode && otherCode === keepRoomCode) continue;
+    const isSpectator = otherRoom.spectators.has(playerId);
     const isInRoom = otherRoom.players.some((p) => p.id === playerId);
-    if (!isInRoom && otherRoom.hostId !== playerId) continue;
+    if (!isInRoom && otherRoom.hostId !== playerId && !isSpectator) continue;
 
     mutated = true;
     otherRoom.clients.delete(playerId);
+    otherRoom.voicePeers.delete(playerId);
+    otherRoom.pendingVoiceSignals.delete(playerId);
+    if (isSpectator) {
+      otherRoom.spectators.delete(playerId);
+    }
 
     if (otherRoom.hostId === playerId) {
       const msg = 'Host telah berpindah atau menutup ruangan.';
@@ -1345,13 +1449,15 @@ export function evictPlayerFromOtherRooms(playerId: string, keepRoomCode?: strin
       });
       markRoomClosed(otherCode, msg);
       rooms.delete(otherCode);
-    } else {
+    } else if (isInRoom) {
       otherRoom.players = otherRoom.players.filter((p) => p.id !== playerId);
       if (otherRoom.players.length === 0) {
         rooms.delete(otherCode);
       } else {
         broadcastRoom(otherRoom, { type: 'room:state', room: serializeRoom(otherRoom) });
       }
+    } else if (isSpectator) {
+      broadcastRoom(otherRoom, { type: 'room:state', room: serializeRoom(otherRoom) });
     }
   }
   if (mutated) {
@@ -1441,6 +1547,9 @@ export function createRoomInstance(opts: {
     chatMessages: [],
     kickedPlayerIds: [],
     kickedReasons: {},
+    spectators: new Map(),
+    voicePeers: new Map(),
+    pendingVoiceSignals: new Map(),
     clients: opts.wsClient ? new Map([[playerId, opts.wsClient]]) : new Map(),
     createdAt: now,
     updatedAt: now,
@@ -1461,6 +1570,16 @@ export function detachPlayerFromRoom(
   const room = rooms.get(code);
   if (!room) return;
   room.clients.delete(playerId);
+  room.voicePeers.delete(playerId);
+  room.pendingVoiceSignals.delete(playerId);
+
+  const isPlayerInRoom = room.players.some((p) => p.id === playerId);
+  if (room.spectators.has(playerId) && !isPlayerInRoom) {
+    room.spectators.delete(playerId);
+    saveRoomsToTmpCache();
+    broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+    return;
+  }
 
   if (explicitLeave) {
     if (room.hostId === playerId) {
@@ -1718,6 +1837,8 @@ export function registerApiRoutes(app: Express): void {
       );
     }
     room.clients.delete(targetPlayerId);
+    room.voicePeers.delete(targetPlayerId);
+    room.pendingVoiceSignals.delete(targetPlayerId);
 
     // Record in kickedPlayerIds + kickedReasons so HTTP poll fallback clients are also kicked immediately
     if (!room.kickedPlayerIds.includes(targetPlayerId)) {
@@ -1859,6 +1980,7 @@ export function registerApiRoutes(app: Express): void {
       return;
     }
 
+    let voiceSignals: RoomVoiceSignal[] = [];
     if (playerId) {
       const player = room.players.find((p) => p.id === playerId);
       if (player) {
@@ -1867,12 +1989,19 @@ export function registerApiRoutes(app: Express): void {
           player.pingMs = Math.max(1, Math.min(999, Math.round(lastRtt)));
         }
       }
+      const queued = room.pendingVoiceSignals.get(playerId);
+      if (queued && queued.length > 0) {
+        const cutoff = Date.now() - 30_000;
+        voiceSignals = queued.filter((s) => s.ts >= cutoff);
+        room.pendingVoiceSignals.delete(playerId);
+      }
     }
 
     res.json({
       ok: true,
       ts: Date.now(),
       room: serializeRoom(room),
+      ...(voiceSignals.length > 0 ? { voiceSignals } : {}),
     });
   });
 
@@ -1943,6 +2072,9 @@ export function registerApiRoutes(app: Express): void {
           chatMessages: [],
           kickedPlayerIds: [],
           kickedReasons: {},
+          spectators: new Map(),
+          voicePeers: new Map(),
+          pendingVoiceSignals: new Map(),
           clients: new Map(),
           createdAt: now,
           updatedAt: now,
@@ -2036,8 +2168,79 @@ export function registerApiRoutes(app: Express): void {
       return;
     }
 
+    if (type === 'room:spectate') {
+      if (!room) {
+        const closedMsg = getClosedRoomMessage(code);
+        res.status(404).json({
+          error: closedMsg || `Ruangan "${code}" sudah berakhir atau tidak ditemukan.`,
+        });
+        return;
+      }
+
+      if (room.kickedPlayerIds.includes(playerId)) {
+        res.status(403).json({
+          error:
+            room.kickedReasons?.[playerId] ||
+            'Anda tidak memiliki izin menonton ruangan ini.',
+        });
+        return;
+      }
+
+      if (room.players.some((p) => p.id === playerId)) {
+        res.json({
+          ok: true,
+          type: 'room:joined',
+          isSpectator: false,
+          playerId,
+          room: serializeRoom(room),
+        });
+        return;
+      }
+
+      if (room.status === 'lobby') {
+        res.status(400).json({ error: 'Pertandingan di ruangan ini belum dimulai.' });
+        return;
+      }
+      if (room.status === 'finished') {
+        res.status(400).json({ error: 'Pertandingan di ruangan ini sudah selesai.' });
+        return;
+      }
+
+      evictPlayerFromOtherRooms(playerId, room.code);
+      const spectatorName =
+        String(body.playerName || 'Penonton').trim().slice(0, 32) || 'Penonton';
+      room.spectators.set(playerId, {
+        id: playerId,
+        name: spectatorName,
+        joinedAt: Date.now(),
+      });
+      saveRoomsToTmpCache();
+      broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+      res.json({
+        ok: true,
+        type: 'room:spectated',
+        isSpectator: true,
+        playerId,
+        room: serializeRoom(room),
+      });
+      return;
+    }
+
     if (!room) {
       res.status(404).json({ error: 'Ruangan tidak ditemukan atau sudah ditutup.' });
+      return;
+    }
+
+    if (type === 'room:leave') {
+      detachPlayerFromRoom(code, playerId, true);
+      res.json({ ok: true });
+      return;
+    }
+
+    const isPlayerCaller = room.players.some((p) => p.id === playerId);
+    const isSpectatorOnly = room.spectators.has(playerId) && !isPlayerCaller;
+    if (isSpectatorOnly || !isPlayerCaller) {
+      res.status(403).json({ error: 'Mode penonton bersifat baca-saja (read-only).' });
       return;
     }
 
@@ -2121,6 +2324,8 @@ export function registerApiRoutes(app: Express): void {
             );
           }
           room.clients.delete(targetId);
+          room.voicePeers.delete(targetId);
+          room.pendingVoiceSignals.delete(targetId);
           room.players = room.players.filter((p) => p.id !== targetId);
           if (!room.kickedPlayerIds.includes(targetId)) {
             room.kickedPlayerIds.push(targetId);
@@ -2271,6 +2476,55 @@ export function registerApiRoutes(app: Express): void {
       return;
     }
 
+    if (type === 'voice:join') {
+      room.voicePeers.set(playerId, {
+        playerId,
+        muted: Boolean(body.muted),
+        joinedAt: Date.now(),
+      });
+      touchRoomActivity(room);
+      broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+      res.json({ ok: true, room: serializeRoom(room) });
+      return;
+    }
+
+    if (type === 'voice:leave') {
+      room.voicePeers.delete(playerId);
+      room.pendingVoiceSignals.delete(playerId);
+      touchRoomActivity(room);
+      broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+      res.json({ ok: true, room: serializeRoom(room) });
+      return;
+    }
+
+    if (type === 'voice:mute') {
+      const existing = room.voicePeers.get(playerId);
+      room.voicePeers.set(playerId, {
+        playerId,
+        muted: Boolean(body.muted),
+        joinedAt: existing?.joinedAt ?? Date.now(),
+      });
+      touchRoomActivity(room);
+      broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+      res.json({ ok: true, room: serializeRoom(room) });
+      return;
+    }
+
+    if (type === 'voice:signal') {
+      const rawSigType = String(body.signalType || '');
+      if (rawSigType === 'offer' || rawSigType === 'answer' || rawSigType === 'ice') {
+        relayRoomVoiceSignal(
+          room,
+          playerId,
+          String(body.toId || ''),
+          rawSigType,
+          body.payload,
+        );
+      }
+      res.json({ ok: true });
+      return;
+    }
+
     if (type === 'room:leave') {
       detachPlayerFromRoom(code, playerId, true);
       res.json({ ok: true });
@@ -2359,6 +2613,65 @@ export function registerApiRoutes(app: Express): void {
     );
     friendNotificationsByRecipient.set(authCheck.uid, remaining);
     res.json({ ok: true, remainingCount: remaining.length });
+  });
+
+  // Active Playing Matches Lookup for Friends List (Watch / Spectate Match)
+  app.post('/api/friends/active-matches', async (req: Request, res: Response) => {
+    const authCheck = await verifyVerifiedFirebaseUserToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+
+    tickRoomsMaintenance();
+    loadRoomsFromTmpCache();
+
+    const rawUids = Array.isArray(req.body?.friendUids)
+      ? req.body.friendUids.filter((id: unknown): id is string => typeof id === 'string')
+      : [];
+    const friendSet = new Set(
+      rawUids.map((id: string) => id.trim()).filter((id: string) => id && id !== authCheck.uid).slice(0, 50),
+    );
+
+    const matches: Record<
+      string,
+      {
+        friendUid: string;
+        roomCode: string;
+        roomName: string;
+        boardName: string;
+        boardMode: BoardGameMode;
+        playerCount: number;
+        maxPlayers: number;
+        spectatorCount: number;
+        isPublic: boolean;
+        turnCount: number;
+      }
+    > = {};
+
+    if (friendSet.size > 0) {
+      for (const room of rooms.values()) {
+        if (room.status !== 'playing') continue;
+        for (const p of room.players) {
+          if (friendSet.has(p.id) && !matches[p.id]) {
+            matches[p.id] = {
+              friendUid: p.id,
+              roomCode: room.code,
+              roomName: room.name,
+              boardName: room.boardConfig?.name || 'Papan Aether',
+              boardMode: room.boardMode,
+              playerCount: room.players.length,
+              maxPlayers: 4,
+              spectatorCount: room.spectators.size,
+              isPublic: room.isPublic,
+              turnCount: room.turnCount,
+            };
+          }
+        }
+      }
+    }
+
+    res.json({ ok: true, matches, serverTime: Date.now() });
   });
 
   // Global Leaderboard

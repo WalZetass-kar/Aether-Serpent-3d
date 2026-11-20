@@ -677,7 +677,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                     className="flex items-center gap-2 min-h-[44px] px-3 py-2 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-200 hover:border-emerald-400/50 cursor-pointer"
                   >
                     <Award className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="truncate">Misi & Dadu</span>
+                    <span className="truncate">Misi &amp; Emote</span>
                   </button>
                   <button
                     type="button"

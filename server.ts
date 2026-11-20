@@ -25,6 +25,7 @@ import {
   executeRoomTurnRoll,
   registerApiRoutes,
   rehydrateRoomFromSnapshotIfNeeded,
+  relayRoomVoiceSignal,
   rooms,
   serializeRoom,
   tickRoomsMaintenance,
@@ -235,6 +236,63 @@ async function startServer() {
         return;
       }
 
+      if (type === 'room:spectate') {
+        const code = String(msg.code || '').trim().toUpperCase();
+        const spectatorId = String(msg.playerId || crypto.randomUUID());
+        const spectatorName =
+          String(msg.playerName || 'Penonton').trim().slice(0, 32) || 'Penonton';
+        const room = rooms.get(code);
+
+        if (!room) {
+          sendError(ws, `Ruangan "${code}" tidak ditemukan.`);
+          return;
+        }
+        if (room.kickedPlayerIds.includes(spectatorId)) {
+          sendError(
+            ws,
+            room.kickedReasons?.[spectatorId] || 'Anda tidak memiliki izin menonton ruangan ini.',
+          );
+          return;
+        }
+        if (room.players.some((p) => p.id === spectatorId)) {
+          room.clients.set(spectatorId, ws);
+          attachedRoomCode = code;
+          attachedPlayerId = spectatorId;
+          ws.send(JSON.stringify({ type: 'room:joined', playerId: spectatorId, room: serializeRoom(room) }));
+          return;
+        }
+        if (room.status === 'lobby') {
+          sendError(ws, 'Pertandingan di ruangan ini belum dimulai.');
+          return;
+        }
+        if (room.status === 'finished') {
+          sendError(ws, 'Pertandingan di ruangan ini sudah selesai.');
+          return;
+        }
+
+        detachFromCurrentRoom(false);
+        evictPlayerFromOtherRooms(spectatorId, code);
+        room.spectators.set(spectatorId, {
+          id: spectatorId,
+          name: spectatorName,
+          joinedAt: Date.now(),
+        });
+        room.clients.set(spectatorId, ws);
+        attachedRoomCode = code;
+        attachedPlayerId = spectatorId;
+
+        ws.send(
+          JSON.stringify({
+            type: 'room:spectated',
+            isSpectator: true,
+            playerId: spectatorId,
+            room: serializeRoom(room),
+          }),
+        );
+        broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+        return;
+      }
+
       // Automatically recover roomCode and playerId from payload if WebSocket reconnected
       const resolvedCode = String(msg.code || attachedRoomCode || '')
         .trim()
@@ -257,6 +315,19 @@ async function startServer() {
       attachedRoomCode = room.code;
       attachedPlayerId = resolvedPlayerId;
       room.clients.set(resolvedPlayerId, ws);
+
+      if (type === 'room:leave') {
+        detachFromCurrentRoom(true);
+        return;
+      }
+
+      const isSpectatorOnly =
+        room.spectators.has(resolvedPlayerId) &&
+        !room.players.some((p) => p.id === resolvedPlayerId);
+      if (isSpectatorOnly) {
+        sendError(ws, 'Mode penonton bersifat baca-saja (read-only).');
+        return;
+      }
 
       const isHostCaller =
         room.hostId === resolvedPlayerId || room.players[0]?.id === resolvedPlayerId;
@@ -328,6 +399,8 @@ async function startServer() {
           );
         }
         room.clients.delete(targetId);
+        room.voicePeers.delete(targetId);
+        room.pendingVoiceSignals.delete(targetId);
         room.players = room.players.filter((p) => p.id !== targetId);
         if (!room.kickedPlayerIds.includes(targetId)) {
           room.kickedPlayerIds.push(targetId);
@@ -452,6 +525,51 @@ async function startServer() {
             text,
             timestamp: ts,
           });
+        }
+        return;
+      }
+
+      if (type === 'voice:join') {
+        room.voicePeers.set(resolvedPlayerId, {
+          playerId: resolvedPlayerId,
+          muted: Boolean(msg.muted),
+          joinedAt: Date.now(),
+        });
+        touchRoomActivity(room);
+        broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+        return;
+      }
+
+      if (type === 'voice:leave') {
+        room.voicePeers.delete(resolvedPlayerId);
+        room.pendingVoiceSignals.delete(resolvedPlayerId);
+        touchRoomActivity(room);
+        broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+        return;
+      }
+
+      if (type === 'voice:mute') {
+        const existing = room.voicePeers.get(resolvedPlayerId);
+        room.voicePeers.set(resolvedPlayerId, {
+          playerId: resolvedPlayerId,
+          muted: Boolean(msg.muted),
+          joinedAt: existing?.joinedAt ?? Date.now(),
+        });
+        touchRoomActivity(room);
+        broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+        return;
+      }
+
+      if (type === 'voice:signal') {
+        const rawSigType = String(msg.signalType || '');
+        if (rawSigType === 'offer' || rawSigType === 'answer' || rawSigType === 'ice') {
+          relayRoomVoiceSignal(
+            room,
+            resolvedPlayerId,
+            String(msg.toId || ''),
+            rawSigType,
+            msg.payload,
+          );
         }
         return;
       }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
   Clock,
@@ -53,6 +53,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const { user } = useAuth();
   const [cloudLeaders, setCloudLeaders] = useState<CloudPublicProfile[]>([]);
   const [leadersLoaded, setLeadersLoaded] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrollProgressBarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -71,6 +73,90 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     };
   }, [user?.uid, profile.bestScore]);
 
+  // Repeating scroll-reveal observer scoped to the LandingPage scroll container
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const targets = Array.from(container.querySelectorAll<HTMLElement>('[data-scroll-reveal]'));
+    if (targets.length === 0) return;
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (prefersReducedMotion || typeof IntersectionObserver === 'undefined') {
+      targets.forEach((el) => el.setAttribute('data-reveal', 'visible'));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const el = entry.target as HTMLElement;
+          const rootTop = entry.rootBounds ? entry.rootBounds.top : 0;
+          const rootHeight = entry.rootBounds ? entry.rootBounds.height : container.clientHeight;
+          const isTallElement = entry.boundingClientRect.height > rootHeight * 0.78;
+
+          if (entry.isIntersecting && (entry.intersectionRatio >= 0.12 || isTallElement)) {
+            el.setAttribute('data-reveal', 'visible');
+          } else if (!entry.isIntersecting) {
+            el.setAttribute('data-reveal', 'hidden');
+            const exitedAbove = entry.boundingClientRect.bottom <= rootTop + 16;
+            el.setAttribute('data-exit', exitedAbove ? 'top' : 'bottom');
+          }
+        }
+      },
+      {
+        root: container,
+        threshold: [0, 0.12, 0.25],
+        rootMargin: '0px 0px -3% 0px',
+      },
+    );
+
+    targets.forEach((el) => observer.observe(el));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [leadersLoaded, cloudLeaders.length]);
+
+  // Compositor-only scroll progress indicator in sticky header
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    let rafId = 0;
+    const updateProgress = () => {
+      rafId = 0;
+      const bar = scrollProgressBarRef.current;
+      if (!bar) return;
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      const ratio = maxScroll > 0 ? Math.min(1, Math.max(0, container.scrollTop / maxScroll)) : 0;
+      bar.style.transform = `scaleX(${ratio})`;
+    };
+
+    const handleScroll = () => {
+      if (!rafId) {
+        rafId = window.requestAnimationFrame(updateProgress);
+      }
+    };
+
+    updateProgress();
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  const revealDelay = (ms: number): React.CSSProperties =>
+    ({ '--reveal-delay': `${ms}ms` }) as React.CSSProperties;
+
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) {
@@ -79,9 +165,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   };
 
   return (
-    <div className="relative z-10 w-full h-full overflow-y-auto overflow-x-hidden custom-scroll bg-[#060913] text-slate-100 select-text">
+    <div
+      ref={scrollContainerRef}
+      className="relative z-10 w-full h-full overflow-y-auto overflow-x-hidden custom-scroll bg-[#060913] text-slate-100 select-text"
+    >
       {/* 3-Zone Top Navigation Bar */}
       <header className="sticky top-0 z-40 border-b border-amber-500/15 bg-[#060913]/90 backdrop-blur-md">
+        <div
+          ref={scrollProgressBarRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] origin-left bg-gradient-to-r from-amber-400 via-yellow-300 to-emerald-400 will-change-transform"
+          style={{ transform: 'scaleX(0)' }}
+        />
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 sm:gap-4 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3">
           {/* Left: Clean Brand Wordmark Only */}
           <a
@@ -167,7 +262,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
             {/* Editorial Copy Column */}
-            <div className="lg:col-span-6 space-y-5 sm:space-y-6">
+            <div
+              data-scroll-reveal
+              data-reveal-variant="up"
+              data-reveal="visible"
+              style={revealDelay(0)}
+              className="scroll-reveal lg:col-span-6 space-y-5 sm:space-y-6"
+            >
               <div className="text-xs font-semibold tracking-widest uppercase text-amber-300/90">
                 Aether Serpent 3D · Arena Ular Tangga Fantasi
               </div>
@@ -224,15 +325,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Grounded Numeric Snapshot */}
               <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-800/80 max-w-lg">
-                <div>
+                <div
+                  data-scroll-reveal
+                  data-reveal-variant="up"
+                  data-reveal="visible"
+                  style={revealDelay(60)}
+                  className="scroll-reveal"
+                >
                   <div className="font-mono-num text-lg sm:text-xl font-bold text-white">4 Mode</div>
                   <div className="text-[11px] sm:text-xs text-slate-400">Classic, Battle, 2v2, Timer</div>
                 </div>
-                <div>
+                <div
+                  data-scroll-reveal
+                  data-reveal-variant="up"
+                  data-reveal="visible"
+                  style={revealDelay(130)}
+                  className="scroll-reveal"
+                >
                   <div className="font-mono-num text-lg sm:text-xl font-bold text-white">12 Tema</div>
                   <div className="text-[11px] sm:text-xs text-slate-400">Arena 3D, Misi & Editor</div>
                 </div>
-                <div>
+                <div
+                  data-scroll-reveal
+                  data-reveal-variant="up"
+                  data-reveal="visible"
+                  style={revealDelay(200)}
+                  className="scroll-reveal"
+                >
                   <div className="font-mono-num text-lg sm:text-xl font-bold text-white">2–4 Pemain</div>
                   <div className="text-[11px] sm:text-xs text-slate-400">Solo AI, Lokal, & Daring</div>
                 </div>
@@ -240,7 +359,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             {/* Dominant 16:9 Focal Key Art */}
-            <div className="lg:col-span-6">
+            <div
+              data-scroll-reveal
+              data-reveal-variant="zoom"
+              data-reveal="visible"
+              style={revealDelay(90)}
+              className="scroll-reveal lg:col-span-6"
+            >
               <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-amber-500/25 bg-slate-900 shadow-2xl">
                 <img
                   src={heroArtwork}
@@ -274,7 +399,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* Section 2: Asymmetric Bento Capabilities */}
       <section id="fitur" className="border-b border-slate-800/80 bg-[#080d1a]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-          <div className="mb-8 max-w-2xl">
+          <div
+            data-scroll-reveal
+            data-reveal-variant="up"
+            style={revealDelay(0)}
+            className="scroll-reveal mb-8 max-w-2xl"
+          >
             <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
               Dirancang untuk Mabar Cepat & Ringan di Semua Perangkat
             </h2>
@@ -286,7 +416,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
             {/* Showcase Visual Card */}
-            <div className="lg:col-span-7 flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
+            <div
+              data-scroll-reveal
+              data-reveal-variant="left"
+              style={revealDelay(60)}
+              className="scroll-reveal lg:col-span-7 flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70"
+            >
               <div className="relative overflow-hidden">
                 <img
                   src={arenaShowcaseArt}
@@ -323,7 +458,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
             {/* Numbered Editorial Architecture List */}
             <div className="lg:col-span-5 grid grid-cols-1 gap-3.5">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+              <div
+                data-scroll-reveal
+                data-reveal-variant="right"
+                style={revealDelay(0)}
+                className="scroll-reveal rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5"
+              >
                 <div className="text-xs font-mono-num font-bold text-amber-300">01. PERFORMA ADAPTIF</div>
                 <h3 className="mt-1 text-sm sm:text-base font-bold text-white">
                   Preset Otomatis untuk HP RAM 2–4 GB & Laptop Tanpa GPU
@@ -334,7 +474,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+              <div
+                data-scroll-reveal
+                data-reveal-variant="right"
+                style={revealDelay(85)}
+                className="scroll-reveal rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5"
+              >
                 <div className="text-xs font-mono-num font-bold text-sky-300">02. MULTIPLAYER DUAL-TRANSPORT</div>
                 <h3 className="mt-1 text-sm sm:text-base font-bold text-white">
                   Room Daring Stabil via WebSocket & Serverless Vercel
@@ -345,7 +490,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+              <div
+                data-scroll-reveal
+                data-reveal-variant="right"
+                style={revealDelay(170)}
+                className="scroll-reveal rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5"
+              >
                 <div className="text-xs font-mono-num font-bold text-emerald-300">03. AKUN CLOUD FIREBASE</div>
                 <h3 className="mt-1 text-sm sm:text-base font-bold text-white">
                   Simpan Rekor, Misi Harian, & Skin Dadu 3D di Banyak Perangkat
@@ -356,7 +506,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+              <div
+                data-scroll-reveal
+                data-reveal-variant="right"
+                style={revealDelay(255)}
+                className="scroll-reveal rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5"
+              >
                 <div className="text-xs font-mono-num font-bold text-rose-300">04. ORACLE AETHER AI</div>
                 <h3 className="mt-1 text-sm sm:text-base font-bold text-white">
                   Asisten Taktik & Peluang Dadu Sekali Sentuh
@@ -377,7 +532,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* 4 Modes Interactive Picker */}
             <div className="lg:col-span-7 space-y-5">
-              <div>
+              <div
+                data-scroll-reveal
+                data-reveal-variant="up"
+                style={revealDelay(0)}
+                className="scroll-reveal"
+              >
                 <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
                   Pilih Gaya Bermainmu
                 </h2>
@@ -387,12 +547,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {BOARD_GAME_MODES.map((m) => (
+                {BOARD_GAME_MODES.map((m, idx) => (
                   <button
                     key={m.id}
                     type="button"
+                    data-scroll-reveal
+                    data-reveal-variant="up"
+                    style={revealDelay(idx * 75)}
                     onClick={() => onQuickStartMode(m.id)}
-                    className="group rounded-2xl border border-slate-800 bg-slate-900/75 p-4 text-left hover:border-amber-400/55 hover:bg-slate-900 transition-all cursor-pointer flex flex-col justify-between"
+                    className="scroll-reveal group rounded-2xl border border-slate-800 bg-slate-900/75 p-4 text-left hover:border-amber-400/55 hover:bg-slate-900 transition-all cursor-pointer flex flex-col justify-between"
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2">
@@ -414,7 +577,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {/* Live Cloud Top Players from Firestore */}
             <div
               id="peringkat"
-              className="lg:col-span-5 rounded-2xl border border-amber-500/20 bg-slate-900/70 p-5 sm:p-6 space-y-4"
+              data-scroll-reveal
+              data-reveal-variant="zoom"
+              style={revealDelay(80)}
+              className="scroll-reveal lg:col-span-5 rounded-2xl border border-amber-500/20 bg-slate-900/70 p-5 sm:p-6 space-y-4"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
@@ -462,7 +628,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {cloudLeaders.map((entry, idx) => (
                     <div
                       key={entry.uid}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-800/90 bg-slate-950/65 px-3.5 py-2.5"
+                      data-scroll-reveal
+                      data-reveal-variant="up"
+                      style={revealDelay(idx * 55)}
+                      className="scroll-reveal flex items-center justify-between gap-3 rounded-xl border border-slate-800/90 bg-slate-950/65 px-3.5 py-2.5"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="font-mono-num text-xs font-bold text-amber-300 w-5 text-center shrink-0">
@@ -496,7 +665,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* Section 4: Account Action Banner */}
       <section id="akun" className="bg-[#080d1a]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-          <div className="rounded-3xl border border-amber-500/25 bg-gradient-to-br from-slate-900 via-[#0b1224] to-slate-950 p-6 sm:p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div
+            data-scroll-reveal
+            data-reveal-variant="zoom"
+            style={revealDelay(40)}
+            className="scroll-reveal rounded-3xl border border-amber-500/25 bg-gradient-to-br from-slate-900 via-[#0b1224] to-slate-950 p-6 sm:p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+          >
             <div className="space-y-2 max-w-2xl">
               <div className="inline-flex items-center gap-2 text-xs font-semibold text-amber-300">
                 <Cpu className="w-4 h-4 shrink-0" />
@@ -541,7 +715,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Quiet Footer */}
       <footer className="border-t border-slate-800/80 bg-[#050710]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+        <div
+          data-scroll-reveal
+          data-reveal-variant="up"
+          style={revealDelay(0)}
+          className="scroll-reveal mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400"
+        >
           <div className="flex items-center gap-2">
             <SerpentCrestEmblem className="w-5 h-5 shrink-0" />
             <span className="font-semibold text-slate-200">Naga Tangga Nih Bos</span>

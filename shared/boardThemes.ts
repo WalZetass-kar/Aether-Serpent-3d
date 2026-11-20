@@ -2433,14 +2433,63 @@ export const DEFAULT_BOARD_CONFIGS: BoardConfig[] = [
 export function cloneBoardConfig(config: BoardConfig): BoardConfig {
   const themeDefault =
     DEFAULT_BOARD_CONFIGS.find((b) => b.themeId === config.themeId) ?? DEFAULT_BOARD_CONFIGS[0];
-  const sourceLadders =
-    Array.isArray(config.ladders) && config.ladders.length > 0
-      ? config.ladders
-      : themeDefault.ladders ?? LADDERS;
-  const sourceSnakes =
-    Array.isArray(config.snakes) && config.snakes.length > 0
-      ? config.snakes
-      : themeDefault.snakes ?? SNAKES;
+  const sourceLadders = Array.isArray(config.ladders)
+    ? config.ladders
+    : (themeDefault.ladders ?? LADDERS);
+  const sourceSnakes = Array.isArray(config.snakes)
+    ? config.snakes
+    : (themeDefault.snakes ?? SNAKES);
+
+  const seenSnakeFrom = new Set<number>();
+  const normalizedSnakes = sourceSnakes
+    .map((s, idx) => ({
+      ...s,
+      id: s.id || `S${idx + 1}`,
+      from: Math.round(Number(s.from)),
+      to: Math.round(Number(s.to)),
+      type: 'snake' as const,
+    }))
+    .filter((s) => {
+      if (
+        !Number.isFinite(s.from) ||
+        !Number.isFinite(s.to) ||
+        s.from <= 1 ||
+        s.from >= 100 ||
+        s.to < 1 ||
+        s.to >= s.from ||
+        seenSnakeFrom.has(s.from)
+      ) {
+        return false;
+      }
+      seenSnakeFrom.add(s.from);
+      return true;
+    });
+
+  const seenLadderFrom = new Set<number>();
+  const normalizedLadders = sourceLadders
+    .map((l, idx) => ({
+      ...l,
+      id: l.id || `L${idx + 1}`,
+      from: Math.round(Number(l.from)),
+      to: Math.round(Number(l.to)),
+      type: 'ladder' as const,
+    }))
+    .filter((l) => {
+      if (
+        !Number.isFinite(l.from) ||
+        !Number.isFinite(l.to) ||
+        l.from <= 1 ||
+        l.from >= 100 ||
+        l.to <= l.from ||
+        l.to > 100 ||
+        seenSnakeFrom.has(l.from) ||
+        seenLadderFrom.has(l.from)
+      ) {
+        return false;
+      }
+      seenLadderFrom.add(l.from);
+      return true;
+    });
 
   return {
     ...config,
@@ -2449,8 +2498,8 @@ export function cloneBoardConfig(config: BoardConfig): BoardConfig {
       string,
       string,
     ],
-    ladders: sourceLadders.map((l) => ({ ...l, type: 'ladder' as const })),
-    snakes: sourceSnakes.map((s) => ({ ...s, type: 'snake' as const })),
+    ladders: normalizedLadders,
+    snakes: normalizedSnakes,
     boardSettings: { ...themeDefault.boardSettings, ...config.boardSettings },
     tileConfig: { ...themeDefault.tileConfig, ...config.tileConfig },
     snakeConfig: { ...themeDefault.snakeConfig, ...config.snakeConfig },

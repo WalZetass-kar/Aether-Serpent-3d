@@ -35,6 +35,13 @@
           "minLength": 1,
           "maxLength": 40
         },
+        "emoteSetId": {
+          "type": "string",
+          "description": "Equipped custom EmoteWheel set identifier.",
+          "enum": ["classic_aether", "ember_valor", "astral_oracle", "serpent_guild", "sovereign_crown"],
+          "minLength": 1,
+          "maxLength": 40
+        },
         "totalGames": {
           "type": "integer",
           "description": "Total matches played."
@@ -846,6 +853,131 @@
         "text",
         "createdAt"
       ]
+    },
+    "CommunityBoard": {
+      "title": "CommunityBoard",
+      "description": "Publicly shared user-created 3D board configuration stored in /communityBoards/{boardId} without any PII so any player can preview, download, and play community-designed boards.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Community board document ID matching path boardId.",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorUid": {
+          "type": "string",
+          "description": "Creator Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Public display name of the board creator.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "name": {
+          "type": "string",
+          "description": "Community board title.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Short subtitle describing the board theme or challenge.",
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description of the custom board.",
+          "maxLength": 240
+        },
+        "themeId": {
+          "type": "string",
+          "description": "3D arena visual theme ID.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "previewSwatches": {
+          "type": "array",
+          "description": "3-color hex swatch preview palette."
+        },
+        "ladders": {
+          "type": "array",
+          "description": "Bounded list of ladder definitions (max 20)."
+        },
+        "snakes": {
+          "type": "array",
+          "description": "Bounded list of snake definitions (max 20)."
+        },
+        "boardSettings": {
+          "type": "object",
+          "description": "3D board plinth shape, scale, material, and colors."
+        },
+        "tileConfig": {
+          "type": "object",
+          "description": "3D stone tile shape, texture, colors, numeral style, and visual effects."
+        },
+        "snakeConfig": {
+          "type": "object",
+          "description": "3D snake head model, scale pattern, finish, size, and palette."
+        },
+        "ladderConfig": {
+          "type": "object",
+          "description": "3D ladder model style, material style, width scale, and colors."
+        },
+        "environmentConfig": {
+          "type": "object",
+          "description": "3D sanctuary environment sky, props, fog, and lighting preset."
+        },
+        "visualEffects": {
+          "type": "object",
+          "description": "Particle style, density, glow, ambient intensity, and shadow preferences."
+        },
+        "isPublished": {
+          "type": "boolean",
+          "description": "Explicit publication flag evaluated by Firestore list/get security rules."
+        },
+        "downloads": {
+          "type": "integer",
+          "description": "Total number of times players downloaded or played this community board."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "authorUid",
+        "authorName",
+        "name",
+        "subtitle",
+        "description",
+        "themeId",
+        "previewSwatches",
+        "ladders",
+        "snakes",
+        "boardSettings",
+        "tileConfig",
+        "snakeConfig",
+        "ladderConfig",
+        "environmentConfig",
+        "visualEffects",
+        "isPublished",
+        "downloads",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -908,6 +1040,12 @@
         "$ref": "#/entities/FriendChatMessage"
       },
       "description": "Participant-isolated 1-to-1 quick-chat messages between accepted friends."
+    },
+    "/communityBoards/{boardId}": {
+      "schema": {
+        "$ref": "#/entities/CommunityBoard"
+      },
+      "description": "PII-free publicly published community-created 3D boards that players can browse, preview in 3D, download, and play."
     }
   }
 }

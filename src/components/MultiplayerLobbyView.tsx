@@ -7,8 +7,12 @@ import {
   Crown,
   DoorOpen,
   Globe,
+  Headphones,
   Hourglass,
   Lock,
+  Mic,
+  MicOff,
+  PhoneOff,
   Play,
   PlusSquare,
   RefreshCw,
@@ -27,6 +31,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import type { VoiceChatSnapshot } from '../audio/voiceChatEngine';
 import {
   BOARD_GAME_MODES,
   ONLINE_TURN_TIMEOUT_SEC,
@@ -39,6 +44,7 @@ import {
 } from '../../shared/gameConfig';
 import { AnimatedProgressRing } from './AnimatedProgressRing';
 import { ArchetypeEmblem, SerpentCrestEmblem } from './FantasyIcons';
+import { VoiceActivityBars } from './VoiceActivityBars';
 import { fetchPublicActiveRoomsFromFirebase } from '../services/firebaseAccountService';
 
 export interface OnlineLobbyState {
@@ -61,6 +67,9 @@ export interface OnlineLobbyState {
   winningTeam: TeamId | null;
   error: string | null;
   chatMessages: Array<{ senderId?: string; senderName: string; text: string; timestamp: number }>;
+  isSpectator?: boolean;
+  spectatorCount?: number;
+  voicePeers?: Array<{ playerId: string; muted: boolean }>;
 }
 
 interface PublicRoomSummary {
@@ -111,6 +120,10 @@ interface MultiplayerLobbyViewProps {
   onOnlineSetTeam: (targetId: string, team: TeamId) => void;
   onOnlineKick: (targetId: string) => void;
   onOnlineTransferHost: (targetId: string) => void;
+  voiceState?: VoiceChatSnapshot;
+  onToggleVoiceMute?: () => void;
+  onLeaveVoice?: () => void;
+  onOpenAudioSettings?: () => void;
 }
 
 const MODE_ICON: Record<BoardGameMode, React.ReactNode> = {
@@ -407,6 +420,10 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
   onOnlineSetTeam,
   onOnlineKick,
   onOnlineTransferHost,
+  voiceState,
+  onToggleVoiceMute,
+  onLeaveVoice,
+  onOpenAudioSettings,
 }) => {
   const [entryTab, setEntryTab] = useState<'create' | 'join'>(initialTab);
   const [playerName, setPlayerName] = useState(defaultPlayerName);
@@ -1190,6 +1207,159 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
               </div>
             </div>
 
+            {/* Active-Room Voice Chat Status Indicator & Mute/Unmute Bar (Strictly rendered only in an active room) */}
+            {onToggleVoiceMute && !onlineLobby.isSpectator && (
+              <div className="min-w-0 glass-panel-soft rounded-2xl border border-slate-700/80 bg-slate-950/75 px-3.5 sm:px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start sm:items-center gap-3 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
+                      voiceState?.status === 'connected'
+                        ? 'border-emerald-400/55 bg-emerald-500/18 text-emerald-300'
+                        : voiceState?.status === 'muted'
+                          ? 'border-rose-400/55 bg-rose-500/18 text-rose-300'
+                          : voiceState?.status === 'connecting'
+                            ? 'border-amber-400/55 bg-amber-500/18 text-amber-300'
+                            : voiceState?.status === 'denied' || voiceState?.status === 'error'
+                              ? 'border-rose-500/50 bg-rose-950/50 text-rose-300'
+                              : 'border-slate-700 bg-slate-900 text-slate-300'
+                    }`}
+                  >
+                    {voiceState?.status === 'connected' ? (
+                      <Mic className="w-4 h-4" />
+                    ) : (
+                      <MicOff className="w-4 h-4" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:text-sm font-bold text-white">
+                      <span>Obrolan Suara Ruang</span>
+                      {voiceState?.joined && (
+                        <VoiceActivityBars
+                          level={voiceState.localLevel}
+                          active={voiceState.localSpeaking}
+                          muted={voiceState.isMuted}
+                          size="sm"
+                          tone="emerald"
+                        />
+                      )}
+                      <span
+                        className={`text-xs font-semibold ${
+                          voiceState?.status === 'connected'
+                            ? 'text-emerald-300'
+                            : voiceState?.status === 'muted'
+                              ? 'text-rose-300'
+                              : voiceState?.status === 'connecting'
+                                ? 'text-amber-300'
+                                : voiceState?.status === 'denied' || voiceState?.status === 'error'
+                                  ? 'text-rose-300'
+                                  : 'text-slate-400'
+                        }`}
+                      >
+                        ·{' '}
+                        {voiceState?.status === 'connected'
+                          ? voiceState.localSpeaking
+                            ? 'Berbicara'
+                            : 'Terhubung'
+                          : voiceState?.status === 'muted'
+                            ? 'Mikrofon Dibisukan'
+                            : voiceState?.status === 'connecting'
+                              ? 'Menghubungkan Mikrofon...'
+                              : voiceState?.status === 'denied'
+                                ? 'Izin Mikrofon Ditolak'
+                                : voiceState?.status === 'unsupported'
+                                  ? 'Peramban Tidak Mendukung'
+                                  : voiceState?.status === 'error'
+                                    ? 'Koneksi Suara Gagal'
+                                    : 'Belum Terhubung'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-slate-400 mt-0.5">
+                      <span className="font-mono-num">
+                        {(onlineLobby.voicePeers?.length ?? 0)} pemain di suara
+                      </span>
+                      <span>·</span>
+                      <span className="inline-flex items-center gap-1 text-slate-300">
+                        <Headphones className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>
+                          Audio Spasial 3D:{' '}
+                          <strong
+                            className={
+                              voiceState?.spatialEnabled ? 'text-emerald-300' : 'text-slate-400'
+                            }
+                          >
+                            {voiceState?.spatialEnabled ? 'Aktif' : 'Nonaktif'}
+                          </strong>
+                        </span>
+                      </span>
+                      {voiceState?.errorMessage && (
+                        <>
+                          <span>·</span>
+                          <span className="text-rose-300">{voiceState.errorMessage}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {onOpenAudioSettings && (
+                    <button
+                      type="button"
+                      onClick={onOpenAudioSettings}
+                      className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-xl border border-slate-700 bg-slate-900/90 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      <Headphones className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span>Setelan 3D</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={onToggleVoiceMute}
+                    disabled={voiceState?.status === 'connecting'}
+                    className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60 ${
+                      voiceState?.status === 'connected'
+                        ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
+                        : voiceState?.status === 'muted'
+                          ? 'border-rose-400/60 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30'
+                          : 'border-amber-400/60 bg-amber-500/18 text-amber-200 hover:bg-amber-500/28'
+                    }`}
+                  >
+                    {voiceState?.status === 'connected' ? (
+                      <>
+                        <Mic className="w-4 h-4 shrink-0" />
+                        <span>Bisukan Mic</span>
+                      </>
+                    ) : voiceState?.status === 'muted' ? (
+                      <>
+                        <MicOff className="w-4 h-4 shrink-0" />
+                        <span>Aktifkan Mic</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-4 h-4 shrink-0" />
+                        <span>Gabung Suara</span>
+                      </>
+                    )}
+                  </button>
+
+                  {voiceState?.joined && onLeaveVoice && (
+                    <button
+                      type="button"
+                      onClick={onLeaveVoice}
+                      title="Keluar dari obrolan suara"
+                      aria-label="Keluar dari obrolan suara"
+                      className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 rounded-xl border border-rose-500/40 bg-rose-950/45 text-xs font-semibold text-rose-300 hover:bg-rose-950/75 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      <PhoneOff className="w-3.5 h-3.5 shrink-0" />
+                      <span className="hidden md:inline">Putuskan</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Section 1: Readiness Progress & Match Launch Action Card (Immediate Access on All Screens) */}
             <div className="min-w-0 overflow-hidden glass-panel-soft rounded-2xl border border-amber-500/30 p-3.5 sm:p-4 space-y-3">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
@@ -1305,15 +1475,27 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                   const isSelf = p.id === onlineLobby.myPlayerId;
                   const isPlayerReady = isPlayerHost || Boolean(p.ready);
                   const arch = PLAYER_ARCHETYPES[p.archetypeIndex % PLAYER_ARCHETYPES.length];
+                  const voicePeer = onlineLobby.voicePeers?.find((v) => v.playerId === p.id);
+                  const isPlayerSpeaking = isSelf
+                    ? Boolean(voiceState?.localSpeaking)
+                    : Boolean(voiceState?.speakingPeerIds.includes(p.id));
+                  const playerVoiceLevel = isSelf
+                    ? (voiceState?.localLevel ?? 0)
+                    : (voiceState?.peerLevels?.[p.id] ?? 0);
+                  const isPlayerVoiceMuted = isSelf
+                    ? Boolean(voiceState?.isMuted)
+                    : Boolean(voicePeer?.muted);
                   return (
                     <div
                       key={p.id}
                       className={`min-w-0 overflow-hidden rounded-2xl border p-3.5 flex flex-col justify-between gap-3 transition-colors ${
-                        isSelf
-                          ? 'border-amber-400/60 bg-slate-900/95 shadow-md'
-                          : isPlayerReady
-                            ? 'border-emerald-500/35 bg-slate-900/80'
-                            : 'border-slate-700/80 bg-slate-900/65'
+                        isPlayerSpeaking && !isPlayerVoiceMuted && voicePeer
+                          ? 'border-emerald-400/75 bg-slate-900/95 shadow-[0_0_20px_-6px_rgba(52,211,153,0.45)]'
+                          : isSelf
+                            ? 'border-amber-400/60 bg-slate-900/95 shadow-md'
+                            : isPlayerReady
+                              ? 'border-emerald-500/35 bg-slate-900/80'
+                              : 'border-slate-700/80 bg-slate-900/65'
                       }`}
                     >
                       {/* Card Header: Avatar Ring + Name + Ready Badge */}
@@ -1344,6 +1526,37 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                                   className="w-3.5 h-3.5 text-amber-400 shrink-0"
                                   aria-label="Host"
                                 />
+                              )}
+                              {voicePeer && (
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 shrink-0 ${
+                                    isPlayerVoiceMuted
+                                      ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                                      : isPlayerSpeaking
+                                        ? 'border-emerald-400/55 bg-emerald-500/18 text-emerald-200'
+                                        : 'border-slate-700/80 bg-slate-950/70 text-emerald-400/85'
+                                  }`}
+                                  title={
+                                    isPlayerVoiceMuted
+                                      ? 'Mikrofon dibisukan'
+                                      : isPlayerSpeaking
+                                        ? 'Sedang berbicara'
+                                        : 'Terhubung di obrolan suara'
+                                  }
+                                >
+                                  {isPlayerVoiceMuted ? (
+                                    <MicOff className="w-3 h-3" />
+                                  ) : (
+                                    <Mic className="w-3 h-3" />
+                                  )}
+                                  <VoiceActivityBars
+                                    level={playerVoiceLevel}
+                                    active={isPlayerSpeaking}
+                                    muted={isPlayerVoiceMuted}
+                                    size="xs"
+                                    tone={isSelf ? 'amber' : 'emerald'}
+                                  />
+                                </span>
                               )}
                             </div>
                             <div className="text-[11px] text-amber-200/90 font-medium truncate mt-0.5">
