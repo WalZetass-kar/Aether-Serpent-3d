@@ -518,6 +518,8 @@ export class FantasyBoardEngine {
         this.spawnParticleBurst(origin, colorHex, count, velocityScale),
       spawnAetherTrail: (origin, primaryColorHex, accentColorHex, reduced) =>
         this.spawnAetherTrail(origin, primaryColorHex, accentColorHex, reduced),
+      spawnMagicDustExplosion: (origin, reduced) =>
+        this.spawnMagicDustExplosion(origin, reduced),
       triggerBoardShake: (intensity, durationSec) =>
         this.triggerBoardShake(intensity, durationSec),
       onDiceToss: () => {
@@ -1616,6 +1618,26 @@ export class FantasyBoardEngine {
     if (this.particleMesh.instanceColor) {
       this.particleMesh.instanceColor.needsUpdate = true;
     }
+  }
+
+  /**
+   * Critical Roll 6: launches a dramatic 3D 'Magic Dust' explosion around the dice
+   * combining swirling additive GPU star-dust motes, double shockwave rings,
+   * faceted crystal bursts, and a tactile altar impact pulse.
+   */
+  private spawnMagicDustExplosion(origin: THREE.Vector3, reduced: boolean) {
+    this.aetherSparkles?.explodeMagicDust(origin, reduced);
+    this.vfxPool.playCriticalRollExplosion(origin, reduced);
+
+    _vec3.set(origin.x, origin.y + 0.34, origin.z);
+    this.spawnParticleBurst(_vec3, 0xfde047, reduced ? 12 : 28, 1.38);
+    this.spawnParticleBurst(_vec3, 0xc084fc, reduced ? 8 : 18, 1.18);
+    if (!reduced) {
+      this.spawnParticleBurst(_vec3, 0x67e8f9, 14, 1.05);
+    }
+
+    this.daisPulseStrength = Math.max(this.daisPulseStrength, 1.65);
+    this.triggerBoardShake(reduced ? 0.25 : 0.42, 0.26);
   }
 
   // ---------------------------------------------------------------------------

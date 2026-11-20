@@ -39,6 +39,7 @@ export interface SequenceHostContext {
     accentColorHex: number,
     reduced: boolean,
   ) => void;
+  spawnMagicDustExplosion?: (origin: THREE.Vector3, reduced: boolean) => void;
   triggerBoardShake?: (intensity?: number, durationSec?: number) => void;
   onDiceToss?: () => void;
   onDiceBounce?: (intensity: number, isRimHit: boolean) => void;
@@ -150,7 +151,7 @@ export class AnimationSequenceController {
     await this.animateDiceThrow(res.roll, archInfo.hexNum, archInfo.accentHexNum, reduced);
     if (this.host.isDisposed()) return;
     cb.onDiceRolled?.(res.roll);
-    await this.sleep(170);
+    await this.sleep(res.roll === 6 ? 340 : 170);
 
     // 2. TILE-BY-TILE PAWN HOPPING WITH AETHER TRAIL
     this.state = 'moving';
@@ -1006,24 +1007,14 @@ export class AnimationSequenceController {
           this.host.onDiceSettle?.(targetFace);
 
           _vecC.set(sim.finalPosition.x, sim.finalPosition.y + 0.32, sim.finalPosition.z);
-          this.host.spawnParticleBurst(
-            _vecC,
-            targetFace === 6 ? 0xfbbf24 : archetypeColorHex,
-            reduced ? 8 : targetFace === 6 ? 24 : 16,
-            targetFace === 6 ? 1.05 : 0.85,
-          );
-          if (!reduced) {
-            this.host.spawnParticleBurst(
-              _vecC,
-              accentColorHex,
-              targetFace === 6 ? 14 : 9,
-              0.82,
-            );
-            this.host.vfxPool.playAetherStepWake(
-              _vecC,
-              targetFace === 6 ? 0xfbbf24 : accentColorHex,
-              false,
-            );
+          if (targetFace === 6) {
+            this.host.spawnMagicDustExplosion?.(sim.finalPosition, reduced);
+          } else {
+            this.host.spawnParticleBurst(_vecC, archetypeColorHex, reduced ? 8 : 16, 0.85);
+            if (!reduced) {
+              this.host.spawnParticleBurst(_vecC, accentColorHex, 9, 0.82);
+              this.host.vfxPool.playAetherStepWake(_vecC, accentColorHex, false);
+            }
           }
           resolve();
         }

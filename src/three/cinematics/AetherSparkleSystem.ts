@@ -8,9 +8,14 @@ interface SparkleParticle {
   x: number;
   y: number;
   z: number;
+  anchorX: number;
+  anchorZ: number;
   vx: number;
   vy: number;
   vz: number;
+  drag: number;
+  gravity: number;
+  swirlSpeed: number;
   swayAmp: number;
   swayFreq: number;
   swayPhase: number;
@@ -22,10 +27,22 @@ interface SparkleParticle {
   b: number;
 }
 
-const MAX_SPARKLES = 96;
+const MAX_SPARKLES = 240;
 
 // Curated golden Aether palette (champagne core, bright gold, warm amber)
 const GOLD_PALETTE_HEX = [0xfffbeb, 0xfef3c7, 0xfde68a, 0xfbbf24, 0xf59e0b, 0xfcd34d];
+
+// Critical Roll 6 'Magic Dust' palette (celestial gold, champagne, arcane violet, cyan, rose spark)
+const MAGIC_DUST_PALETTE_HEX = [
+  0xfffbeb,
+  0xfde047,
+  0xfbbf24,
+  0xc084fc,
+  0x67e8f9,
+  0xf59e0b,
+  0xf9a8d4,
+  0xe0f2fe,
+];
 
 const _tmpColor = new THREE.Color();
 
@@ -93,7 +110,7 @@ const VERTEX_SHADER = /* glsl */ `
     gl_Position = projectionMatrix * mvPosition;
 
     float dist = max(1.0, -mvPosition.z);
-    gl_PointSize = clamp((aSize * uPixelRatio * 240.0) / dist, 0.0, 68.0);
+    gl_PointSize = clamp((aSize * uPixelRatio * 240.0) / dist, 0.0, 74.0);
   }
 `;
 
@@ -108,13 +125,13 @@ const FRAGMENT_SHADER = /* glsl */ `
     vec4 tex = texture2D(uSprite, gl_PointCoord);
     float alpha = tex.a * vAlpha;
     if (alpha <= 0.005) discard;
-    gl_FragColor = vec4(tex.rgb * vColor * 1.25, alpha);
+    gl_FragColor = vec4(tex.rgb * vColor * 1.32, alpha);
   }
 `;
 
 /**
  * Dedicated zero-GC GPU particle system for golden 'Aether Sparkle' motes
- * that rise gracefully from the settled 3D dice face and fade out smoothly.
+ * and critical-roll 'Magic Dust' explosions around the settled 3D dice.
  */
 export class AetherSparkleSystem {
   private points: THREE.Points;
@@ -152,9 +169,14 @@ export class AetherSparkleSystem {
         x: 0,
         y: -100,
         z: 0,
+        anchorX: 0,
+        anchorZ: 0,
         vx: 0,
         vy: 1,
         vz: 0,
+        drag: 1.15,
+        gravity: 0,
+        swirlSpeed: 0,
         swayAmp: 0.25,
         swayFreq: 3.2,
         swayPhase: 0,
@@ -200,17 +222,17 @@ export class AetherSparkleSystem {
         ? 18
         : 12
       : isHighRoll
-        ? 44
+        ? 36
         : 28;
 
     for (let i = 0; i < count; i++) {
-      const p = this.pool[this.cursor];
+      const idx = this.cursor;
+      const p = this.pool[idx];
       this.cursor = (this.cursor + 1) % MAX_SPARKLES;
       if (!p.active) {
         this.activeCount++;
       }
 
-      // Distribute across the revealed top face & subtle halo around the beveled cube
       const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.45;
       const radial = Math.sqrt(Math.random()) * (isHighRoll ? 0.86 : 0.72);
       const waveDelay = i < count * 0.58 ? Math.random() * 0.08 : 0.09 + Math.random() * 0.28;
@@ -223,15 +245,19 @@ export class AetherSparkleSystem {
       p.age = 0;
       p.maxLife = (isHighRoll ? 1.55 : 1.35) + Math.random() * 0.75;
 
+      p.anchorX = origin.x;
+      p.anchorZ = origin.z;
       p.x = origin.x + Math.cos(angle) * radial;
       p.y = origin.y + 0.42 + Math.random() * 0.28;
       p.z = origin.z + Math.sin(angle) * radial;
 
-      // Gentle outward breath + graceful upward float
       const drift = 0.14 + Math.random() * 0.34;
       p.vx = Math.cos(angle) * drift;
       p.vy = (isHighRoll ? 1.15 : 0.92) + Math.random() * 0.88;
       p.vz = Math.sin(angle) * drift;
+      p.drag = 1.15;
+      p.gravity = 0;
+      p.swirlSpeed = 0;
 
       p.swayAmp = 0.18 + Math.random() * 0.34;
       p.swayFreq = 2.2 + Math.random() * 2.6;
@@ -245,7 +271,98 @@ export class AetherSparkleSystem {
       p.g = _tmpColor.g;
       p.b = _tmpColor.b;
 
-      const i3 = ((this.cursor - 1 + MAX_SPARKLES) % MAX_SPARKLES) * 3;
+      const i3 = idx * 3;
+      this.colors[i3] = p.r;
+      this.colors[i3 + 1] = p.g;
+      this.colors[i3 + 2] = p.b;
+    }
+
+    (this.geometry.getAttribute('aColor') as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /**
+   * Emits a multi-wave 3D 'Magic Dust' explosion around the dice on a critical roll of 6:
+   * fast spherical burst -> aerodynamic slowdown -> swirling enchanted embers.
+   */
+  public explodeMagicDust(origin: THREE.Vector3, reduced = false) {
+    const count = reduced ? 48 : 108;
+
+    for (let i = 0; i < count; i++) {
+      const idx = this.cursor;
+      const p = this.pool[idx];
+      this.cursor = (this.cursor + 1) % MAX_SPARKLES;
+      if (!p.active) {
+        this.activeCount++;
+      }
+
+      const layer = i < count * 0.45 ? 0 : i < count * 0.8 ? 1 : 2;
+      const azimuth = (Math.PI * 2 * i) / Math.max(1, count * 0.35) + (Math.random() - 0.5) * 0.65;
+      const elev =
+        layer === 0
+          ? -0.15 + Math.random() * 1.15
+          : layer === 1
+            ? 0.05 + Math.random() * 0.65
+            : 0.35 + Math.random() * 0.95;
+
+      const cosE = Math.cos(elev);
+      const dirX = Math.cos(azimuth) * cosE;
+      const dirY = Math.sin(elev);
+      const dirZ = Math.sin(azimuth) * cosE;
+
+      const speed =
+        layer === 0
+          ? 3.8 + Math.random() * 3.1
+          : layer === 1
+            ? 2.1 + Math.random() * 2.2
+            : 1.2 + Math.random() * 1.5;
+
+      const hex = MAGIC_DUST_PALETTE_HEX[i % MAGIC_DUST_PALETTE_HEX.length];
+      _tmpColor.setHex(hex);
+
+      p.active = true;
+      p.delay = layer === 0 ? 0 : layer === 1 ? Math.random() * 0.06 : 0.07 + Math.random() * 0.22;
+      p.age = 0;
+      p.maxLife =
+        layer === 0
+          ? 1.05 + Math.random() * 0.5
+          : layer === 1
+            ? 1.45 + Math.random() * 0.65
+            : 1.7 + Math.random() * 0.7;
+
+      const startRad = 0.18 + Math.random() * 0.34;
+      p.anchorX = origin.x;
+      p.anchorZ = origin.z;
+      p.x = origin.x + dirX * startRad;
+      p.y = origin.y + 0.35 + Math.random() * 0.25;
+      p.z = origin.z + dirZ * startRad;
+
+      p.vx = dirX * speed;
+      p.vy = Math.max(0.45, dirY * speed) + (layer === 2 ? 0.9 : 0.4);
+      p.vz = dirZ * speed;
+
+      // Strong aerodynamic drag stops radial burst in mid-air so motes hang like magic dust
+      p.drag = layer === 0 ? 3.2 : layer === 1 ? 2.5 : 1.7;
+      p.gravity = layer === 0 ? 0.45 : -0.45; // slight buoyancy on vortex/ember layers
+      p.swirlSpeed = layer === 1 ? (i % 2 === 0 ? 1 : -1) * (1.8 + Math.random() * 1.8) : (Math.random() - 0.5) * 1.4;
+
+      p.swayAmp = 0.26 + Math.random() * 0.42;
+      p.swayFreq = 2.8 + Math.random() * 3.2;
+      p.swayPhase = Math.random() * Math.PI * 2;
+
+      p.baseSize =
+        layer === 0
+          ? 1.25 + Math.random() * 0.9
+          : layer === 1
+            ? 1.45 + Math.random() * 1.05
+            : 0.95 + Math.random() * 0.9;
+      p.twinkleFreq = 9.0 + Math.random() * 9.0;
+      p.twinklePhase = Math.random() * Math.PI * 2;
+
+      p.r = _tmpColor.r;
+      p.g = _tmpColor.g;
+      p.b = _tmpColor.b;
+
+      const i3 = idx * 3;
       this.colors[i3] = p.r;
       this.colors[i3 + 1] = p.g;
       this.colors[i3 + 2] = p.b;
@@ -282,30 +399,42 @@ export class AetherSparkleSystem {
 
       const t = p.age / p.maxLife;
 
-      // Soft buoyant upward float with gentle horizontal damping & helical sway
-      p.vx *= 1 - 1.15 * dt;
-      p.vz *= 1 - 1.15 * dt;
-      p.vy *= 1 - 0.35 * dt;
+      // Aerodynamic damping + subtle gravity/buoyancy
+      const damp = Math.max(0, 1 - p.drag * dt);
+      p.vx *= damp;
+      p.vz *= damp;
+      p.vy = (p.vy - p.gravity * dt) * Math.max(0, 1 - 0.55 * dt);
+
+      // Tangential magic vortex swirl around the explosion anchor
+      let swirlX = 0;
+      let swirlZ = 0;
+      if (p.swirlSpeed !== 0) {
+        const rx = p.x - p.anchorX;
+        const rz = p.z - p.anchorZ;
+        const swirlRamp = Math.min(1, p.age / 0.25) * (1 - t * 0.45);
+        swirlX = -rz * p.swirlSpeed * swirlRamp * dt;
+        swirlZ = rx * p.swirlSpeed * swirlRamp * dt;
+      }
 
       const swayX = Math.cos(elapsed * p.swayFreq + p.swayPhase) * p.swayAmp * dt;
       const swayZ = Math.sin(elapsed * p.swayFreq + p.swayPhase) * p.swayAmp * dt;
 
-      p.x += p.vx * dt + swayX;
+      p.x += p.vx * dt + swayX + swirlX;
       p.y += p.vy * dt;
-      p.z += p.vz * dt + swayZ;
+      p.z += p.vz * dt + swayZ + swirlZ;
 
       const i3 = i * 3;
       this.positions[i3] = p.x;
       this.positions[i3 + 1] = p.y;
       this.positions[i3 + 2] = p.z;
 
-      // Crisp smooth fade-in (first 12%), then gradual translucent fade-out (pudar perlahan)
-      const fadeIn = Math.min(1, t / 0.12);
-      const fadeOut = Math.pow(Math.max(0, 1 - Math.max(0, (t - 0.16) / 0.84)), 1.65);
-      const twinkle = 0.72 + 0.28 * Math.sin(elapsed * p.twinkleFreq + p.twinklePhase);
+      // Fast punchy flash-in (first 8%), then sparkling dust fade-out
+      const fadeIn = Math.min(1, t / 0.08);
+      const fadeOut = Math.pow(Math.max(0, 1 - Math.max(0, (t - 0.14) / 0.86)), 1.45);
+      const twinkle = 0.68 + 0.32 * Math.sin(elapsed * p.twinkleFreq + p.twinklePhase);
 
       this.alphas[i] = fadeIn * fadeOut * twinkle;
-      this.sizes[i] = p.baseSize * (0.65 + 0.5 * fadeIn) * (0.55 + 0.45 * (1 - t * 0.55));
+      this.sizes[i] = p.baseSize * (0.7 + 0.55 * fadeIn) * (0.5 + 0.5 * (1 - t * 0.5));
     }
 
     if (anyDirty) {

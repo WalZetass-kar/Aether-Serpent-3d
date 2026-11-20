@@ -399,6 +399,73 @@ export class VfxPool {
     }
   }
 
+  /**
+   * Critical Roll 6 burst: double shockwave rings + golden flash dome + celestial pillar.
+   */
+  public playCriticalRollExplosion(origin: THREE.Vector3, reduced: boolean) {
+    const innerRing = this.acquire('ring');
+    if (innerRing) {
+      innerRing.active = true;
+      innerRing.elapsed = 0;
+      innerRing.duration = 0.62;
+      innerRing.startPos.set(origin.x, origin.y + 0.08, origin.z);
+      innerRing.endPos.set(origin.x, origin.y + 0.34, origin.z);
+      innerRing.startScale = 0.35;
+      innerRing.endScale = reduced ? 1.9 : 2.9;
+      innerRing.baseOpacity = reduced ? 0.62 : 0.96;
+      innerRing.mat.color.setHex(0xfde047);
+      innerRing.mesh.position.copy(innerRing.startPos);
+      innerRing.mesh.visible = true;
+    }
+
+    const outerRing = this.acquire('ring');
+    if (outerRing) {
+      outerRing.active = true;
+      outerRing.elapsed = -0.06;
+      outerRing.duration = 0.78;
+      outerRing.startPos.set(origin.x, origin.y + 0.04, origin.z);
+      outerRing.endPos.set(origin.x, origin.y + 0.22, origin.z);
+      outerRing.startScale = 0.45;
+      outerRing.endScale = reduced ? 2.3 : 3.7;
+      outerRing.baseOpacity = reduced ? 0.45 : 0.82;
+      outerRing.mat.color.setHex(0xc084fc);
+      outerRing.mesh.position.copy(outerRing.startPos);
+      outerRing.mesh.visible = false;
+    }
+
+    const dome = this.acquire('dome');
+    if (dome) {
+      dome.active = true;
+      dome.elapsed = 0;
+      dome.duration = 0.46;
+      dome.startPos.set(origin.x, origin.y + 0.25, origin.z);
+      dome.endPos.copy(dome.startPos);
+      dome.startScale = 0.35;
+      dome.endScale = reduced ? 1.35 : 1.9;
+      dome.baseOpacity = reduced ? 0.42 : 0.78;
+      dome.mat.color.setHex(0x67e8f9);
+      dome.mesh.position.copy(dome.startPos);
+      dome.mesh.visible = true;
+    }
+
+    if (!reduced) {
+      const pillar = this.acquire('pillar');
+      if (pillar) {
+        pillar.active = true;
+        pillar.elapsed = 0;
+        pillar.duration = 0.75;
+        pillar.startPos.set(origin.x, 0.02, origin.z);
+        pillar.endPos.copy(pillar.startPos);
+        pillar.startScale = 0.55;
+        pillar.endScale = 1.45;
+        pillar.baseOpacity = 0.46;
+        pillar.mat.color.setHex(0xfbbf24);
+        pillar.mesh.position.copy(pillar.startPos);
+        pillar.mesh.visible = true;
+      }
+    }
+  }
+
   public update(dt: number) {
     for (let i = 0; i < this.effects.length; i++) {
       const e = this.effects[i];

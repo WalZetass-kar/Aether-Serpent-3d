@@ -46,6 +46,8 @@ import {
   type EmoteWheelAnchor,
 } from './components/EmoteWheel';
 import { ArchetypeEmblem } from './components/FantasyIcons';
+import { FriendsListDrawer } from './components/FriendsListDrawer';
+import { FriendsModal, type FriendsTab } from './components/FriendsModal';
 import { GameConfigView } from './components/GameConfigView';
 import { GiftCoinsOverlay } from './components/GiftCoinsOverlay';
 import { HUDTopBar } from './components/HUDTopBar';
@@ -70,6 +72,7 @@ import {
   syncActiveRoomToFirebase,
   syncCustomBoardToFirebase,
   syncProfileToFirebase,
+  updateUserPresence,
 } from './services/firebaseAccountService';
 import { fetchAdminServerOverview, isAdminAccount } from './services/adminService';
 import {
@@ -78,6 +81,14 @@ import {
   subscribeToUserWalletSync,
   type CoinGiftEvent,
 } from './services/topUpChatService';
+import {
+  acknowledgeBackendFriendNotifications,
+  clearRoomInvite,
+  fetchBackendFriendNotifications,
+  subscribeToFriendships,
+  type BackendFriendNotification,
+  type FriendshipSummary,
+} from './services/friendsService';
 import {
   checkAndTriggerDailyReminder,
   dispatchAppNotification,
@@ -404,6 +415,18 @@ export default function App() {
   const [victoryOpen, setVictoryOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const [friendsModalTab, setFriendsModalTab] = useState<FriendsTab>('friends');
+  const [friendsDrawerOpen, setFriendsDrawerOpen] = useState(false);
+  const [friendshipSummary, setFriendshipSummary] = useState<FriendshipSummary>({
+    friends: [],
+    incomingRequests: [],
+    outgoingRequests: [],
+  });
+  const seenFriendReqIdsRef = useRef<Set<string>>(new Set());
+  const seenRoomInviteKeysRef = useRef<Set<string>>(new Set());
+  const seenBackendNotifIdsRef = useRef<Set<string>>(new Set());
+  const friendsInitializedRef = useRef(false);
 
   // Dual-Transport Online Multiplayer State (WebSocket + HTTP Serverless Fallback for Vercel)
   const wsRef = useRef<WebSocket | null>(null);
@@ -551,6 +574,138 @@ export default function App() {
       setPendingCoinGifts((prev) => [...prev, ...fresh]);
     });
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.emailVerified) {
+      setFriendshipSummary({
+        friends: [],
+        incomingRequests: [],
+        outgoingRequests: [],
+      });
+      seenFriendReqIdsRef.current.clear();
+      seenRoomInviteKeysRef.current.clear();
+      friendsInitializedRef.current = false;
+      return;
+    }
+
+    return subscribeToFriendships(user, (summary) => {
+      setFriendshipSummary(summary);
+
+      const initialized = friendsInitializedRef.current;
+      for (const req of summary.incomingRequests) {
+        if (!seenFriendReqIdsRef.current.has(req.id)) {
+          seenFriendReqIdsRef.current.add(req.id);
+          if (initialized) {
+            soundEngine.playUiClick();
+            showToast('Permintaan Teman Baru', `${req.friendName} ingin berteman dengan Anda.`);
+          }
+        }
+      }
+
+      for (const friend of summary.friends) {
+        if (friend.hasPendingRoomInvite && friend.inviteRoomCode) {
+          const inviteKey = `${friend.id}:${friend.inviteRoomCode}:${friend.updatedAtMs ?? 0}`;
+          if (!seenRoomInviteKeysRef.current.has(inviteKey)) {
+            seenRoomInviteKeysRef.current.add(inviteKey);
+            if (initialized) {
+              soundEngine.playUiClick();
+              showToast(
+                'Undangan Bermain',
+                `${friend.friendName} mengundang ke Room #${friend.inviteRoomCode}`
+              );
+            }
+          }
+        }
+      }
+
+      friendsInitializedRef.current = true;
+    });
+  }, [user, showToast]);
+
+  const handleBackendFriendNotification = useCallback(
+    (notif: BackendFriendNotification) => {
+      if (!notif?.id || seenBackendNotifIdsRef.current.has(notif.id)) return;
+      seenBackendNotifIdsRef.current.add(notif.id);
+      if (notif.type === 'friend_request') {
+        soundEngine.playUiClick();
+        showToast('Permintaan Teman Baru', `${notif.senderName} mengirim permintaan pertemanan.`);
+        void dispatchAppNotification(
+          'Permintaan Teman Baru',
+          `${notif.senderName} ingin berteman dengan Anda di Aether Serpent 3D.`,
+          `friend-req-${notif.senderUid}`,
+        );
+      } else if (notif.type === 'friend_accept') {
+        soundEngine.playUiClick();
+        showToast('Permintaan Diterima', `${notif.senderName} sekarang menjadi teman Anda!`);
+      } else if (notif.type === 'friend_chat') {
+        soundEngine.playUiClick();
+        showToast(
+          `Pesan dari ${notif.senderName}`,
+          notif.messagePreview || 'Mengirim pesan quick chat.',
+        );
+      } else if (notif.type === 'room_invite' && notif.roomCode) {
+        soundEngine.playUiClick();
+        showToast('Undangan Room', `${notif.senderName} mengundang ke Room #${notif.roomCode}`);
+      }
+    },
+    [showToast],
+  );
+
+  // Presence heartbeat & backend notification polling for verified users
+  useEffect(() => {
+    if (!user?.emailVerified) {
+      seenBackendNotifIdsRef.current.clear();
+      return;
+    }
+
+    let cancelled = false;
+    void updateUserPresence(user, true);
+
+    const pollBackendNotifications = async () => {
+      const items = await fetchBackendFriendNotifications(user);
+      if (cancelled || items.length === 0) return;
+      items.forEach(handleBackendFriendNotification);
+      void acknowledgeBackendFriendNotifications(
+        user,
+        items.map((n) => n.id),
+      );
+    };
+    void pollBackendNotifications();
+
+    const presenceTimer = window.setInterval(() => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        void updateUserPresence(user, true);
+      }
+    }, 45_000);
+
+    const notifTimer = window.setInterval(() => {
+      void pollBackendNotifications();
+    }, 15_000);
+
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined') {
+        void updateUserPresence(user, !document.hidden);
+        if (!document.hidden) {
+          void pollBackendNotifications();
+        }
+      }
+    };
+    const onPageHide = () => {
+      void updateUserPresence(user, false);
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(presenceTimer);
+      window.clearInterval(notifTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      void updateUserPresence(user, false);
+    };
+  }, [user, handleBackendFriendNotification]);
 
   const handleDismissGiftCoinsOverlay = useCallback(() => {
     setPendingCoinGifts((prev) => {
@@ -1903,6 +2058,15 @@ export default function App() {
         return;
       }
 
+      if (type === 'friend:notification') {
+        const notif = msg.notification as BackendFriendNotification | undefined;
+        if (notif && user?.emailVerified) {
+          handleBackendFriendNotification(notif);
+          void acknowledgeBackendFriendNotifications(user, [notif.id]);
+        }
+        return;
+      }
+
       if (type === 'game:time_up') {
         const room = msg.room as SerializedRoomPayload | undefined;
         if (!room) return;
@@ -2785,6 +2949,19 @@ export default function App() {
               soundEngine.playUiClick();
               setOracleAiOpen(true);
             }}
+            onOpenFriends={() => {
+              soundEngine.playUiClick();
+              setFriendsDrawerOpen(true);
+            }}
+            onOpenFriendSearch={() => {
+              soundEngine.playUiClick();
+              setFriendsModalTab('search');
+              setFriendsOpen(true);
+            }}
+            friendBadgeCount={
+              friendshipSummary.incomingRequests.length +
+              friendshipSummary.friends.filter((f) => f.hasPendingRoomInvite).length
+            }
             isAdmin={isAdminUser}
             onOpenAdmin={() => {
               soundEngine.playUiClick();
@@ -2939,6 +3116,14 @@ export default function App() {
               setBoardManagerReturnScreen('multiplayer_lobby');
               setScreen('board_manager');
             }}
+            onOpenFriends={() => {
+              soundEngine.playUiClick();
+              setFriendsDrawerOpen(true);
+            }}
+            friendBadgeCount={
+              friendshipSummary.incomingRequests.length +
+              friendshipSummary.friends.filter((f) => f.hasPendingRoomInvite).length
+            }
             onToggleMute={() => {
               soundEngine.playUiClick();
               const next = { ...profile, muted: !profile.muted };
@@ -3503,6 +3688,77 @@ export default function App() {
           }
         }}
         onLogout={handleLogout}
+      />
+
+      <FriendsListDrawer
+        open={friendsDrawerOpen}
+        onClose={() => setFriendsDrawerOpen(false)}
+        user={user}
+        myName={profile.name}
+        activeRoomCode={onlineLobby.roomCode}
+        initialSummary={friendshipSummary}
+        onOpenFriendsModal={(targetTab) => {
+          soundEngine.playUiClick();
+          setFriendsModalTab(targetTab);
+          setFriendsOpen(true);
+        }}
+        onOpenAuth={(tab) => {
+          setAuthModalTab(tab);
+          setAuthModalOpen(true);
+        }}
+        onJoinInvitedRoom={(roomCode, friendshipId) => {
+          soundEngine.playUiClick();
+          setFriendsDrawerOpen(false);
+          if (user?.emailVerified) {
+            void clearRoomInvite(user, friendshipId);
+          }
+          setMultiplayerTabIntent('join');
+          setScreen('multiplayer_lobby');
+          void sendMultiplayerAction({
+            type: 'room:join',
+            code: roomCode,
+            playerName: profile.name,
+            playerId: profile.playerId,
+            archetypeIndex: profile.archetypeIndex,
+          });
+        }}
+        onNotify={showToast}
+      />
+
+      <FriendsModal
+        open={friendsOpen}
+        initialTab={friendsModalTab}
+        onClose={() => setFriendsOpen(false)}
+        user={user}
+        myName={profile.name}
+        myArchetypeIndex={profile.archetypeIndex}
+        summary={friendshipSummary}
+        activeRoomCode={onlineLobby.roomCode}
+        onOpenAuth={(tab) => {
+          setAuthModalTab(tab);
+          setAuthModalOpen(true);
+        }}
+        onOpenDrawer={() => {
+          soundEngine.playUiClick();
+          setFriendsDrawerOpen(true);
+        }}
+        onJoinInvitedRoom={(roomCode, friendshipId) => {
+          soundEngine.playUiClick();
+          setFriendsOpen(false);
+          if (user?.emailVerified) {
+            void clearRoomInvite(user, friendshipId);
+          }
+          setMultiplayerTabIntent('join');
+          setScreen('multiplayer_lobby');
+          void sendMultiplayerAction({
+            type: 'room:join',
+            code: roomCode,
+            playerName: profile.name,
+            playerId: profile.playerId,
+            archetypeIndex: profile.archetypeIndex,
+          });
+        }}
+        onNotify={showToast}
       />
 
       {pendingCoinGifts[0] && (

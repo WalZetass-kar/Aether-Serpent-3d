@@ -21,12 +21,34 @@ import type { PlayerProfile } from './storageService';
 export interface CloudPublicProfile {
   uid: string;
   displayName: string;
+  numericId?: string;
   archetypeIndex: number;
   diceSkinId: DiceSkinId;
   wins: number;
   totalGames: number;
   bestScore: number;
   onlineWins: number;
+  isOnline?: boolean;
+  lastSeenAtMs?: number;
+}
+
+/**
+ * Generates a deterministic 9-digit numeric player ID from a Firebase UID
+ * so every account has a human-friendly numeric ID alongside its username & UID.
+ */
+export function deriveNumericFriendId(uid: string): string {
+  const clean = String(uid || '').trim();
+  if (!clean) return '100000000';
+  let h1 = 2166136261 >>> 0;
+  let h2 = 3735928559 >>> 0;
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean.charCodeAt(i);
+    h1 ^= ch;
+    h1 = Math.imul(h1, 16777619) >>> 0;
+    h2 = (Math.imul(h2, 31) + ch + (i * 17)) >>> 0;
+  }
+  const combined = ((h1 >>> 0) * 131 + (h2 >>> 0)) % 900000000;
+  return String(100000000 + Math.abs(combined));
 }
 
 function sanitizeDisplayName(raw: string | null | undefined): string {
@@ -163,6 +185,8 @@ export async function syncProfileToFirebase(
     .sort((a, b) => a - b)
     .slice(0, PLAYER_ARCHETYPES.length);
 
+  const safeNumericId = deriveNumericFriendId(user.uid);
+
   try {
     const existingSnap = await getDoc(userRef);
     if (!existingSnap.exists()) {
@@ -170,6 +194,7 @@ export async function syncProfileToFirebase(
         uid: user.uid,
         email: user.email,
         displayName: safeName,
+        numericId: safeNumericId,
         archetypeIndex: safeArch,
         diceSkinId: profile.diceSkinId,
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
@@ -198,6 +223,7 @@ export async function syncProfileToFirebase(
     } else {
       await updateDoc(userRef, {
         displayName: safeName,
+        numericId: safeNumericId,
         archetypeIndex: safeArch,
         diceSkinId: profile.diceSkinId,
         totalGames: Math.max(0, Math.floor(profile.totalGames)),
@@ -233,6 +259,8 @@ export async function syncProfileToFirebase(
       await setDoc(publicRef, {
         uid: user.uid,
         displayName: safeName,
+        displayNameLower: safeName.toLowerCase(),
+        numericId: safeNumericId,
         archetypeIndex: safeArch,
         diceSkinId: profile.diceSkinId,
         wins: Math.max(0, Math.floor(profile.wins)),
@@ -240,12 +268,16 @@ export async function syncProfileToFirebase(
         bestScore: Math.max(0, Math.floor(profile.bestScore)),
         onlineWins: Math.max(0, Math.floor(profile.onlineWins)),
         isPublic: true,
+        isOnline: true,
+        lastSeenAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     } else {
       await updateDoc(publicRef, {
         displayName: safeName,
+        displayNameLower: safeName.toLowerCase(),
+        numericId: safeNumericId,
         archetypeIndex: safeArch,
         diceSkinId: profile.diceSkinId,
         wins: Math.max(0, Math.floor(profile.wins)),
@@ -253,6 +285,8 @@ export async function syncProfileToFirebase(
         bestScore: Math.max(0, Math.floor(profile.bestScore)),
         onlineWins: Math.max(0, Math.floor(profile.onlineWins)),
         isPublic: true,
+        isOnline: true,
+        lastSeenAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
@@ -261,6 +295,25 @@ export async function syncProfileToFirebase(
   }
 
   return true;
+}
+
+export async function updateUserPresence(
+  user: User | null | undefined,
+  isOnline: boolean,
+): Promise<void> {
+  if (!user?.emailVerified) return;
+  const publicRef = doc(db, 'publicProfiles', user.uid);
+  try {
+    const snap = await getDoc(publicRef);
+    if (!snap.exists()) return;
+    await updateDoc(publicRef, {
+      isOnline: Boolean(isOnline),
+      lastSeenAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Non-fatal presence heartbeat failure (e.g. offline/closing tab)
+  }
 }
 
 export async function syncCustomBoardToFirebase(user: User, board: BoardConfig): Promise<void> {
@@ -337,6 +390,10 @@ export async function fetchTopPublicProfiles(maxCount = 15): Promise<CloudPublic
       list.push({
         uid: String(d.uid || docSnap.id),
         displayName: String(d.displayName || 'Penjelajah'),
+        numericId:
+          typeof d.numericId === 'string' && /^\d+$/.test(d.numericId)
+            ? d.numericId
+            : deriveNumericFriendId(String(d.uid || docSnap.id)),
         archetypeIndex: typeof d.archetypeIndex === 'number' ? d.archetypeIndex : 0,
         diceSkinId: (typeof d.diceSkinId === 'string' ? d.diceSkinId : 'royal_obsidian') as DiceSkinId,
         wins: typeof d.wins === 'number' ? d.wins : 0,

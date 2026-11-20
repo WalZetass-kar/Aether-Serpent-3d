@@ -103,12 +103,15 @@ async function getGoogleSecureTokenJwk(kid: string): Promise<crypto.JsonWebKey |
   }
 }
 
-async function verifyAdminBearerToken(
+async function verifyVerifiedFirebaseUserToken(
   req: Request,
-): Promise<{ ok: true; uid: string; email: string } | { ok: false; status: number; error: string }> {
+): Promise<
+  | { ok: true; uid: string; email: string }
+  | { ok: false; status: number; error: string }
+> {
   const authHeader = String(req.headers.authorization || '');
   if (!authHeader.startsWith('Bearer ')) {
-    return { ok: false, status: 401, error: 'Token otorisasi admin diperlukan.' };
+    return { ok: false, status: 401, error: 'Token otorisasi Firebase diperlukan.' };
   }
   const token = authHeader.slice(7).trim();
   const parts = token.split('.');
@@ -164,14 +167,79 @@ async function verifyAdminBearerToken(
     }
 
     const email = String(payload.email || '').toLowerCase();
-    if (!payload.email_verified || !ADMIN_EMAILS.has(email)) {
-      return { ok: false, status: 403, error: 'Akses ditolak: akun bukan Administrator terverifikasi.' };
+    if (!payload.email_verified) {
+      return { ok: false, status: 403, error: 'Email akun belum terverifikasi.' };
     }
 
     return { ok: true, uid: payload.sub, email };
   } catch {
-    return { ok: false, status: 401, error: 'Gagal memverifikasi token administrator.' };
+    return { ok: false, status: 401, error: 'Gagal memverifikasi token Firebase.' };
   }
+}
+
+async function verifyAdminBearerToken(
+  req: Request,
+): Promise<{ ok: true; uid: string; email: string } | { ok: false; status: number; error: string }> {
+  const userAuth = await verifyVerifiedFirebaseUserToken(req);
+  if (!userAuth.ok) {
+    return userAuth;
+  }
+  if (!ADMIN_EMAILS.has(userAuth.email)) {
+    return { ok: false, status: 403, error: 'Akses ditolak: akun bukan Administrator terverifikasi.' };
+  }
+  return userAuth;
+}
+
+export interface FriendBackendNotification {
+  id: string;
+  type: 'friend_request' | 'friend_accept' | 'friend_chat' | 'room_invite';
+  recipientUid: string;
+  senderUid: string;
+  senderName: string;
+  senderNumericId?: string;
+  roomCode?: string;
+  messagePreview?: string;
+  createdAt: number;
+}
+
+const friendNotificationsByRecipient = new Map<string, FriendBackendNotification[]>();
+
+function pushFriendNotification(notif: FriendBackendNotification): boolean {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const existing = (friendNotificationsByRecipient.get(notif.recipientUid) || []).filter(
+    (n) => n.createdAt >= cutoff,
+  );
+  // Deduplicate rapid repeated notifications from the same sender + type within 4s
+  const isDuplicate = existing.some(
+    (n) =>
+      n.type === notif.type &&
+      n.senderUid === notif.senderUid &&
+      (notif.roomCode || '') === (n.roomCode || '') &&
+      notif.createdAt - n.createdAt < 4000 &&
+      notif.type !== 'friend_chat',
+  );
+  if (!isDuplicate) {
+    const next = [...existing.slice(-24), notif];
+    friendNotificationsByRecipient.set(notif.recipientUid, next);
+  }
+
+  let deliveredLive = false;
+  const payload = JSON.stringify({
+    type: 'friend:notification',
+    notification: notif,
+  });
+  for (const room of rooms.values()) {
+    const ws = room.clients.get(notif.recipientUid);
+    if (ws && ws.readyState === 1) {
+      try {
+        ws.send(payload);
+        deliveredLive = true;
+      } catch {
+        // ignore closed socket
+      }
+    }
+  }
+  return deliveredLive;
 }
 
 function resolveWritableDataDir(): string {
@@ -2210,6 +2278,87 @@ export function registerApiRoutes(app: Express): void {
     }
 
     res.status(400).json({ error: 'Tipe aksi multiplayer tidak dikenali.' });
+  });
+
+  // -------------------------------------------------------------------------
+  // Friend Backend Notification Service (/api/friends/*)
+  // -------------------------------------------------------------------------
+  app.post('/api/friends/notify', async (req: Request, res: Response) => {
+    const authCheck = await verifyVerifiedFirebaseUserToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+
+    const rawType = String(req.body?.type || 'friend_request');
+    const allowedTypes = new Set(['friend_request', 'friend_accept', 'friend_chat', 'room_invite']);
+    const type = (allowedTypes.has(rawType) ? rawType : 'friend_request') as FriendBackendNotification['type'];
+    const recipientUid = String(req.body?.recipientUid || '').trim().slice(0, 128);
+    const senderName = String(req.body?.senderName || 'Pemain Aether').trim().slice(0, 40) || 'Pemain Aether';
+    const senderNumericId = String(req.body?.senderNumericId || '').replace(/\D/g, '').slice(0, 16);
+    const roomCode = String(req.body?.roomCode || '').trim().toUpperCase().slice(0, 16);
+    const messagePreview = String(req.body?.messagePreview || '').trim().slice(0, 140);
+
+    if (!recipientUid || recipientUid === authCheck.uid) {
+      res.status(400).json({ error: 'UID penerima notifikasi tidak valid.' });
+      return;
+    }
+
+    const notification: FriendBackendNotification = {
+      id: crypto.randomUUID(),
+      type,
+      recipientUid,
+      senderUid: authCheck.uid,
+      senderName,
+      ...(senderNumericId ? { senderNumericId } : {}),
+      ...(roomCode ? { roomCode } : {}),
+      ...(messagePreview ? { messagePreview } : {}),
+      createdAt: Date.now(),
+    };
+
+    const deliveredLive = pushFriendNotification(notification);
+    res.status(201).json({
+      ok: true,
+      notificationId: notification.id,
+      deliveredLive,
+    });
+  });
+
+  app.get('/api/friends/notifications', async (req: Request, res: Response) => {
+    const authCheck = await verifyVerifiedFirebaseUserToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const list = (friendNotificationsByRecipient.get(authCheck.uid) || []).filter(
+      (n) => n.createdAt >= cutoff,
+    );
+    friendNotificationsByRecipient.set(authCheck.uid, list);
+    res.json({ notifications: list });
+  });
+
+  app.post('/api/friends/notifications/ack', async (req: Request, res: Response) => {
+    const authCheck = await verifyVerifiedFirebaseUserToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.filter((v: unknown): v is string => typeof v === 'string')
+      : [];
+    if (ids.length === 0) {
+      res.json({ ok: true });
+      return;
+    }
+    const idSet = new Set(ids);
+    const remaining = (friendNotificationsByRecipient.get(authCheck.uid) || []).filter(
+      (n) => !idSet.has(n.id),
+    );
+    friendNotificationsByRecipient.set(authCheck.uid, remaining);
+    res.json({ ok: true, remainingCount: remaining.length });
   });
 
   // Global Leaderboard

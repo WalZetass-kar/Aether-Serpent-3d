@@ -119,6 +119,13 @@
           "type": "array",
           "description": "Bounded list of unlocked hero pawn archetype indices (0-13, max 14)."
         },
+        "numericId": {
+          "type": "string",
+          "description": "Unique 9-digit numeric player ID derived for quick friend search.",
+          "minLength": 6,
+          "maxLength": 16,
+          "pattern": "^[0-9]+$"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -236,6 +243,12 @@
           "minLength": 1,
           "maxLength": 32
         },
+        "displayNameLower": {
+          "type": "string",
+          "description": "Lowercase normalized display name for prefix/friend search.",
+          "minLength": 1,
+          "maxLength": 32
+        },
         "archetypeIndex": {
           "type": "integer",
           "description": "Selected pawn archetype index (0-13)."
@@ -265,6 +278,22 @@
         "isPublic": {
           "type": "boolean",
           "description": "Explicit opt-in flag required for public leaderboard queries."
+        },
+        "numericId": {
+          "type": "string",
+          "description": "Unique 9-digit numeric player ID for friend lookup.",
+          "minLength": 6,
+          "maxLength": 16,
+          "pattern": "^[0-9]+$"
+        },
+        "isOnline": {
+          "type": "boolean",
+          "description": "Whether the player currently has an active online session."
+        },
+        "lastSeenAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the player's latest presence heartbeat."
         },
         "createdAt": {
           "type": "string",
@@ -652,6 +681,171 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "Friendship": {
+      "title": "Friendship",
+      "description": "Bidirectional friend request and accepted friendship record between two verified players, keyed by canonical uid1__uid2 pairId.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Canonical friendship pair ID (user1Uid__user2Uid).",
+          "minLength": 3,
+          "maxLength": 260,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "user1Uid": {
+          "type": "string",
+          "description": "Lexicographically smaller player UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "user2Uid": {
+          "type": "string",
+          "description": "Lexicographically larger player UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "participantUids": {
+          "type": "array",
+          "description": "Ordered 2-element array [user1Uid, user2Uid] for array-contains queries."
+        },
+        "requestedBy": {
+          "type": "string",
+          "description": "UID of the player who initiated the friend request.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "type": "string",
+          "description": "Current friendship state.",
+          "enum": ["pending", "accepted"]
+        },
+        "user1Name": {
+          "type": "string",
+          "description": "Cached display name of user1.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "user2Name": {
+          "type": "string",
+          "description": "Cached display name of user2.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "user1Archetype": {
+          "type": "integer",
+          "description": "Selected pawn archetype index of user1 (0-13)."
+        },
+        "user2Archetype": {
+          "type": "integer",
+          "description": "Selected pawn archetype index of user2 (0-13)."
+        },
+        "inviteRoomCode": {
+          "type": "string",
+          "description": "Optional active multiplayer room code sent by a friend.",
+          "maxLength": 16
+        },
+        "inviteFromUid": {
+          "type": "string",
+          "description": "UID of the friend who sent the latest room invite.",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "user1Uid",
+        "user2Uid",
+        "participantUids",
+        "requestedBy",
+        "status",
+        "user1Name",
+        "user2Name",
+        "user1Archetype",
+        "user2Archetype",
+        "inviteRoomCode",
+        "inviteFromUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FriendChatMessage": {
+      "title": "FriendChatMessage",
+      "description": "Immutable 1-to-1 quick-chat message between accepted friends inside /friendships/{pairId}/messages/{messageId}.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Message document ID matching path messageId.",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "pairId": {
+          "type": "string",
+          "description": "Parent canonical friendship pair ID.",
+          "minLength": 3,
+          "maxLength": 260,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "senderUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the message sender.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "recipientUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the friend receiving the message.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "participantUids": {
+          "type": "array",
+          "description": "2-element participant UID array matching parent friendship for secure list queries."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of the sender.",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "text": {
+          "type": "string",
+          "description": "Quick-chat message content.",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "pairId",
+        "senderUid",
+        "recipientUid",
+        "participantUids",
+        "senderName",
+        "text",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -702,6 +896,18 @@
         "$ref": "#/entities/TopUpChatMessage"
       },
       "description": "Immutable chat messages and admin coin adjustment logs inside a member's top-up thread."
+    },
+    "/friendships/{pairId}": {
+      "schema": {
+        "$ref": "#/entities/Friendship"
+      },
+      "description": "Participant-isolated friend requests, accepted friendships, and live room invites."
+    },
+    "/friendships/{pairId}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/FriendChatMessage"
+      },
+      "description": "Participant-isolated 1-to-1 quick-chat messages between accepted friends."
     }
   }
 }

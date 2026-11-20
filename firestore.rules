@@ -31,6 +31,10 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidPairId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 260 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
     function isOwner(userId) {
       return isEmailVerified() && request.auth.uid == userId;
     }
@@ -64,7 +68,7 @@ service cloud.firestore {
           'onlineWins', 'unlockedAchievements', 'dailyStreak',
           'loginStreak', 'lastLoginDate',
           'tutorialCompleted', 'muted', 'selectedBoardId',
-          'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices',
+          'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId',
           'createdAt', 'updatedAt'
         ])
         && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
@@ -94,6 +98,7 @@ service cloud.firestore {
         && (!('aetherCoins' in data) || (data.aetherCoins is int && data.aetherCoins >= 0 && data.aetherCoins <= 10000000))
         && (!('unlockedBoardIds' in data) || (data.unlockedBoardIds is list && data.unlockedBoardIds.size() <= 30 && (data.unlockedBoardIds.size() == 0 || (data.unlockedBoardIds[0] is string && data.unlockedBoardIds[0].size() <= 64))))
         && (!('unlockedPawnIndices' in data) || (data.unlockedPawnIndices is list && data.unlockedPawnIndices.size() <= 14 && (data.unlockedPawnIndices.size() == 0 || (data.unlockedPawnIndices[0] is int && data.unlockedPawnIndices[0] >= 0 && data.unlockedPawnIndices[0] <= 13))))
+        && (!('numericId' in data) || (data.numericId is string && data.numericId.size() >= 6 && data.numericId.size() <= 16 && data.numericId.matches('^[0-9]+$')))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -124,12 +129,16 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'uid', 'displayName', 'archetypeIndex', 'diceSkinId',
+          'uid', 'displayName', 'displayNameLower', 'numericId',
+          'archetypeIndex', 'diceSkinId',
           'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
+          'isOnline', 'lastSeenAt',
           'createdAt', 'updatedAt'
         ])
         && data.uid is string && data.uid == userId && (data.uid == request.auth.uid || isAdmin()) && data.uid.size() <= 128
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32
+        && (!('displayNameLower' in data) || (data.displayNameLower is string && data.displayNameLower.size() >= 1 && data.displayNameLower.size() <= 32))
+        && (!('numericId' in data) || (data.numericId is string && data.numericId.size() >= 6 && data.numericId.size() <= 16 && data.numericId.matches('^[0-9]+$')))
         && data.archetypeIndex is int && data.archetypeIndex >= 0 && data.archetypeIndex <= 13
         && data.diceSkinId is string && data.diceSkinId.size() >= 1 && data.diceSkinId.size() <= 40
         && data.wins is int && data.wins >= 0 && data.wins <= 1000000
@@ -137,6 +146,8 @@ service cloud.firestore {
         && data.bestScore is int && data.bestScore >= 0 && data.bestScore <= 10000000
         && data.onlineWins is int && data.onlineWins >= 0 && data.onlineWins <= 1000000
         && data.isPublic is bool
+        && (!('isOnline' in data) || data.isOnline is bool)
+        && (!('lastSeenAt' in data) || data.lastSeenAt is timestamp)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -249,6 +260,67 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidFriendship(data, pairId) {
+      return data.keys().hasAll([
+          'id', 'user1Uid', 'user2Uid', 'participantUids', 'requestedBy', 'status',
+          'user1Name', 'user2Name', 'user1Archetype', 'user2Archetype',
+          'inviteRoomCode', 'inviteFromUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'user1Uid', 'user2Uid', 'participantUids', 'requestedBy', 'status',
+          'user1Name', 'user2Name', 'user1Archetype', 'user2Archetype',
+          'inviteRoomCode', 'inviteFromUid', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == pairId && data.id.size() >= 3 && data.id.size() <= 260
+        && data.user1Uid is string && isValidId(data.user1Uid)
+        && data.user2Uid is string && isValidId(data.user2Uid)
+        && data.user1Uid < data.user2Uid
+        && data.id == data.user1Uid + '__' + data.user2Uid
+        && data.participantUids is list && data.participantUids.size() == 2
+        && data.participantUids[0] == data.user1Uid
+        && data.participantUids[1] == data.user2Uid
+        && data.requestedBy is string && (data.requestedBy == data.user1Uid || data.requestedBy == data.user2Uid)
+        && data.status is string && data.status in ['pending', 'accepted']
+        && data.user1Name is string && data.user1Name.size() >= 1 && data.user1Name.size() <= 32
+        && data.user2Name is string && data.user2Name.size() >= 1 && data.user2Name.size() <= 32
+        && data.user1Archetype is int && data.user1Archetype >= 0 && data.user1Archetype <= 13
+        && data.user2Archetype is int && data.user2Archetype >= 0 && data.user2Archetype <= 13
+        && data.inviteRoomCode is string && data.inviteRoomCode.size() <= 16
+        && data.inviteFromUid is string && data.inviteFromUid.size() <= 128
+        && (data.inviteFromUid == '' || data.inviteFromUid == data.user1Uid || data.inviteFromUid == data.user2Uid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isFriendParticipant(data) {
+      return isEmailVerified()
+        && (data.user1Uid == request.auth.uid || data.user2Uid == request.auth.uid);
+    }
+
+    function isValidFriendMessage(data, pairId, messageId) {
+      return data.keys().hasAll([
+          'id', 'pairId', 'senderUid', 'recipientUid', 'participantUids',
+          'senderName', 'text', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'pairId', 'senderUid', 'recipientUid', 'participantUids',
+          'senderName', 'text', 'createdAt'
+        ])
+        && data.id is string && data.id == messageId && isValidId(data.id) && data.id.size() <= 80
+        && data.pairId is string && data.pairId == pairId && isValidPairId(data.pairId)
+        && data.senderUid is string && isValidId(data.senderUid)
+        && data.recipientUid is string && isValidId(data.recipientUid) && data.recipientUid != data.senderUid
+        && data.participantUids is list && data.participantUids.size() == 2
+        && data.participantUids[0] is string && data.participantUids[1] is string
+        && data.participantUids[0] < data.participantUids[1]
+        && data.pairId == data.participantUids[0] + '__' + data.participantUids[1]
+        && (data.senderUid == data.participantUids[0] || data.senderUid == data.participantUids[1])
+        && (data.recipientUid == data.participantUids[0] || data.recipientUid == data.participantUids[1])
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 300
+        && data.createdAt is timestamp;
+    }
+
     // -------------------------------------------------------------------------
     // /users/{userId} — Private PII & Account State (Owner + Verified Admin)
     // -------------------------------------------------------------------------
@@ -275,7 +347,7 @@ service cloud.firestore {
             && (!('aetherCoins' in incoming()) || !('aetherCoins' in existing()) || incoming().aetherCoins <= existing().aetherCoins + 500)
             && (
               incoming().diff(existing()).affectedKeys().hasOnly([
-                'displayName', 'archetypeIndex', 'diceSkinId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'updatedAt'
+                'displayName', 'archetypeIndex', 'diceSkinId', 'tutorialCompleted', 'muted', 'selectedBoardId', 'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId', 'updatedAt'
               ])
               ||
               incoming().diff(existing()).affectedKeys().hasOnly([
@@ -285,7 +357,7 @@ service cloud.firestore {
                 'onlineWins', 'unlockedAchievements', 'dailyStreak',
                 'loginStreak', 'lastLoginDate',
                 'tutorialCompleted', 'muted', 'selectedBoardId',
-                'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'updatedAt'
+                'aetherCoins', 'unlockedBoardIds', 'unlockedPawnIndices', 'numericId', 'updatedAt'
               ])
             )
           )
@@ -388,16 +460,17 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
-    // /publicProfiles/{userId} — PII-Free Public Leaderboard Projection
+    // /publicProfiles/{userId} — PII-Free Public Leaderboard & Presence Projection
     // -------------------------------------------------------------------------
     match /publicProfiles/{userId} {
       allow get: if isValidId(userId)
-        && (isOwner(userId) || isAdmin() || (resource != null && resource.data.isPublic == true));
+        && (isOwner(userId) || isAdmin() || (isEmailVerified() && (resource == null || resource.data.isPublic == true)) || (resource != null && resource.data.isPublic == true));
       allow list: if resource.data.isPublic == true || isBootstrappedAdmin();
 
       allow create: if isValidId(userId)
         && isOwner(userId)
         && isValidPublicProfile(incoming(), userId)
+        && (!('lastSeenAt' in incoming()) || incoming().lastSeenAt == request.time)
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -406,11 +479,22 @@ service cloud.firestore {
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
+        && (!('lastSeenAt' in incoming().diff(existing()).affectedKeys()) || incoming().lastSeenAt == request.time)
         && (
-          (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly([
-            'displayName', 'archetypeIndex', 'diceSkinId',
-            'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic', 'updatedAt'
-          ]))
+          (
+            isOwner(userId)
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName', 'displayNameLower', 'numericId', 'archetypeIndex', 'diceSkinId',
+                'wins', 'totalGames', 'bestScore', 'onlineWins', 'isPublic',
+                'isOnline', 'lastSeenAt', 'updatedAt'
+              ])
+              ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'isOnline', 'lastSeenAt', 'updatedAt'
+              ])
+            )
+          )
           ||
           (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
             'isPublic', 'updatedAt'
@@ -522,6 +606,112 @@ service cloud.firestore {
         allow update: if false;
 
         allow delete: if isValidId(userId) && isValidId(messageId) && isAdmin();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // /friendships/{pairId} — Friend Requests, Friends List & Room Invites
+    // -------------------------------------------------------------------------
+    match /friendships/{pairId} {
+      allow get: if isValidPairId(pairId) && isEmailVerified() && (
+        isAdmin()
+        || (resource == null && pairId.matches('^(' + request.auth.uid + '__.*|.*__' + request.auth.uid + ')$'))
+        || (resource != null && isFriendParticipant(existing()))
+      );
+
+      allow list: if isBootstrappedAdmin()
+        || (isEmailVerified() && request.auth.uid in resource.data.participantUids);
+
+      allow create: if isValidPairId(pairId)
+        && isEmailVerified()
+        && isValidFriendship(incoming(), pairId)
+        && incoming().requestedBy == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().inviteRoomCode == ''
+        && incoming().inviteFromUid == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/publicProfiles/$(incoming().user1Uid))
+        && exists(/databases/$(database)/documents/publicProfiles/$(incoming().user2Uid));
+
+      allow update: if isValidPairId(pairId)
+        && isEmailVerified()
+        && isValidFriendship(incoming(), pairId)
+        && incoming().id == existing().id
+        && incoming().user1Uid == existing().user1Uid
+        && incoming().user2Uid == existing().user2Uid
+        && incoming().participantUids == existing().participantUids
+        && incoming().requestedBy == existing().requestedBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().status == 'pending'
+            && incoming().status == 'accepted'
+            && request.auth.uid != existing().requestedBy
+            && isFriendParticipant(existing())
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+          ||
+          (
+            existing().status == 'accepted'
+            && isFriendParticipant(existing())
+            && (
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly(['inviteRoomCode', 'inviteFromUid', 'updatedAt'])
+                && (incoming().inviteFromUid == '' || incoming().inviteFromUid == request.auth.uid)
+              )
+              ||
+              (
+                request.auth.uid == existing().user1Uid
+                && incoming().diff(existing()).affectedKeys().hasOnly(['user1Name', 'user1Archetype', 'updatedAt'])
+              )
+              ||
+              (
+                request.auth.uid == existing().user2Uid
+                && incoming().diff(existing()).affectedKeys().hasOnly(['user2Name', 'user2Archetype', 'updatedAt'])
+              )
+            )
+          )
+        );
+
+      allow delete: if isValidPairId(pairId)
+        && isEmailVerified()
+        && (isAdmin() || isFriendParticipant(existing()));
+
+      // /friendships/{pairId}/messages/{messageId} — Immutable 1-to-1 Friend Quick-Chat
+      match /messages/{messageId} {
+        allow get: if isValidPairId(pairId) && isValidId(messageId)
+          && isEmailVerified()
+          && (
+            isAdmin()
+            || request.auth.uid in get(/databases/$(database)/documents/friendships/$(pairId)).data.participantUids
+          );
+
+        allow list: if isValidPairId(pairId)
+          && (
+            isBootstrappedAdmin()
+            || (
+              isEmailVerified()
+              && resource.data.pairId == pairId
+              && request.auth.uid in resource.data.participantUids
+            )
+          );
+
+        allow create: if isValidPairId(pairId) && isValidId(messageId)
+          && isEmailVerified()
+          && isValidFriendMessage(incoming(), pairId, messageId)
+          && incoming().senderUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && get(/databases/$(database)/documents/friendships/$(pairId)).data.status == 'accepted'
+          && request.auth.uid in get(/databases/$(database)/documents/friendships/$(pairId)).data.participantUids
+          && incoming().participantUids == get(/databases/$(database)/documents/friendships/$(pairId)).data.participantUids;
+
+        allow update: if false;
+
+        allow delete: if isValidPairId(pairId) && isValidId(messageId)
+          && isAdmin()
+          && exists(/databases/$(database)/documents/friendships/$(pairId));
       }
     }
   }

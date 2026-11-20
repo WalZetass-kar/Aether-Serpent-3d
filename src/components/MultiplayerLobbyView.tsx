@@ -84,6 +84,8 @@ interface MultiplayerLobbyViewProps {
   onlineLobby: OnlineLobbyState;
   onBack: () => void;
   onOpenPawnShowcase?: () => void;
+  onOpenFriends?: () => void;
+  friendBadgeCount?: number;
   onToggleMute: () => void;
   onOpenCameraSettings: () => void;
   onOnlineCreateRoom: (opts: {
@@ -390,6 +392,8 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
   onlineLobby,
   onBack,
   onOpenPawnShowcase,
+  onOpenFriends,
+  friendBadgeCount = 0,
   onToggleMute,
   onOpenCameraSettings,
   onOnlineCreateRoom,
@@ -615,6 +619,21 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
         </button>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {onOpenFriends && (
+            <button
+              type="button"
+              onClick={onOpenFriends}
+              className="glass-panel-soft inline-flex items-center gap-1.5 min-h-[40px] sm:min-h-[42px] px-2.5 sm:px-3 rounded-xl border border-sky-400/40 bg-sky-500/12 text-xs font-bold text-sky-200 hover:bg-sky-500/22 cursor-pointer"
+            >
+              <Users className="w-4 h-4 text-sky-300 shrink-0" />
+              <span className="hidden sm:inline">Teman</span>
+              {friendBadgeCount > 0 && (
+                <span className="font-mono-num text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500 text-white leading-none">
+                  {friendBadgeCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenCameraSettings}
@@ -1139,6 +1158,16 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
               </div>
 
               <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto shrink-0">
+                {onOpenFriends && (
+                  <button
+                    type="button"
+                    onClick={onOpenFriends}
+                    className="inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[42px] px-3 sm:px-3.5 py-2 rounded-xl border border-sky-400/45 bg-sky-500/15 text-xs font-bold text-sky-200 hover:bg-sky-500/25 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Users className="w-4 h-4 text-sky-300 shrink-0" />
+                    <span>Undang dari Teman</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => void handleInviteShare()}
@@ -1149,12 +1178,12 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                   ) : (
                     <Share2 className="w-4 h-4 text-amber-300 shrink-0" />
                   )}
-                  <span>{copiedType === 'link' ? 'Tautan Disalin' : 'Undang Teman'}</span>
+                  <span>{copiedType === 'link' ? 'Tautan Disalin' : 'Salin Tautan'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={onOnlineLeave}
-                  className="inline-flex items-center justify-center min-h-[40px] sm:min-h-[42px] px-3 sm:px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-950/40 text-xs font-semibold text-rose-300 hover:bg-rose-950/75 transition-colors cursor-pointer whitespace-nowrap"
+                  className="col-span-2 sm:col-span-1 inline-flex items-center justify-center min-h-[40px] sm:min-h-[42px] px-3 sm:px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-950/40 text-xs font-semibold text-rose-300 hover:bg-rose-950/75 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   Keluar Ruang
                 </button>

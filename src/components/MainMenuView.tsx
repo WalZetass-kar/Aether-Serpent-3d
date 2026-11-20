@@ -61,6 +61,9 @@ interface MainMenuViewProps {
   onOpenAchievements: () => void;
   onOpenCloud: () => void;
   onOpenBoardManager: (tab?: 'collection' | 'creator' | 'pawns') => void;
+  onOpenFriends: () => void;
+  onOpenFriendSearch?: () => void;
+  friendBadgeCount?: number;
   onOpenOracleAI?: () => void;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
@@ -110,6 +113,9 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
   onOpenAchievements,
   onOpenCloud,
   onOpenBoardManager,
+  onOpenFriends,
+  onOpenFriendSearch,
+  friendBadgeCount = 0,
   onOpenOracleAI,
   isAdmin = false,
   onOpenAdmin,
@@ -192,6 +198,21 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                 {user ? (user.emailVerified ? 'Akun Cloud Aktif' : 'Perlu Verifikasi') : `${profile.wins} Menang · ${profile.bestScore.toLocaleString('id-ID')}`}
               </div>
             </div>
+          </button>
+
+          {/* Friends / Search Players button */}
+          <button
+            type="button"
+            onClick={onOpenFriends}
+            className="relative glass-panel-soft inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 sm:px-3.5 py-2 rounded-xl border border-sky-400/40 bg-sky-500/12 text-xs font-bold text-sky-200 hover:bg-sky-500/22 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <Users className="w-4 h-4 text-sky-300 shrink-0" />
+            <span className="hidden sm:inline">Teman</span>
+            {friendBadgeCount > 0 && (
+              <span className="font-mono-num text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500 text-white leading-none">
+                {friendBadgeCount}
+              </span>
+            )}
           </button>
 
           {/* Desktop-only Oracle AI shortcut */}
@@ -680,6 +701,42 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                     <BookOpen className="w-4 h-4 text-amber-300 shrink-0" />
                     <span className="truncate">Tutorial</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSidebarOpen(false);
+                      onOpenFriends();
+                    }}
+                    className="col-span-2 flex items-center justify-between min-h-[44px] px-3.5 py-2 rounded-xl border border-sky-500/35 bg-sky-500/10 text-xs font-bold text-sky-200 hover:bg-sky-500/20 cursor-pointer"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Users className="w-4 h-4 text-sky-300 shrink-0" />
+                      <span>Daftar Teman &amp; Quick Chat</span>
+                    </span>
+                    {friendBadgeCount > 0 ? (
+                      <span className="font-mono-num text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500 text-white">
+                        {friendBadgeCount}
+                      </span>
+                    ) : (
+                      <span className="text-sky-300">Drawer</span>
+                    )}
+                  </button>
+                  {onOpenFriendSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSidebarOpen(false);
+                        onOpenFriendSearch();
+                      }}
+                      className="col-span-2 flex items-center justify-between min-h-[44px] px-3.5 py-2 rounded-xl border border-amber-500/35 bg-amber-500/10 text-xs font-bold text-amber-200 hover:bg-amber-500/20 cursor-pointer"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <Users className="w-4 h-4 text-amber-300 shrink-0" />
+                        <span>Cari Pemain (Username / ID Angka)</span>
+                      </span>
+                      <span className="text-amber-300">Cari</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
