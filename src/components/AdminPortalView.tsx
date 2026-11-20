@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth';
 import {
   ArrowLeft,
   CheckCircle2,
+  Clock,
   Cloud,
   Coins,
   Copy,
@@ -24,6 +25,7 @@ import {
   ShieldCheck,
   Trash2,
   Trophy,
+  UserMinus,
   Users,
   X,
 } from 'lucide-react';
@@ -33,6 +35,7 @@ import {
   adminDeclareRoomWinner,
   adminDeleteLeaderboardEntry,
   adminGrantAllPremiumBoards,
+  adminKickRoomPlayer,
   adminLookupMemberByUid,
   adminSendGiftCoins,
   fetchAdminMembers,
@@ -123,7 +126,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     room: AdminRoomRecord;
     player: AdminRoomPlayer;
   } | null>(null);
+  const [overrideDraftByRoom, setOverrideDraftByRoom] = useState<Record<string, string>>({});
   const [declaringWinnerKey, setDeclaringWinnerKey] = useState<string | null>(null);
+  const [kickCandidate, setKickCandidate] = useState<{
+    room: AdminRoomRecord;
+    player: AdminRoomPlayer;
+  } | null>(null);
+  const [kickingPlayerKey, setKickingPlayerKey] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [confirmDeleteLbId, setConfirmDeleteLbId] = useState<string | null>(null);
   const [deletingLbId, setDeletingLbId] = useState<string | null>(null);
@@ -194,13 +204,19 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     handleRefreshAll();
   }, [handleRefreshAll]);
 
-  // Auto-refresh open multiplayer rooms every 6s when viewing Rooms tab
+  // Auto-refresh open multiplayer rooms every 6s when viewing Rooms tab + 1s clock for 2-min idle indicator
   useEffect(() => {
     if (activeTab !== 'rooms') return;
-    const id = window.setInterval(() => {
+    const pollId = window.setInterval(() => {
       void loadServerOverview();
     }, 6000);
-    return () => window.clearInterval(id);
+    const tickId = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+    return () => {
+      window.clearInterval(pollId);
+      window.clearInterval(tickId);
+    };
   }, [activeTab, loadServerOverview]);
 
   // Real-time subscription to member Top-Up chat threads
@@ -303,14 +319,18 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       const res = await adminDeclareRoomWinner(user, room, playerId);
       setWinnerCandidate(null);
       if (res.designatedWinnerId) {
+        setOverrideDraftByRoom((prev) => ({
+          ...prev,
+          [res.roomCode]: res.designatedWinnerId as string,
+        }));
         onNotify(
-          'Target Pemenang Rahasia Disimpan',
-          `${res.targetName || 'Pemain'} akan diarahkan menang secara alami tanpa pemberitahuan di chat.`,
+          'Admin Winner Override Aktif',
+          `${res.targetName || 'Pemain'} kini 100% kebal ular & mendapat dorongan tangga hingga menang.`,
         );
       } else {
         onNotify(
-          'Target Pemenang Dibatalkan',
-          `Room #${res.roomCode} kembali berjalan normal tanpa target.`,
+          'Admin Winner Override Nonaktif',
+          `Room #${res.roomCode} kembali berjalan normal tanpa override.`,
         );
       }
       await loadServerOverview();
@@ -321,6 +341,34 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       );
     } finally {
       setDeclaringWinnerKey(null);
+    }
+  };
+
+  const handleConfirmKickPlayer = async (room: AdminRoomRecord, player: AdminRoomPlayer) => {
+    const key = `${room.code}:${player.id}`;
+    setKickingPlayerKey(key);
+    try {
+      const res = await adminKickRoomPlayer(user, room, player.id);
+      setKickCandidate(null);
+      if (res.roomClosed) {
+        onNotify(
+          'Pemain Dikeluarkan & Room Ditutup',
+          `${res.kickedPlayerName} dikeluarkan; Room #${res.roomCode} kosong dan ditutup.`,
+        );
+      } else {
+        onNotify(
+          'Pemain Dikeluarkan dari Room',
+          `${res.kickedPlayerName} telah dikeluarkan dari Room #${res.roomCode}. Permainan tetap lanjut lancar.`,
+        );
+      }
+      await loadServerOverview();
+    } catch (err) {
+      onNotify(
+        'Gagal Mengeluarkan Pemain',
+        err instanceof Error ? err.message : 'Terjadi kesalahan pada server.',
+      );
+    } finally {
+      setKickingPlayerKey(null);
     }
   };
 
@@ -396,7 +444,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       setCoinNoteInput('');
       onNotify(
         'Royal Pass Diaktifkan',
-        `Semua 5 Papan Premium + 1.000 Koin diberikan kepada ${target.displayName}.`,
+        `Semua 15 Papan Premium + 1.000 Koin diberikan kepada ${target.displayName}.`,
       );
     } catch (err) {
       onNotify(
@@ -1647,6 +1695,24 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                               <span className="font-mono-num">
                                 Update {formatDateTimeId(room.updatedAt)}
                               </span>
+                              <span>·</span>
+                              {(() => {
+                                const lastAct = room.lastActivityAt || room.updatedAt || room.createdAt;
+                                const idleSec = Math.max(0, Math.floor((nowTick - lastAct) / 1000));
+                                const remainSec = Math.max(0, 120 - idleSec);
+                                const isWarning = remainSec <= 35;
+                                return (
+                                  <span
+                                    className={`inline-flex items-center gap-1 font-mono-num ${
+                                      isWarning ? 'text-rose-300 font-semibold' : 'text-amber-300/90'
+                                    }`}
+                                    title="Room otomatis ditutup jika tidak ada pergerakan pemain selama 2 menit"
+                                  >
+                                    <Clock className="w-3 h-3" />
+                                    Diam {idleSec}d · Auto-tutup {remainSec}d
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -1682,11 +1748,176 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Players in Room (Clickable Profiles to Set Stealth Target Winner) */}
+                        {/* Admin Winner Override Toggle Panel (Active Rooms) */}
+                        {room.status !== 'finished' && room.players.length > 0 && (() => {
+                          const isOverrideActive = Boolean(
+                            room.designatedWinnerId &&
+                              room.players.some((pl) => pl.id === room.designatedWinnerId),
+                          );
+                          const draftId = overrideDraftByRoom[room.code];
+                          const validDraftId =
+                            draftId && room.players.some((pl) => pl.id === draftId)
+                              ? draftId
+                              : null;
+                          const selectedOverridePlayerId =
+                            (isOverrideActive ? room.designatedWinnerId : null) ||
+                            validDraftId ||
+                            room.players[0].id;
+                          const selectedOverridePlayer =
+                            room.players.find((pl) => pl.id === selectedOverridePlayerId) ||
+                            room.players[0];
+                          const isUpdatingOverride =
+                            declaringWinnerKey !== null &&
+                            declaringWinnerKey.startsWith(`${room.code}:`);
+
+                          return (
+                            <div
+                              className={`rounded-xl border px-3.5 py-3 transition-colors ${
+                                isOverrideActive
+                                  ? 'border-amber-400/65 bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-emerald-500/10 shadow-[0_0_24px_rgba(251,191,36,0.16)]'
+                                  : 'border-slate-800/90 bg-slate-950/75'
+                              }`}
+                            >
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                <div className="flex items-start gap-2.5 min-w-0">
+                                  <div
+                                    className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${
+                                      isOverrideActive
+                                        ? 'border-amber-300/70 bg-amber-500/25 text-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.45)]'
+                                        : 'border-amber-400/30 bg-amber-500/10 text-amber-300'
+                                    }`}
+                                  >
+                                    <ShieldCheck className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-100">
+                                        Admin Winner Override
+                                      </span>
+                                      <span
+                                        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
+                                          isOverrideActive
+                                            ? 'border-amber-300/60 bg-amber-500/20 text-amber-200'
+                                            : 'border-slate-700 bg-slate-800/90 text-slate-400'
+                                        }`}
+                                      >
+                                        {isOverrideActive ? 'AKTIF · AURA EMAS' : 'NONAKTIF'}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                                      Pemain terpilih 100% kebal ular &amp; kutukan, mendapat dorongan tangga beruntun hingga menang, serta ditandai Aura Emas khusus Admin di Arena 3D.
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                                  <select
+                                    aria-label={`Pilih pemain untuk Admin Winner Override di Room ${room.code}`}
+                                    disabled={isUpdatingOverride}
+                                    value={selectedOverridePlayerId}
+                                    onChange={(e) => {
+                                      const nextId = e.target.value;
+                                      setOverrideDraftByRoom((prev) => ({
+                                        ...prev,
+                                        [room.code]: nextId,
+                                      }));
+                                      if (isOverrideActive && nextId !== room.designatedWinnerId) {
+                                        void handleConfirmDeclareWinner(room, nextId);
+                                      }
+                                    }}
+                                    className="min-h-[36px] max-w-[220px] rounded-lg border border-slate-700/90 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-100 focus:border-amber-400/70 focus:outline-none disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {room.players.map((pl) => (
+                                      <option key={pl.id} value={pl.id}>
+                                        {pl.name}
+                                        {pl.id === room.hostId ? ' (Host)' : ''} · P{pl.tile}
+                                        {room.boardMode === 'team' && pl.team
+                                          ? ` · Tim ${pl.team}`
+                                          : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={isOverrideActive}
+                                    aria-label={`Toggle Admin Winner Override untuk Room ${room.code}`}
+                                    disabled={isUpdatingOverride}
+                                    onClick={() => {
+                                      setConfirmCloseCode(null);
+                                      setKickCandidate(null);
+                                      setWinnerCandidate(null);
+                                      if (isOverrideActive) {
+                                        void handleConfirmDeclareWinner(room, null);
+                                      } else {
+                                        void handleConfirmDeclareWinner(
+                                          room,
+                                          selectedOverridePlayerId,
+                                        );
+                                      }
+                                    }}
+                                    className={`inline-flex items-center gap-2 min-h-[36px] rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
+                                      isOverrideActive
+                                        ? 'border-amber-400/70 bg-amber-500/20 text-amber-100 hover:bg-amber-500/30'
+                                        : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-amber-400/50 hover:text-amber-200'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                                        isOverrideActive ? 'bg-amber-400' : 'bg-slate-700'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                                          isOverrideActive ? 'translate-x-4.5' : 'translate-x-1'
+                                        }`}
+                                      />
+                                    </span>
+                                    <span>
+                                      {isUpdatingOverride
+                                        ? 'Menyimpan...'
+                                        : isOverrideActive
+                                          ? 'ON'
+                                          : 'OFF'}
+                                    </span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              {isOverrideActive && selectedOverridePlayer && (
+                                <div className="mt-2.5 pt-2.5 border-t border-amber-400/25 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-amber-100">
+                                  <span className="inline-flex items-center gap-2 font-semibold">
+                                    <span className="relative inline-flex items-center justify-center w-6 h-6 rounded-full border border-amber-300 bg-amber-500/25 shadow-[0_0_14px_rgba(251,191,36,0.7)]">
+                                      <ArchetypeEmblem
+                                        archetypeIndex={selectedOverridePlayer.archetypeIndex ?? 0}
+                                        className="w-3.5 h-3.5"
+                                      />
+                                    </span>
+                                    Target Aura Emas:{' '}
+                                    <strong className="text-amber-200">
+                                      {selectedOverridePlayer.name}
+                                    </strong>
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-emerald-300">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Kebal Ular &amp; Kutukan
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-amber-200">
+                                    <Flame className="w-3.5 h-3.5 text-amber-300" />
+                                    Garansi Tangga &amp; Menang (Hanya Terlihat Admin)
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Players in Room (Target Stealth Winner OR Kick Lagging Player) */}
                         <div className="pt-2.5 border-t border-slate-800/80 space-y-2.5">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
                             <span>
-                              Klik profil pemain untuk menargetkan pemenang rahasia (tanpa notifikasi chat):
+                              Klik kartu pemain untuk memilih target cepat, atau klik tombol merah untuk mengeluarkan pemain yang lag:
                             </span>
                             {room.status === 'finished' && room.winnerId ? (
                               <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
@@ -1696,9 +1927,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                   'Selesai'}
                               </span>
                             ) : room.designatedWinnerId ? (
-                              <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">
-                                <Crown className="w-3.5 h-3.5 text-emerald-400" />
-                                Target Rahasia:{' '}
+                              <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
+                                <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                Aura Emas Override:{' '}
                                 {room.players.find((pl) => pl.id === room.designatedWinnerId)?.name ||
                                   'Aktif'}
                               </span>
@@ -1714,81 +1945,176 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                               const isSelectedCandidate =
                                 winnerCandidate?.room.code === room.code &&
                                 winnerCandidate.player.id === p.id;
+                              const isSelectedKick =
+                                kickCandidate?.room.code === room.code &&
+                                kickCandidate.player.id === p.id;
+                              const isLagging = !p.connected || p.pingMs >= 250;
                               return (
-                                <button
+                                <div
                                   key={p.id}
-                                  type="button"
-                                  disabled={
-                                    isCurrentWinner ||
-                                    room.status === 'finished' ||
-                                    declaringWinnerKey !== null
-                                  }
-                                  onClick={() => {
-                                    setConfirmCloseCode(null);
-                                    setWinnerCandidate(
-                                      isSelectedCandidate
-                                        ? null
-                                        : { room, player: p },
-                                    );
-                                  }}
-                                  className={`group text-left flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-xs transition-colors ${
-                                    isCurrentWinner
-                                      ? 'border-amber-400/70 bg-amber-500/15 cursor-default'
-                                      : isDesignatedTarget
-                                        ? 'border-emerald-400/70 bg-emerald-500/15 ring-1 ring-emerald-400/40 cursor-pointer'
-                                        : isSelectedCandidate
-                                          ? 'border-amber-400 bg-amber-500/20 ring-1 ring-amber-400/50 cursor-pointer'
-                                          : 'border-slate-800/90 bg-slate-950/60 hover:border-amber-400/50 hover:bg-slate-900 cursor-pointer'
+                                  className={`group flex items-stretch gap-1.5 rounded-lg border transition-all ${
+                                    isSelectedKick
+                                      ? 'border-rose-400 bg-rose-500/15 ring-1 ring-rose-400/50'
+                                      : isCurrentWinner
+                                        ? 'border-amber-400/70 bg-amber-500/15'
+                                        : isDesignatedTarget
+                                          ? 'border-amber-400 bg-gradient-to-br from-amber-500/20 via-amber-400/10 to-slate-950 ring-1 ring-amber-300/65 shadow-[0_0_22px_rgba(251,191,36,0.34)]'
+                                          : isSelectedCandidate
+                                            ? 'border-amber-400 bg-amber-500/20 ring-1 ring-amber-400/50'
+                                            : 'border-slate-800/90 bg-slate-950/60 hover:border-amber-400/50 hover:bg-slate-900'
                                   }`}
-                                  title={
-                                    isCurrentWinner
-                                      ? `${p.name} adalah pemenang room ini`
-                                      : isDesignatedTarget
-                                        ? `${p.name} sedang menjadi target pemenang rahasia`
-                                        : `Klik untuk menargetkan ${p.name} sebagai pemenang rahasia`
-                                  }
                                 >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <ArchetypeEmblem
-                                      archetypeIndex={p.archetypeIndex ?? 0}
-                                      className="w-5 h-5 shrink-0"
-                                    />
-                                    <div className="min-w-0">
-                                      <div className="font-semibold text-slate-100 truncate flex items-center gap-1">
-                                        <span className="truncate">
-                                          {p.name}
-                                          {p.id === room.hostId ? ' (Host)' : ''}
-                                        </span>
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      isCurrentWinner ||
+                                      room.status === 'finished' ||
+                                      declaringWinnerKey !== null
+                                    }
+                                    onClick={() => {
+                                      setConfirmCloseCode(null);
+                                      setKickCandidate(null);
+                                      setWinnerCandidate(
+                                        isSelectedCandidate
+                                          ? null
+                                          : { room, player: p },
+                                      );
+                                    }}
+                                    className={`flex-1 min-w-0 text-left flex items-center justify-between gap-2 px-3 py-2.5 text-xs ${
+                                      isCurrentWinner || room.status === 'finished'
+                                        ? 'cursor-default'
+                                        : 'cursor-pointer'
+                                    }`}
+                                    title={
+                                      isCurrentWinner
+                                        ? `${p.name} adalah pemenang room ini`
+                                        : isDesignatedTarget
+                                          ? `${p.name} sedang dilindungi Aura Emas (Target Winner Override)`
+                                          : `Klik untuk menargetkan ${p.name} sebagai pemenang rahasia`
+                                    }
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div
+                                        className={`relative flex items-center justify-center shrink-0 rounded-full transition-all ${
+                                          isDesignatedTarget
+                                            ? 'w-8 h-8 border-2 border-amber-300 bg-amber-500/25 shadow-[0_0_16px_rgba(251,191,36,0.72)]'
+                                            : isCurrentWinner
+                                              ? 'w-7 h-7 border border-amber-400/70 bg-amber-500/15'
+                                              : 'w-6 h-6'
+                                        }`}
+                                      >
+                                        <ArchetypeEmblem
+                                          archetypeIndex={p.archetypeIndex ?? 0}
+                                          className={
+                                            isDesignatedTarget ? 'w-5 h-5 shrink-0' : 'w-5 h-5 shrink-0'
+                                          }
+                                        />
                                       </div>
-                                      <div className="font-mono-num text-[10px] text-slate-400">
-                                        {p.connected ? `Online · ${p.pingMs}ms` : 'Terputus'}
-                                        {room.boardMode === 'team' && p.team
-                                          ? ` · Tim ${p.team}`
-                                          : ''}
+                                      <div className="min-w-0">
+                                        <div className="font-semibold text-slate-100 truncate flex items-center gap-1">
+                                          <span className="truncate">
+                                            {p.name}
+                                            {p.id === room.hostId ? ' (Host)' : ''}
+                                          </span>
+                                        </div>
+                                        <div
+                                          className={`font-mono-num text-[10px] ${
+                                            isLagging ? 'text-rose-300 font-semibold' : 'text-slate-400'
+                                          }`}
+                                        >
+                                          {p.connected ? `Online · ${p.pingMs}ms` : 'Terputus / Lag'}
+                                          {room.boardMode === 'team' && p.team
+                                            ? ` · Tim ${p.team}`
+                                            : ''}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
 
-                                  <div className="text-right font-mono-num shrink-0">
-                                    {isCurrentWinner ? (
-                                      <span className="inline-flex items-center gap-1 font-bold text-amber-300">
-                                        <Crown className="w-3.5 h-3.5 text-amber-400" />
-                                        Menang
-                                      </span>
-                                    ) : isDesignatedTarget ? (
-                                      <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
-                                        <Crown className="w-3.5 h-3.5 text-emerald-400" />
-                                        Target
-                                      </span>
-                                    ) : (
-                                      <div className="font-bold text-amber-300">P{p.tile}</div>
-                                    )}
-                                    <div className="text-[10px] text-slate-400">{p.score} pts</div>
-                                  </div>
-                                </button>
+                                    <div className="text-right font-mono-num shrink-0">
+                                      {isCurrentWinner ? (
+                                        <span className="inline-flex items-center gap-1 font-bold text-amber-300">
+                                          <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                          Menang
+                                        </span>
+                                      ) : isDesignatedTarget ? (
+                                        <span className="inline-flex items-center gap-1 font-bold text-amber-200">
+                                          <Crown className="w-3.5 h-3.5 text-amber-300" />
+                                          Aura Emas
+                                        </span>
+                                      ) : (
+                                        <div className="font-bold text-amber-300">P{p.tile}</div>
+                                      )}
+                                      <div className="text-[10px] text-slate-400">{p.score} pts</div>
+                                    </div>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={kickingPlayerKey !== null}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmCloseCode(null);
+                                      setWinnerCandidate(null);
+                                      setKickCandidate(
+                                        isSelectedKick ? null : { room, player: p },
+                                      );
+                                    }}
+                                    title={`Keluarkan ${p.name} dari Room #${room.code} (lag / moderasi)`}
+                                    aria-label={`Keluarkan ${p.name}`}
+                                    className={`px-2.5 flex items-center justify-center border-l transition-colors cursor-pointer disabled:opacity-50 rounded-r-lg ${
+                                      isSelectedKick
+                                        ? 'border-rose-400/50 bg-rose-600 text-white'
+                                        : 'border-slate-800/80 text-rose-300 hover:bg-rose-600/25 hover:text-rose-100'
+                                    }`}
+                                  >
+                                    <UserMinus className="w-4 h-4" />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
+
+                          {/* Inline 2-Step Confirmation Bar to Kick a Lagging / Disruptive Player */}
+                          {kickCandidate?.room.code === room.code && (
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-rose-500/45 bg-rose-500/10 px-3.5 py-2.5 text-xs">
+                              <div className="space-y-0.5 min-w-0">
+                                <div className="flex items-center gap-2 text-rose-100 min-w-0">
+                                  <UserMinus className="w-4 h-4 text-rose-400 shrink-0" />
+                                  <span className="truncate">
+                                    Keluarkan{' '}
+                                    <strong className="text-white">
+                                      {kickCandidate.player.name}
+                                    </strong>{' '}
+                                    dari Room #{room.code}?
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-300 pl-6">
+                                  Berguna saat pemain ngelag / terputus. Giliran akan langsung diteruskan ke pemain berikutnya tanpa membuat room macet.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={kickingPlayerKey !== null}
+                                  onClick={() =>
+                                    void handleConfirmKickPlayer(room, kickCandidate.player)
+                                  }
+                                  className="min-h-[34px] rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-50 cursor-pointer"
+                                >
+                                  {kickingPlayerKey === `${room.code}:${kickCandidate.player.id}`
+                                    ? 'Mengeluarkan...'
+                                    : 'Ya, Keluarkan Pemain'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setKickCandidate(null)}
+                                  className="min-h-[34px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:text-white cursor-pointer"
+                                >
+                                  Batal
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Inline 2-Step Confirmation Bar to Set or Clear Stealth Winner Target */}
                           {winnerCandidate?.room.code === room.code && (
@@ -1817,7 +2143,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-slate-300 pl-6">
-                                  Permainan tetap berjalan normal; lawan lebih sering terkena ular tanpa ada notifikasi di chat atau pemain.
+                                  Mode Optimal Aktif: Pemain terpilih 100% aman dari ular, kutukan, &amp; dorongan duel serta terus diarahkan naik tangga menuju kemenangan, sedangkan lawan terus diarahkan terkena ular — tetap rahasia tanpa notifikasi di chat.
                                 </p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">

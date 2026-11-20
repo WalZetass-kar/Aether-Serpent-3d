@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import type { BoardConfig } from '../../shared/boardThemes';
 import type { BoardGameMode, DiceSkinId, PlayerState } from '../../shared/gameConfig';
-import { DICE_SKINS, isDiceSkinUnlocked } from '../../shared/gameConfig';
+import { DICE_SKINS, PLAYER_ARCHETYPES, STARTER_PAWN_INDICES, isDiceSkinUnlocked } from '../../shared/gameConfig';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import type { PlayerProfile } from './storageService';
 
@@ -60,7 +60,9 @@ export async function loadProfileFromFirebase(user: User): Promise<Partial<Playe
       playerId: user.uid,
       name: sanitizeDisplayName(typeof data.displayName === 'string' ? data.displayName : user.displayName),
       archetypeIndex:
-        typeof data.archetypeIndex === 'number' && data.archetypeIndex >= 0 && data.archetypeIndex <= 3
+        typeof data.archetypeIndex === 'number' &&
+        data.archetypeIndex >= 0 &&
+        data.archetypeIndex < PLAYER_ARCHETYPES.length
           ? Math.floor(data.archetypeIndex)
           : 0,
       diceSkinId: resolvedSkin,
@@ -100,6 +102,22 @@ export async function loadProfileFromFirebase(user: User): Promise<Partial<Playe
               .slice(0, 30),
           }
         : {}),
+      ...(Array.isArray(data.unlockedPawnIndices)
+        ? {
+            unlockedPawnIndices: Array.from(
+              new Set([
+                ...STARTER_PAWN_INDICES,
+                ...data.unlockedPawnIndices.filter(
+                  (v): v is number =>
+                    typeof v === 'number' &&
+                    Number.isInteger(v) &&
+                    v >= 0 &&
+                    v < PLAYER_ARCHETYPES.length,
+                ),
+              ]),
+            ).sort((a, b) => a - b),
+          }
+        : {}),
     };
   } catch (err) {
     handleFirestoreError(err, OperationType.GET, path);
@@ -121,7 +139,10 @@ export async function syncProfileToFirebase(
   const publicRef = doc(db, 'publicProfiles', user.uid);
 
   const safeName = sanitizeDisplayName(profile.name || user.displayName);
-  const safeArch = Math.min(3, Math.max(0, Math.floor(profile.archetypeIndex || 0)));
+  const safeArch = Math.min(
+    PLAYER_ARCHETYPES.length - 1,
+    Math.max(0, Math.floor(profile.archetypeIndex || 0)),
+  );
   const safeAchievements = (profile.unlockedAchievements || []).slice(0, 24);
   const safeBoardId = sanitizeBoardId(selectedBoardId);
   const safeLoginStreak = Math.max(1, Math.floor(profile.loginStreak || 1));
@@ -130,6 +151,17 @@ export async function syncProfileToFirebase(
   const safeUnlockedBoards = (profile.unlockedBoardIds || [])
     .filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 64)
     .slice(0, 30);
+  const safeUnlockedPawns = Array.from(
+    new Set([
+      ...STARTER_PAWN_INDICES,
+      ...(profile.unlockedPawnIndices || []).filter(
+        (n): n is number =>
+          typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < PLAYER_ARCHETYPES.length,
+      ),
+    ]),
+  )
+    .sort((a, b) => a - b)
+    .slice(0, PLAYER_ARCHETYPES.length);
 
   try {
     const existingSnap = await getDoc(userRef);
@@ -159,6 +191,7 @@ export async function syncProfileToFirebase(
         selectedBoardId: safeBoardId,
         aetherCoins: safeAetherCoins,
         unlockedBoardIds: safeUnlockedBoards,
+        unlockedPawnIndices: safeUnlockedPawns,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -186,6 +219,7 @@ export async function syncProfileToFirebase(
         selectedBoardId: safeBoardId,
         aetherCoins: safeAetherCoins,
         unlockedBoardIds: safeUnlockedBoards,
+        unlockedPawnIndices: safeUnlockedPawns,
         updatedAt: serverTimestamp(),
       });
     }
@@ -358,7 +392,10 @@ export async function syncActiveRoomToFirebase(
   const safePlayers = room.players.slice(0, 4).map((p) => ({
     id: String(p.id || '').slice(0, 128),
     name: String(p.name || 'Pemain').slice(0, 40),
-    archetypeIndex: Math.min(3, Math.max(0, Math.floor(p.archetypeIndex || 0))),
+    archetypeIndex: Math.min(
+      PLAYER_ARCHETYPES.length - 1,
+      Math.max(0, Math.floor(p.archetypeIndex || 0)),
+    ),
     tile: Math.max(1, Math.min(100, Math.floor(p.tile || 1))),
     score: Math.max(0, Math.floor(p.score || 0)),
     shields: Math.max(0, Math.floor(p.shields || 0)),
@@ -436,7 +473,7 @@ export async function fetchPublicActiveRoomsFromFirebase(): Promise<
     const snap = await getDocs(
       query(collection(db, 'activeRooms'), where('isPublic', '==', true), limit(40)),
     );
-    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    const cutoff = Date.now() - 2 * 60 * 1000;
     const out: Array<{
       code: string;
       name: string;

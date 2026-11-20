@@ -237,6 +237,126 @@ function getBiomePalette(themeId: BoardConfig['themeId']): {
         moatFoam: [0.82, 0.94, 1.0],
         moatBaseHex: 0x4f46e5,
       };
+    case 'crimson_bloodmoon':
+      return {
+        courtyard: 0x2b0d14,
+        riverbed: 0x170509,
+        primaryGround: 0x3b111a,
+        secondaryGround: 0x5c1824,
+        cliff: 0x291318,
+        moatDeep: [0.28, 0.02, 0.06],
+        moatShallow: [0.76, 0.1, 0.2],
+        moatFoam: [1.0, 0.65, 0.72],
+        moatBaseHex: 0x9f1239,
+      };
+    case 'cyber_neon_citadel':
+      return {
+        courtyard: 0x0f172a,
+        riverbed: 0x050918,
+        primaryGround: 0x111c3a,
+        secondaryGround: 0x1e1b4b,
+        cliff: 0x1e293b,
+        moatDeep: [0.02, 0.14, 0.36],
+        moatShallow: [0.04, 0.76, 0.92],
+        moatFoam: [0.95, 0.45, 0.98],
+        moatBaseHex: 0x06b6d4,
+      };
+    case 'mystic_fungi_grove':
+      return {
+        courtyard: 0x112b2c,
+        riverbed: 0x071a1f,
+        primaryGround: 0x133835,
+        secondaryGround: 0x2b2452,
+        cliff: 0x1e2d3b,
+        moatDeep: [0.02, 0.22, 0.28],
+        moatShallow: [0.12, 0.78, 0.66],
+        moatFoam: [0.78, 0.98, 0.92],
+        moatBaseHex: 0x14b8a6,
+      };
+    case 'golden_pharaoh_vault':
+      return {
+        courtyard: 0x3b2c14,
+        riverbed: 0x1c1408,
+        primaryGround: 0x543c19,
+        secondaryGround: 0x855e24,
+        cliff: 0x47361c,
+        moatDeep: [0.22, 0.14, 0.02],
+        moatShallow: [0.84, 0.62, 0.12],
+        moatFoam: [1.0, 0.95, 0.68],
+        moatBaseHex: 0xd97706,
+      };
+    case 'storm_titan_peak':
+      return {
+        courtyard: 0x1e293b,
+        riverbed: 0x0f172a,
+        primaryGround: 0x27364f,
+        secondaryGround: 0x3b4f70,
+        cliff: 0x334155,
+        moatDeep: [0.04, 0.12, 0.28],
+        moatShallow: [0.22, 0.56, 0.96],
+        moatFoam: [0.96, 0.92, 0.62],
+        moatBaseHex: 0x2563eb,
+      };
+    case 'crystal_rose_cathedral':
+      return {
+        courtyard: 0x38192f,
+        riverbed: 0x210c1c,
+        primaryGround: 0x4c2140,
+        secondaryGround: 0x753463,
+        cliff: 0x4a2c42,
+        moatDeep: [0.24, 0.06, 0.2],
+        moatShallow: [0.85, 0.36, 0.62],
+        moatFoam: [1.0, 0.9, 0.96],
+        moatBaseHex: 0xdb2777,
+      };
+    case 'solar_phoenix_sanctum':
+      return {
+        courtyard: 0x421d0f,
+        riverbed: 0x240c05,
+        primaryGround: 0x5c2710,
+        secondaryGround: 0x913c14,
+        cliff: 0x4a2415,
+        moatDeep: [0.42, 0.08, 0.02],
+        moatShallow: [0.98, 0.48, 0.08],
+        moatFoam: [1.0, 0.94, 0.55],
+        moatBaseHex: 0xea580c,
+      };
+    case 'abyssal_kraken_trench':
+      return {
+        courtyard: 0x0a1e2e,
+        riverbed: 0x040d17,
+        primaryGround: 0x0b2638,
+        secondaryGround: 0x113d4d,
+        cliff: 0x142738,
+        moatDeep: [0.01, 0.1, 0.22],
+        moatShallow: [0.04, 0.52, 0.58],
+        moatFoam: [0.58, 0.98, 0.9],
+        moatBaseHex: 0x0e7490,
+      };
+    case 'celestial_dragon_throne':
+      return {
+        courtyard: 0x162b2b,
+        riverbed: 0x09171a,
+        primaryGround: 0x1b3a3a,
+        secondaryGround: 0x2d5952,
+        cliff: 0x26383b,
+        moatDeep: [0.03, 0.18, 0.22],
+        moatShallow: [0.16, 0.64, 0.56],
+        moatFoam: [1.0, 0.92, 0.64],
+        moatBaseHex: 0x0d9488,
+      };
+    case 'aether_infinity_nexus':
+      return {
+        courtyard: 0x181038,
+        riverbed: 0x09051c,
+        primaryGround: 0x23144f,
+        secondaryGround: 0x3b1f7a,
+        cliff: 0x2c1b59,
+        moatDeep: [0.1, 0.04, 0.34],
+        moatShallow: [0.38, 0.36, 0.96],
+        moatFoam: [0.98, 0.92, 1.0],
+        moatBaseHex: 0x6366f1,
+      };
     case 'enchanted_forest':
     default:
       return {

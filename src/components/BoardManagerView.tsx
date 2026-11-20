@@ -26,6 +26,7 @@ import {
   Target,
   Trash2,
   Unlock,
+  UserCheck,
   Wand2,
   X,
 } from 'lucide-react';
@@ -67,10 +68,11 @@ import { FantasyBoardEngine, type TileInspectInfo } from '../three/FantasyBoardE
 import type { DiceSkinId } from '../../shared/gameConfig';
 import type { GraphicsPreferences } from '../three/perf/qualityPresets';
 import { BoardUnlockedOverlay } from './BoardUnlockedOverlay';
+import { PawnShowcase } from './PawnShowcase';
 import { TopUpAdminChatModal } from './TopUpAdminChatModal';
 
 interface BoardManagerViewProps {
-  initialTab?: 'collection' | 'creator';
+  initialTab?: 'collection' | 'creator' | 'pawns';
   graphicsPrefs: GraphicsPreferences;
   diceSkinId: DiceSkinId;
   profile: PlayerProfile;
@@ -132,7 +134,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   onBoardSelectionChanged,
 }) => {
   const [collection, setCollection] = useState<BoardCollectionState>(() => loadBoardCollection());
-  const [activeModeTab, setActiveModeTab] = useState<'collection' | 'creator'>(initialTab);
+  const [activeModeTab, setActiveModeTab] = useState<'collection' | 'creator' | 'pawns'>(initialTab);
   const [category, setCategory] = useState<CollectionCategory>('all');
   const [creatorSection, setCreatorSection] = useState<CreatorSection>('board');
   const [unlockGuideBoard, setUnlockGuideBoard] = useState<BoardConfig | null>(null);
@@ -203,8 +205,11 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   const activeBoardRef = useRef<BoardConfig>(active3DBoard);
   activeBoardRef.current = active3DBoard;
 
-  // Mount live 3D preview engine
+  // Mount live 3D preview engine (skipped on 'pawns' tab so PawnShowcase has dedicated WebGL canvas)
   useEffect(() => {
+    if (activeModeTab === 'pawns') {
+      return;
+    }
     const container = previewContainerRef.current;
     if (!container) return;
 
@@ -246,7 +251,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
       engine.dispose();
       engineRef.current = null;
     };
-  }, [engineMountKey]);
+  }, [engineMountKey, activeModeTab]);
 
   // Smartly debounced live-update of 3D preview whenever visual configuration changes
   useEffect(() => {
@@ -717,7 +722,9 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
               )}
             </div>
             <h1 className="font-display text-sm sm:text-xl font-bold text-gold-gradient truncate">
-              Koleksi Papan & 3D Creator
+              {activeModeTab === 'pawns'
+                ? 'Toko & Pratinjau Pion 3D'
+                : 'Koleksi Papan & 3D Creator'}
             </h1>
           </div>
         </div>
@@ -744,7 +751,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveModeTab('collection')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'collection'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -756,7 +763,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveModeTab('creator')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3.5 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'creator'
                   ? 'bg-amber-500 text-slate-950 shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -765,11 +772,25 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
               <Wand2 className="w-3.5 h-3.5 shrink-0" />
               <span>3D Creator</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveModeTab('pawns')}
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                activeModeTab === 'pawns'
+                  ? 'bg-sky-500 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>Pion (14)</span>
+            </button>
           </div>
 
           <button
             type="button"
-            onClick={() => handlePlayBoard(active3DBoard)}
+            onClick={() =>
+              handlePlayBoard(activeModeTab === 'pawns' ? selectedBoard : active3DBoard)
+            }
             className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold shadow-lg transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
               activeModeTab === 'collection' && !activePreviewStatus.unlocked
                 ? activePreviewStatus.canClaimMission
@@ -800,8 +821,16 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
         </div>
       </header>
 
-      {/* Main Split Workspace: Top 3D Preview on Mobile / Right 5-col 3D Preview on Desktop */}
-      <div className="relative flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden">
+      {/* Main Split Workspace */}
+      {activeModeTab === 'pawns' ? (
+        <PawnShowcase
+          profile={profile}
+          onUpdateProfile={onUpdateProfile}
+          onOpenTopUpChat={(itemName) => handleOpenTopUpChat(itemName)}
+          onNotify={onNotify}
+        />
+      ) : (
+        <div className="relative flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden">
         {/* Left Control Column (7 cols on desktop, scrollable bottom panel on mobile) */}
         <div className="order-2 lg:order-1 flex-1 lg:col-span-7 lg:h-full flex flex-col min-h-0 border-r border-slate-800/80 bg-slate-950/95 overflow-y-auto custom-scroll p-3 sm:p-5 space-y-3.5 sm:space-y-4">
           {activeModeTab === 'collection' ? (
@@ -2877,6 +2906,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* Modal 1: Panduan Buka Papan Terkunci (Misi & Premium) */}
       {unlockGuideBoard && (() => {

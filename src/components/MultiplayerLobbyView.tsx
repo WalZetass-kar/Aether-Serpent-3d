@@ -15,6 +15,7 @@ import {
   Send,
   Share2,
   Shield,
+  ShoppingBag,
   Sparkles,
   Swords,
   Unlock,
@@ -31,6 +32,7 @@ import {
   ONLINE_TURN_TIMEOUT_SEC,
   PLAYER_ARCHETYPES,
   TIME_ATTACK_DEFAULT_SEC,
+  isPawnUnlocked,
   type BoardGameMode,
   type PlayerState,
   type TeamId,
@@ -76,10 +78,12 @@ interface MultiplayerLobbyViewProps {
   defaultBoardMode?: BoardGameMode;
   defaultPlayerName: string;
   defaultArchetypeIndex: number;
+  unlockedPawnIndices?: number[];
   isOnlineNetwork: boolean;
   muted: boolean;
   onlineLobby: OnlineLobbyState;
   onBack: () => void;
+  onOpenPawnShowcase?: () => void;
   onToggleMute: () => void;
   onOpenCameraSettings: () => void;
   onOnlineCreateRoom: (opts: {
@@ -380,10 +384,12 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
   defaultBoardMode = 'classic',
   defaultPlayerName,
   defaultArchetypeIndex,
+  unlockedPawnIndices,
   isOnlineNetwork,
   muted,
   onlineLobby,
   onBack,
+  onOpenPawnShowcase,
   onToggleMute,
   onOpenCameraSettings,
   onOnlineCreateRoom,
@@ -774,16 +780,30 @@ export const MultiplayerLobbyView: React.FC<MultiplayerLobbyViewProps> = ({
                 />
               </div>
               <div className="md:col-span-7 min-w-0">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                   <label className="block text-xs font-semibold text-slate-300">
                     Bidak Pahlawan
                   </label>
-                  <span className="text-[11px] font-semibold text-amber-300 truncate">
-                    {PLAYER_ARCHETYPES[archetypeIndex % PLAYER_ARCHETYPES.length]?.title}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-amber-300 truncate">
+                      {PLAYER_ARCHETYPES[archetypeIndex % PLAYER_ARCHETYPES.length]?.title}
+                    </span>
+                    {onOpenPawnShowcase && (
+                      <button
+                        type="button"
+                        onClick={onOpenPawnShowcase}
+                        className="inline-flex items-center gap-1 rounded-lg border border-sky-500/45 bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-200 hover:bg-sky-500/25 cursor-pointer whitespace-nowrap"
+                      >
+                        <ShoppingBag className="w-3 h-3" />
+                        <span>Toko Pion 3D</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
-                  {PLAYER_ARCHETYPES.map((a) => {
+                  {PLAYER_ARCHETYPES.filter((a) =>
+                    isPawnUnlocked(a.archetypeIndex, unlockedPawnIndices),
+                  ).map((a) => {
                     const selected = archetypeIndex === a.archetypeIndex;
                     return (
                       <button

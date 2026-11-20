@@ -17,6 +17,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  ShoppingBag,
   SlidersHorizontal,
   Sparkles,
   Swords,
@@ -33,6 +34,7 @@ import type { User } from 'firebase/auth';
 import {
   BOARD_GAME_MODES,
   PLAYER_ARCHETYPES,
+  isPawnUnlocked,
   type BoardGameMode,
 } from '../../shared/gameConfig';
 import type { PlayerProfile } from '../services/storageService';
@@ -58,7 +60,7 @@ interface MainMenuViewProps {
   onOpenLeaderboard: () => void;
   onOpenAchievements: () => void;
   onOpenCloud: () => void;
-  onOpenBoardManager: (tab?: 'collection' | 'creator') => void;
+  onOpenBoardManager: (tab?: 'collection' | 'creator' | 'pawns') => void;
   onOpenOracleAI?: () => void;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
@@ -557,7 +559,9 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5">
-                  {PLAYER_ARCHETYPES.map((arch) => (
+                  {PLAYER_ARCHETYPES.filter((arch) =>
+                    isPawnUnlocked(arch.archetypeIndex, profile.unlockedPawnIndices),
+                  ).map((arch) => (
                     <button
                       key={arch.archetypeIndex}
                       type="button"
@@ -579,6 +583,25 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                     </button>
                   ))}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSidebarOpen(false);
+                    onOpenBoardManager('pawns');
+                  }}
+                  className="w-full flex items-center justify-between gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 px-3 py-2.5 text-left hover:bg-sky-500/20 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ShoppingBag className="w-4 h-4 text-sky-300 shrink-0" />
+                    <span className="text-xs font-bold text-sky-200 truncate">
+                      Toko &amp; Pratinjau Pion 3D (10 Pion Baru)
+                    </span>
+                  </div>
+                  <span className="font-mono-num text-[11px] font-semibold text-amber-300 shrink-0">
+                    {(profile.unlockedPawnIndices ?? [0, 1, 2, 3]).length}/{PLAYER_ARCHETYPES.length}
+                  </span>
+                </button>
               </form>
 
               {/* 2. Asisten Strategi Oracle Aether AI */}

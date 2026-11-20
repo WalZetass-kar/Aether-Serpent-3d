@@ -28,6 +28,7 @@ import {
   rooms,
   serializeRoom,
   tickRoomsMaintenance,
+  touchRoomActivity,
   type RoomChatLog,
 } from './shared/mpServerCore.ts';
 
@@ -190,8 +191,14 @@ async function startServer() {
         );
         const usedIndices = new Set(room.players.map((p) => p.archetypeIndex));
         let archetypeIndex = Number(msg.archetypeIndex);
-        if (!Number.isInteger(archetypeIndex) || usedIndices.has(archetypeIndex)) {
-          archetypeIndex = [0, 1, 2, 3].find((idx) => !usedIndices.has(idx)) ?? 0;
+        if (
+          !Number.isInteger(archetypeIndex) ||
+          archetypeIndex < 0 ||
+          archetypeIndex >= PLAYER_ARCHETYPES.length ||
+          usedIndices.has(archetypeIndex)
+        ) {
+          archetypeIndex =
+            PLAYER_ARCHETYPES.map((a) => a.archetypeIndex).find((idx) => !usedIndices.has(idx)) ?? 0;
         }
         const arch = PLAYER_ARCHETYPES[archetypeIndex];
 
@@ -221,6 +228,7 @@ async function startServer() {
         room.clients.set(playerId, ws);
         attachedRoomCode = code;
         attachedPlayerId = playerId;
+        touchRoomActivity(room);
 
         ws.send(JSON.stringify({ type: 'room:joined', playerId, room: serializeRoom(room) }));
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
@@ -260,6 +268,7 @@ async function startServer() {
         );
         if (player && room.status === 'lobby') {
           player.ready = player.id === room.hostId ? true : Boolean(msg.ready);
+          touchRoomActivity(room);
           broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         }
         return;
@@ -270,6 +279,7 @@ async function startServer() {
           room.players.forEach((p) => {
             p.ready = true;
           });
+          touchRoomActivity(room);
           broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         }
         return;
@@ -282,6 +292,7 @@ async function startServer() {
         const player = room.players.find((p) => p.id === targetId);
         if (player) {
           player.team = msg.team === 'B' ? 'B' : 'A';
+          touchRoomActivity(room);
           broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         }
         return;
@@ -301,6 +312,7 @@ async function startServer() {
         if (Number.isFinite(Number(msg.timeLimitSec))) {
           room.timeLimitSec = Math.max(60, Math.min(600, Number(msg.timeLimitSec)));
         }
+        touchRoomActivity(room);
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         return;
       }
@@ -320,6 +332,7 @@ async function startServer() {
         if (!room.kickedPlayerIds.includes(targetId)) {
           room.kickedPlayerIds.push(targetId);
         }
+        touchRoomActivity(room);
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         return;
       }
@@ -331,6 +344,7 @@ async function startServer() {
         if (target) {
           room.hostId = target.id;
           target.ready = true;
+          touchRoomActivity(room);
           broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         }
         return;
@@ -371,6 +385,7 @@ async function startServer() {
           p.battleHits = 0;
           if (!p.team) p.team = idx % 2 === 0 ? 'A' : 'B';
         });
+        touchRoomActivity(room);
         broadcastRoom(room, { type: 'room:started', room: serializeRoom(room) });
         return;
       }
@@ -411,6 +426,7 @@ async function startServer() {
           p.shieldsUsed = 0;
           p.battleHits = 0;
         });
+        touchRoomActivity(room);
         broadcastRoom(room, { type: 'room:started', room: serializeRoom(room) });
         return;
       }
@@ -428,6 +444,7 @@ async function startServer() {
             timestamp: ts,
           };
           room.chatMessages = [...room.chatMessages.slice(-23), chatEntry];
+          touchRoomActivity(room);
           broadcastRoom(room, {
             type: 'room:chat_msg',
             senderId: player.id,

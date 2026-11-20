@@ -8,6 +8,7 @@ import {
   Lock,
   Play,
   Shield,
+  ShoppingBag,
   Shuffle,
   Sparkles,
   Swords,
@@ -23,6 +24,7 @@ import {
   TIME_ATTACK_DEFAULT_SEC,
   disambiguatePlayerName,
   isDiceSkinUnlocked,
+  isPawnUnlocked,
   type BoardGameMode,
   type DiceSkinId,
   type DifficultyMode,
@@ -73,7 +75,7 @@ interface GameConfigViewProps {
     boardMode: BoardGameMode,
     timeLimitSec: number,
   ) => void;
-  onOpenBoardManager?: (tab?: 'collection' | 'creator') => void;
+  onOpenBoardManager?: (tab?: 'collection' | 'creator' | 'pawns') => void;
 }
 
 const CAMERA_MODES: Array<{ id: CameraMode; label: string }> = [
@@ -324,11 +326,25 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-2">
-                Pilih Bidak Pahlawan
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <label className="block text-xs font-semibold text-slate-300">
+                  Pilih Bidak Pahlawan
+                </label>
+                {onOpenBoardManager && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenBoardManager('pawns')}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/45 bg-sky-500/15 px-2.5 py-1 text-[11px] font-bold text-sky-200 hover:bg-sky-500/25 cursor-pointer whitespace-nowrap"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5 text-sky-300" />
+                    <span>Toko &amp; Pratinjau Pion 3D (10 Baru)</span>
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
-                {PLAYER_ARCHETYPES.map((arch) => (
+                {PLAYER_ARCHETYPES.filter((arch) =>
+                  isPawnUnlocked(arch.archetypeIndex, profile.unlockedPawnIndices),
+                ).map((arch) => (
                   <button
                     key={arch.archetypeIndex}
                     type="button"

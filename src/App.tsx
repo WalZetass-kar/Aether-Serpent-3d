@@ -5,6 +5,7 @@ import {
   DICE_SKINS,
   ONLINE_TURN_TIMEOUT_SEC,
   PLAYER_ARCHETYPES,
+  STARTER_PAWN_INDICES,
   TIME_ATTACK_DEFAULT_SEC,
   applyTurnEffectsToPlayers,
   buildJumpMap,
@@ -70,7 +71,7 @@ import {
   syncCustomBoardToFirebase,
   syncProfileToFirebase,
 } from './services/firebaseAccountService';
-import { isAdminAccount } from './services/adminService';
+import { fetchAdminServerOverview, isAdminAccount } from './services/adminService';
 import {
   acknowledgeCoinGift,
   subscribeToPendingCoinGifts,
@@ -245,7 +246,7 @@ export default function App() {
   const [multiplayerTabIntent, setMultiplayerTabIntent] = useState<'create' | 'join'>(
     hasInitialRoom ? 'join' : 'create',
   );
-  const [boardManagerTab, setBoardManagerTab] = useState<'collection' | 'creator'>('collection');
+  const [boardManagerTab, setBoardManagerTab] = useState<'collection' | 'creator' | 'pawns'>('collection');
   const [boardManagerReturnScreen, setBoardManagerReturnScreen] =
     useState<AppScreen>('main_menu');
   const [activeBoardConfig, setActiveBoardConfig] = useState<BoardConfig>(() =>
@@ -566,37 +567,59 @@ export default function App() {
       lastSyncedWalletRef.current = null;
       return;
     }
-    return subscribeToUserWalletSync(user, ({ aetherCoins, unlockedBoardIds }) => {
-      const current = profileWalletRef.current;
-      const prevCoins = current.aetherCoins ?? 0;
-      const mergedUnlocked = Array.from(
-        new Set([...(current.unlockedBoardIds ?? []), ...unlockedBoardIds]),
-      );
-      const prevBoardsKey = [...(current.unlockedBoardIds ?? [])].sort().join(',');
-      const nextBoardsKey = [...mergedUnlocked].sort().join(',');
-      const coinsChanged = aetherCoins !== prevCoins;
-      const boardsAdded = mergedUnlocked.length > (current.unlockedBoardIds?.length ?? 0);
+    return subscribeToUserWalletSync(
+      user,
+      ({ aetherCoins, unlockedBoardIds, unlockedPawnIndices }) => {
+        const current = profileWalletRef.current;
+        const prevCoins = current.aetherCoins ?? 0;
+        const mergedUnlocked = Array.from(
+          new Set([...(current.unlockedBoardIds ?? []), ...unlockedBoardIds]),
+        );
+        const mergedPawns = Array.from(
+          new Set([
+            ...STARTER_PAWN_INDICES,
+            ...(current.unlockedPawnIndices ?? []),
+            ...(unlockedPawnIndices ?? []),
+          ]),
+        ).sort((a, b) => a - b);
+        const prevBoardsKey = [...(current.unlockedBoardIds ?? [])].sort().join(',');
+        const nextBoardsKey = [...mergedUnlocked].sort().join(',');
+        const prevPawnsKey = [...(current.unlockedPawnIndices ?? [])].sort((a, b) => a - b).join(',');
+        const nextPawnsKey = mergedPawns.join(',');
+        const coinsChanged = aetherCoins !== prevCoins;
+        const boardsAdded = mergedUnlocked.length > (current.unlockedBoardIds?.length ?? 0);
+        const pawnsChanged = prevPawnsKey !== nextPawnsKey;
 
-      // Initialize baseline on first snapshot so initial load doesn't fire a spurious toast
-      if (!lastSyncedWalletRef.current) {
-        lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
-        if (coinsChanged || prevBoardsKey !== nextBoardsKey) {
-          const next = { ...current, aetherCoins, unlockedBoardIds: mergedUnlocked };
-          saveProfile(next);
-          setProfile(next);
+        // Initialize baseline on first snapshot so initial load doesn't fire a spurious toast
+        if (!lastSyncedWalletRef.current) {
+          lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
+          if (coinsChanged || prevBoardsKey !== nextBoardsKey || pawnsChanged) {
+            const next = {
+              ...current,
+              aetherCoins,
+              unlockedBoardIds: mergedUnlocked,
+              unlockedPawnIndices: mergedPawns,
+            };
+            saveProfile(next);
+            setProfile(next);
+          }
+          return;
         }
-        return;
-      }
 
-      const prevSnapCoins = lastSyncedWalletRef.current.coins;
-      const prevSnapBoardsKey = lastSyncedWalletRef.current.boardsKey;
-      lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
+        const prevSnapCoins = lastSyncedWalletRef.current.coins;
+        const prevSnapBoardsKey = lastSyncedWalletRef.current.boardsKey;
+        lastSyncedWalletRef.current = { coins: aetherCoins, boardsKey: nextBoardsKey };
 
-      if (!coinsChanged && prevBoardsKey === nextBoardsKey) return;
+        if (!coinsChanged && prevBoardsKey === nextBoardsKey && !pawnsChanged) return;
 
-      const next = { ...current, aetherCoins, unlockedBoardIds: mergedUnlocked };
-      saveProfile(next);
-      setProfile(next);
+        const next = {
+          ...current,
+          aetherCoins,
+          unlockedBoardIds: mergedUnlocked,
+          unlockedPawnIndices: mergedPawns,
+        };
+        saveProfile(next);
+        setProfile(next);
 
       const delta = aetherCoins - prevSnapCoins;
       const recentGift = activeGiftNoticeRef.current;
@@ -768,6 +791,13 @@ export default function App() {
           specialTilesHit: Math.max(prev.specialTilesHit, remote?.specialTilesHit ?? 0),
           onlineWins: Math.max(prev.onlineWins, remote?.onlineWins ?? 0),
           unlockedAchievements: mergedAchievements,
+          unlockedPawnIndices: Array.from(
+            new Set([
+              ...STARTER_PAWN_INDICES,
+              ...(prev.unlockedPawnIndices || []),
+              ...(remote?.unlockedPawnIndices || []),
+            ]),
+          ).sort((a, b) => a - b),
           dailyStreak: Math.max(prev.dailyStreak, remote?.dailyStreak ?? 0),
           loginStreak: mergedStreak.loginStreak,
           lastLoginDate: mergedStreak.lastLoginDate,
@@ -985,6 +1015,61 @@ export default function App() {
     const active = players[currentTurnIndex] ?? null;
     engineRef.current?.syncPlayers(players, active ? active.id : null);
   }, [players, currentTurnIndex, isArenaMounted]);
+
+  // Launch celebratory 3D fireworks around the winner's avatar whenever VictoryModal opens
+  useEffect(() => {
+    if (!isArenaMounted) return;
+    if (victoryOpen && winner && screen === 'arena') {
+      engineRef.current?.setVictoryCelebration(winner.id);
+    } else {
+      engineRef.current?.setVictoryCelebration(null);
+    }
+    return () => {
+      engineRef.current?.setVictoryCelebration(null);
+    };
+  }, [victoryOpen, winner, screen, isArenaMounted]);
+
+  // Admin-Only 3D Golden Aura indicator for designated Winner Override in active Online Arena
+  useEffect(() => {
+    if (
+      !isArenaMounted ||
+      screen !== 'arena' ||
+      mode !== 'online' ||
+      !onlineLobby.roomCode ||
+      !isAdminUser ||
+      !user
+    ) {
+      engineRef.current?.setAdminWinnerAura(null);
+      return;
+    }
+
+    let cancelled = false;
+    const roomCodeUpper = onlineLobby.roomCode.trim().toUpperCase();
+
+    const syncAura = async () => {
+      try {
+        const overview = await fetchAdminServerOverview(user);
+        if (cancelled) return;
+        const matched = overview.rooms.find(
+          (r) => r.code.toUpperCase() === roomCodeUpper,
+        );
+        engineRef.current?.setAdminWinnerAura(matched?.designatedWinnerId ?? null);
+      } catch {
+        // Silent non-blocking fallback if admin overview momentarily unavailable
+      }
+    };
+
+    void syncAura();
+    const intervalId = window.setInterval(() => {
+      void syncAura();
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      engineRef.current?.setAdminWinnerAura(null);
+    };
+  }, [isArenaMounted, screen, mode, onlineLobby.roomCode, isAdminUser, user]);
 
   // Finalize match stats, local scores, global leaderboard, achievements, daily quest & cloud sync
   const finalizeMatchProgress = useCallback(
@@ -2840,12 +2925,19 @@ export default function App() {
             defaultBoardMode={selectedBoardMode}
             defaultPlayerName={profile.name}
             defaultArchetypeIndex={profile.archetypeIndex}
+            unlockedPawnIndices={profile.unlockedPawnIndices}
             isOnlineNetwork={isOnline}
             muted={profile.muted}
             onlineLobby={onlineLobby}
             onBack={() => {
               soundEngine.playUiClick();
               navigateMenuLobby('main_menu');
+            }}
+            onOpenPawnShowcase={() => {
+              soundEngine.playUiClick();
+              setBoardManagerTab('pawns');
+              setBoardManagerReturnScreen('multiplayer_lobby');
+              setScreen('board_manager');
             }}
             onToggleMute={() => {
               soundEngine.playUiClick();

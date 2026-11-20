@@ -70,6 +70,7 @@ import {
   type TurnAnimationCallbacks,
 } from './cinematics/AnimationSequenceController';
 import { AetherSparkleSystem } from './cinematics/AetherSparkleSystem';
+import { VictoryFireworksSystem } from './vfx/VictoryFireworks';
 import type { CinematicEvent, CinematicSkillType } from './cinematics/types';
 import { soundEngine } from '../audio/soundEngine';
 
@@ -297,11 +298,14 @@ export class FantasyBoardEngine {
   private pawnArchetypes: Map<string, number> = new Map();
   private pawnTargets: Map<string, THREE.Vector3> = new Map();
   private activeTurnPlayerId: string | null = null;
+  private adminWinnerPlayerId: string | null = null;
   private pendingPlayers: { players: PlayerState[]; activePlayerId: string | null } | null = null;
   private pendingHighlightTile: number | null = null;
   private cameraController: DynamicCameraController;
   private vfxPool: VfxPool;
   private aetherSparkles: AetherSparkleSystem | null = null;
+  private victoryFireworks: VictoryFireworksSystem | null = null;
+  private celebrationWinnerId: string | null = null;
   private sequenceController: AnimationSequenceController | null = null;
 
   // Depth-of-Field, Bloom, SSAO & Anti-Aliased Post-Processing Pipeline
@@ -549,6 +553,7 @@ export class FantasyBoardEngine {
     });
 
     this.setupParticleSystem();
+    this.victoryFireworks = new VictoryFireworksSystem(this.scene);
 
     this.ready = true;
     if (this.pendingPlayers) {
@@ -1435,6 +1440,8 @@ export class FantasyBoardEngine {
 
     for (const [id, handle] of this.pawns.entries()) {
       if (!activeIds.has(id)) {
+        (handle.nameSprite.material as THREE.SpriteMaterial).map?.dispose();
+        handle.nameSprite.material.dispose();
         this.scene.remove(handle.group);
         this.pawns.delete(id);
         this.pawnArchetypes.delete(id);
@@ -1446,6 +1453,8 @@ export class FantasyBoardEngine {
       let handle = this.pawns.get(p.id);
       const prevArch = this.pawnArchetypes.get(p.id);
       if (handle && prevArch !== p.archetypeIndex) {
+        (handle.nameSprite.material as THREE.SpriteMaterial).map?.dispose();
+        handle.nameSprite.material.dispose();
         this.scene.remove(handle.group);
         this.pawns.delete(p.id);
         handle = undefined;
@@ -1461,12 +1470,21 @@ export class FantasyBoardEngine {
         this.scene.add(handle.group);
       }
       handle.shieldRing.visible = p.shields > 0;
+      handle.adminWinnerAura.visible = p.id === this.adminWinnerPlayerId;
+      handle.setNameLabel(p.name, p.accentColor, p.id === activePlayerId);
     });
 
     this.recomputePawnSlots(players);
 
     const activePawn = activePlayerId ? this.pawns.get(activePlayerId) : undefined;
     this.cameraController.setActiveTurnPawn(activePawn?.group ?? null);
+  }
+
+  public setAdminWinnerAura(playerId: string | null) {
+    this.adminWinnerPlayerId = playerId;
+    for (const [id, handle] of this.pawns.entries()) {
+      handle.adminWinnerAura.visible = id === playerId;
+    }
   }
 
   private getTileSlotPosition(tile: number, playerId: string, players: PlayerState[]): THREE.Vector3 {
@@ -1629,7 +1647,30 @@ export class FantasyBoardEngine {
     }
   }
 
+  public setVictoryCelebration(winnerId: string | null) {
+    if (!winnerId) {
+      this.celebrationWinnerId = null;
+      this.victoryFireworks?.stop(false);
+      return;
+    }
+
+    this.celebrationWinnerId = winnerId;
+    const winHandle = this.pawns.get(winnerId);
+    const reduced =
+      this.cameraController.getSettings().reducedEffects ||
+      this.perf.getQualityConfig().tier === 'potato';
+
+    if (winHandle) {
+      winHandle.playClip('victory', 0.18);
+      this.victoryFireworks?.start(winHandle.group.position, reduced);
+    } else {
+      const tile100 = tileToWorld(100);
+      this.victoryFireworks?.start(new THREE.Vector3(tile100.x, 0.1, tile100.z), reduced);
+    }
+  }
+
   public resetCameraPhase() {
+    this.setVictoryCelebration(null);
     this.cameraController.setCinematicState('OVERVIEW');
   }
 
@@ -2028,6 +2069,16 @@ export class FantasyBoardEngine {
         );
         handle.crestMesh.rotation.y = elapsed * 0.75 + phaseOffset;
       }
+
+      if (handle.adminWinnerAura.visible) {
+        const auraScale = 1 + Math.sin(elapsed * 3.1) * 0.055;
+        handle.adminWinnerAura.scale.set(auraScale, 1, auraScale);
+        const orbitGroup = handle.adminWinnerAura.userData.orbitGroup as THREE.Group | undefined;
+        if (orbitGroup) {
+          orbitGroup.rotation.y = elapsed * 1.45;
+          orbitGroup.position.y = Math.sin(elapsed * 2.4) * 0.035;
+        }
+      }
       pawnIdx++;
     }
 
@@ -2043,9 +2094,16 @@ export class FantasyBoardEngine {
     }
     this.syncDiceContactVisuals();
 
-    // Pooled 3D Skill VFX & Golden Aether Sparkle Update
+    // Pooled 3D Skill VFX, Golden Aether Sparkles & 3D Victory Fireworks Update
     this.vfxPool.update(dt);
     this.aetherSparkles?.update(dt, elapsed);
+    if (this.celebrationWinnerId) {
+      const winHandle = this.pawns.get(this.celebrationWinnerId);
+      if (winHandle) {
+        this.victoryFireworks?.updateAnchor(winHandle.group.position);
+      }
+    }
+    this.victoryFireworks?.update(dt, elapsed);
 
     // Pooled particles update (zero per-frame allocations)
     if (this.particleMesh) {
@@ -2106,6 +2164,8 @@ export class FantasyBoardEngine {
     this.vfxPool.dispose();
     this.aetherSparkles?.dispose();
     this.aetherSparkles = null;
+    this.victoryFireworks?.dispose();
+    this.victoryFireworks = null;
     this.cameraController.dispose();
     this.controls.dispose();
     this.disposePostProcessing();
@@ -2119,6 +2179,12 @@ export class FantasyBoardEngine {
     }
 
     this.scene.traverse((obj) => {
+      if ((obj as THREE.Sprite).isSprite) {
+        const sprite = obj as THREE.Sprite;
+        const smat = sprite.material as THREE.SpriteMaterial;
+        smat.map?.dispose();
+        smat.dispose();
+      }
       if ((obj as THREE.Mesh).isMesh) {
         const mesh = obj as THREE.Mesh;
         mesh.geometry?.dispose();

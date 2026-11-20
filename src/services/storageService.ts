@@ -1,10 +1,14 @@
 import {
   ACHIEVEMENTS,
   DICE_SKINS,
+  PLAYER_ARCHETYPES,
+  STARTER_PAWN_INDICES,
   generateUniqueDevicePlayerName,
   getDailyChallengeForDate,
+  getPawnUnlockCost,
   getTodayDateString,
   isDiceSkinUnlocked,
+  isPawnUnlocked,
   type BoardGameMode,
   type ConnectionMode,
   type DiceSkinId,
@@ -73,6 +77,7 @@ export interface PlayerProfile {
   muted: boolean;
   aetherCoins: number;
   unlockedBoardIds: string[];
+  unlockedPawnIndices: number[];
 }
 
 const PROFILE_KEY = 'aether_serpent_profile_v1';
@@ -225,6 +230,7 @@ function createDefaultProfile(): PlayerProfile {
     muted: false,
     aetherCoins: 250,
     unlockedBoardIds: [...STARTER_UNLOCKED_BOARD_IDS],
+    unlockedPawnIndices: [...STARTER_PAWN_INDICES],
   };
 }
 
@@ -286,7 +292,31 @@ export function loadProfile(): PlayerProfile {
             : []),
         ]),
       ),
+      unlockedPawnIndices: Array.from(
+        new Set([
+          ...STARTER_PAWN_INDICES,
+          ...(Array.isArray(parsed.unlockedPawnIndices)
+            ? parsed.unlockedPawnIndices.filter(
+                (n): n is number =>
+                  typeof n === 'number' &&
+                  Number.isInteger(n) &&
+                  n >= 0 &&
+                  n < PLAYER_ARCHETYPES.length,
+              )
+            : []),
+        ]),
+      ).sort((a, b) => a - b),
+      archetypeIndex:
+        typeof parsed.archetypeIndex === 'number' &&
+        Number.isInteger(parsed.archetypeIndex) &&
+        parsed.archetypeIndex >= 0 &&
+        parsed.archetypeIndex < PLAYER_ARCHETYPES.length
+          ? parsed.archetypeIndex
+          : base.archetypeIndex,
     };
+    if (!isPawnUnlocked(merged.archetypeIndex, merged.unlockedPawnIndices)) {
+      merged.archetypeIndex = 0;
+    }
     const today = getTodayDateString();
     let dirty = isGenericName;
     if (merged.dailyActiveDate !== today) {
@@ -520,4 +550,41 @@ export function calculateMatchCoinReward(params: {
   if (achBonus > 0) parts.push(`+${achBonus} pencapaian`);
 
   return { total, breakdown: parts.join(' · ') };
+}
+
+export function purchasePremiumPawn(
+  archetypeIndex: number,
+  profile: PlayerProfile,
+): { ok: boolean; profile: PlayerProfile; reason?: string } {
+  const safeIdx = Math.floor(archetypeIndex);
+  const def = PLAYER_ARCHETYPES.find((a) => a.archetypeIndex === safeIdx);
+  if (!def) {
+    return { ok: false, profile, reason: 'Pion tidak ditemukan.' };
+  }
+  if (isPawnUnlocked(safeIdx, profile.unlockedPawnIndices)) {
+    const equipped: PlayerProfile = { ...profile, archetypeIndex: safeIdx };
+    saveProfile(equipped);
+    return { ok: true, profile: equipped };
+  }
+  const cost = getPawnUnlockCost(safeIdx);
+  const coins = profile.aetherCoins ?? 0;
+  if (coins < cost) {
+    return {
+      ok: false,
+      profile,
+      reason: `Koin Aether belum cukup (${coins.toLocaleString('id-ID')}/${cost.toLocaleString('id-ID')}).`,
+    };
+  }
+  const nextUnlocked = Array.from(
+    new Set([...STARTER_PAWN_INDICES, ...(profile.unlockedPawnIndices || []), safeIdx]),
+  ).sort((a, b) => a - b);
+
+  const updated: PlayerProfile = {
+    ...profile,
+    aetherCoins: coins - cost,
+    unlockedPawnIndices: nextUnlocked,
+    archetypeIndex: safeIdx,
+  };
+  saveProfile(updated);
+  return { ok: true, profile: updated };
 }

@@ -276,6 +276,8 @@ export interface SocketLike {
   send: (data: string) => void;
 }
 
+export const ROOM_INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 menit tanpa pergerakan -> tutup otomatis
+
 export interface MultiplayerRoom {
   code: string;
   name: string;
@@ -297,9 +299,17 @@ export interface MultiplayerRoom {
   turnEvents: RoomTurnEventLog[];
   chatMessages: RoomChatLog[];
   kickedPlayerIds: string[];
+  kickedReasons?: Record<string, string>;
   clients: Map<string, SocketLike>;
   createdAt: number;
   updatedAt: number;
+  lastActivityAt: number;
+}
+
+export function touchRoomActivity(room: MultiplayerRoom): void {
+  const now = Date.now();
+  room.lastActivityAt = now;
+  room.updatedAt = now;
 }
 
 export const rooms = new Map<string, MultiplayerRoom>();
@@ -334,9 +344,10 @@ function loadRoomsFromTmpCache(): void {
     const raw = fs.readFileSync(ROOMS_PATH, 'utf-8');
     const parsed = JSON.parse(raw) as Array<Omit<MultiplayerRoom, 'clients'>>;
     if (!Array.isArray(parsed)) return;
-    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    const cutoff = Date.now() - ROOM_INACTIVITY_TIMEOUT_MS;
     for (const item of parsed) {
-      if (!item || !item.code || (item.updatedAt ?? item.createdAt) < cutoff) continue;
+      const lastAct = item?.lastActivityAt ?? item?.updatedAt ?? item?.createdAt ?? 0;
+      if (!item || !item.code || lastAct < cutoff) continue;
       if (!rooms.has(item.code)) {
         rooms.set(item.code, {
           ...item,
@@ -347,6 +358,11 @@ function loadRoomsFromTmpCache(): void {
           turnEvents: Array.isArray(item.turnEvents) ? item.turnEvents : [],
           chatMessages: Array.isArray(item.chatMessages) ? item.chatMessages : [],
           kickedPlayerIds: Array.isArray(item.kickedPlayerIds) ? item.kickedPlayerIds : [],
+          kickedReasons:
+            item.kickedReasons && typeof item.kickedReasons === 'object'
+              ? item.kickedReasons
+              : {},
+          lastActivityAt: lastAct,
           clients: new Map(),
         });
       }
@@ -382,8 +398,10 @@ function saveRoomsToTmpCache(): void {
       turnEvents: r.turnEvents.slice(-8),
       chatMessages: r.chatMessages.slice(-24),
       kickedPlayerIds: r.kickedPlayerIds,
+      kickedReasons: r.kickedReasons ?? {},
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
+      lastActivityAt: r.lastActivityAt || r.updatedAt || r.createdAt,
     }));
     fs.writeFileSync(ROOMS_PATH, JSON.stringify(serializable), 'utf-8');
   } catch {
@@ -652,9 +670,11 @@ export function rehydrateRoomFromSnapshotIfNeeded(
     turnEvents: Array.isArray(s.turnEvents) ? s.turnEvents : [],
     chatMessages: Array.isArray(s.chatMessages) ? s.chatMessages : [],
     kickedPlayerIds: [],
+    kickedReasons: {},
     clients: new Map(),
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    lastActivityAt: Date.now(),
   };
 
   rooms.set(cleanCode, rehydrated);
@@ -709,7 +729,134 @@ export function assignBalancedTeam(players: PlayerState[]): TeamId {
   return countA <= countB ? 'A' : 'B';
 }
 
-function pickSteeredOnlineRoll(
+function isWinnerHazard(res: TurnResolution): boolean {
+  return res.jumpTriggered?.type === 'snake' || res.specialHit?.type === 'curse';
+}
+
+function computeBoardSteeringTables(customJumpMap: ReturnType<typeof buildJumpMap>) {
+  // 1. Exact backward reachability: can tile `t` reach tile 100 with ZERO snakes and ZERO curses?
+  const canReachWinSafely = new Array<boolean>(101).fill(false);
+  const minSafeTurnsTo100 = new Array<number>(101).fill(Infinity);
+  canReachWinSafely[100] = true;
+  minSafeTurnsTo100[100] = 0;
+
+  // Precompute pure board transitions for every tile & roll (shield = 0)
+  const baseTrans: TurnResolution[][] = Array.from({ length: 101 }, () => []);
+  for (let tile = 1; tile <= 99; tile++) {
+    for (let roll = 1; roll <= 6; roll++) {
+      baseTrans[tile].push(resolveTurnMove(tile, roll, 0, { customJumpMap }));
+    }
+  }
+
+  for (let iter = 0; iter < 100; iter++) {
+    let changed = false;
+    for (let tile = 99; tile >= 1; tile--) {
+      for (const res of baseTrans[tile]) {
+        if (isWinnerHazard(res)) continue;
+        const nextDist = minSafeTurnsTo100[res.finalTile];
+        if (Number.isFinite(nextDist)) {
+          const candidateDist = nextDist + (res.extraTurn && !res.won ? 0.15 : 1);
+          if (!canReachWinSafely[tile] || candidateDist < minSafeTurnsTo100[tile]) {
+            canReachWinSafely[tile] = true;
+            minSafeTurnsTo100[tile] = candidateDist;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (!changed) break;
+  }
+
+  // 2. Chosen Winner Multi-Turn Ladder-Hunting DP:
+  //    turnsToLadder[t] = fewest safe win-reachable turns from tile `t` to climb a ladder
+  //    bestLadderDest[t] = best ladder landing tile reachable at that shortest distance
+  const turnsToLadder = new Array<number>(101).fill(Infinity);
+  const bestLadderDest = new Array<number>(101).fill(0);
+
+  for (let tile = 1; tile <= 99; tile++) {
+    for (const res of baseTrans[tile]) {
+      if (isWinnerHazard(res)) continue;
+      if (!canReachWinSafely[res.finalTile]) continue;
+      if (res.jumpTriggered?.type === 'ladder') {
+        turnsToLadder[tile] = 1;
+        if (res.finalTile > bestLadderDest[tile]) {
+          bestLadderDest[tile] = res.finalTile;
+        }
+      }
+    }
+  }
+
+  for (let depth = 2; depth <= 6; depth++) {
+    for (let tile = 1; tile <= 99; tile++) {
+      if (turnsToLadder[tile] < depth) continue;
+      for (const res of baseTrans[tile]) {
+        if (isWinnerHazard(res) || res.won) continue;
+        if (!canReachWinSafely[res.finalTile]) continue;
+        if (turnsToLadder[res.finalTile] === depth - 1) {
+          turnsToLadder[tile] = depth;
+          if (bestLadderDest[res.finalTile] > bestLadderDest[tile]) {
+            bestLadderDest[tile] = bestLadderDest[res.finalTile];
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Non-Chosen Opponent Multi-Turn Snake-Hunting DP:
+  //    turnsToSnake[t] = fewest turns from tile `t` to land directly on a snake head
+  //                      without winning, climbing a ladder, or picking up a shield
+  //    bestSnakeSeverity[t] = largest drop severity reachable at that shortest distance
+  const turnsToSnake = new Array<number>(101).fill(Infinity);
+  const bestSnakeSeverity = new Array<number>(101).fill(0);
+
+  const snakeSeverityOf = (res: TurnResolution): number => {
+    if (res.jumpTriggered?.type !== 'snake') return 0;
+    const drop = Math.max(1, res.jumpTriggered.from - res.jumpTriggered.to);
+    return drop + (100 - res.jumpTriggered.to) * 0.35;
+  };
+
+  for (let tile = 1; tile <= 99; tile++) {
+    for (const res of baseTrans[tile]) {
+      if (res.won) continue;
+      if (res.jumpTriggered?.type === 'snake') {
+        turnsToSnake[tile] = 1;
+        const sev = snakeSeverityOf(res);
+        if (sev > bestSnakeSeverity[tile]) {
+          bestSnakeSeverity[tile] = sev;
+        }
+      }
+    }
+  }
+
+  for (let depth = 2; depth <= 10; depth++) {
+    for (let tile = 1; tile <= 99; tile++) {
+      if (turnsToSnake[tile] < depth) continue;
+      for (const res of baseTrans[tile]) {
+        if (res.won) continue;
+        if (res.jumpTriggered?.type === 'ladder') continue;
+        if (res.shieldsDelta > 0) continue;
+        if (res.specialHit?.type === 'boost') continue;
+        if (turnsToSnake[res.finalTile] === depth - 1) {
+          turnsToSnake[tile] = depth;
+          if (bestSnakeSeverity[res.finalTile] > bestSnakeSeverity[tile]) {
+            bestSnakeSeverity[tile] = bestSnakeSeverity[res.finalTile];
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    canReachWinSafely,
+    minSafeTurnsTo100,
+    turnsToLadder,
+    bestLadderDest,
+    turnsToSnake,
+    bestSnakeSeverity,
+  };
+}
+
+export function pickSteeredOnlineRoll(
   room: MultiplayerRoom,
   activePlayer: PlayerState,
   customJumpMap: ReturnType<typeof buildJumpMap>,
@@ -734,82 +881,253 @@ function pickSteeredOnlineRoll(
     return candidates[roll - 1];
   }
 
-  // Case A: Designated Winner (or same team in 2v2 Team Mode) -> Favorable organic rolls
   const targetPlayer = room.players.find((p) => p.id === targetId);
-  const isChosenWinnerSide =
-    activePlayer.id === targetId ||
-    (room.boardMode === 'team' &&
-      targetPlayer?.team &&
-      activePlayer.team === targetPlayer.team);
+  const protectedIds = new Set<string>();
+  if (targetId) protectedIds.add(targetId);
+  if (room.boardMode === 'team' && targetPlayer?.team) {
+    for (const p of room.players) {
+      if (p.team === targetPlayer.team) protectedIds.add(p.id);
+    }
+  }
 
+  const isChosenWinnerSide = protectedIds.has(activePlayer.id);
+  const tables = computeBoardSteeringTables(customJumpMap);
+
+  // =========================================================================
+  // CASE A: CHOSEN WINNER (100% Safe: Zero Snakes, Zero Curses, Chain Ladders)
+  // =========================================================================
   if (isChosenWinnerSide) {
-    // 1. Exact winning roll if within reach of tile 100
+    // 1. Instant Win if tile 100 is directly reachable
     const winning = candidates.find((c) => c.resolution.won);
     if (winning) return winning;
 
-    // 2. Avoid unblocked snakes and curse traps
-    const safe = candidates.filter(
-      (c) =>
-        !(c.resolution.jumpTriggered?.type === 'snake' && !c.resolution.shieldBlocked) &&
-        !(c.resolution.specialHit?.type === 'curse' && !c.resolution.shieldBlocked),
+    // 2. Strictly exclude ALL snakes and ALL curses (even shield-blocked ones)
+    const strictlySafe = candidates.filter((c) => !isWinnerHazard(c.resolution));
+
+    // Prefer tiles that are mathematically proven to reach tile 100 without EVER hitting a snake/curse
+    const winReachableSafe = strictlySafe.filter(
+      (c) => tables.canReachWinSafely[c.resolution.finalTile],
     );
-    const pool = safe.length > 0 ? safe : candidates;
 
-    // 3. Climb ladders whenever available safely
-    const ladders = pool
-      .filter((c) => c.resolution.jumpTriggered?.type === 'ladder')
-      .sort((a, b) => b.resolution.finalTile - a.resolution.finalTile);
-    if (ladders.length > 0) return ladders[0];
+    const safePool =
+      winReachableSafe.length > 0
+        ? winReachableSafe
+        : strictlySafe.length > 0
+          ? strictlySafe
+          : [];
 
-    // 4. Advance steadily with top 2 safe rolls (randomized so dice looks natural)
-    const ranked = [...pool].sort((a, b) => {
-      const scoreA =
-        a.resolution.finalTile +
-        (a.resolution.extraTurn ? 4 : 0) +
-        (a.resolution.shieldsDelta > 0 ? 3 : 0);
-      const scoreB =
-        b.resolution.finalTile +
-        (b.resolution.extraTurn ? 4 : 0) +
-        (b.resolution.shieldsDelta > 0 ? 3 : 0);
-      return scoreB - scoreA;
+    // Rare emergency fallback (only if admin toggled Winner Override when player is ALREADY trapped in a 6-hazard wall like tile 91):
+    if (safePool.length === 0) {
+      // If shielded, pick the shield-blocked roll leaving them highest (or closest to 100)
+      const shieldSaved = candidates
+        .filter((c) => c.resolution.shieldBlocked)
+        .sort((a, b) => b.resolution.finalTile - a.resolution.finalTile);
+      if (shieldSaved.length > 0) return shieldSaved[0];
+
+      // Absolute Snake/Curse Immunity safeguard: pick highest landing tile (e.g. 97) and neutralize drop
+      const bestTrapped = [...candidates].sort(
+        (a, b) => b.resolution.landedTile - a.resolution.landedTile,
+      )[0];
+      const safeTile = bestTrapped.resolution.landedTile;
+      return {
+        roll: bestTrapped.roll,
+        resolution: {
+          ...bestTrapped.resolution,
+          shieldBlocked: true,
+          shieldsDelta: Math.max(0, bestTrapped.resolution.shieldsDelta),
+          postSpecialTile: safeTile,
+          finalTile: safeTile,
+          won: safeTile === 100,
+          scoreDelta: Math.max(bestTrapped.roll * 15, bestTrapped.resolution.scoreDelta),
+        },
+      };
+    }
+
+    // 3. Direct Ladder Climb right now! Chain into another ladder whenever possible
+    const directLadders = safePool.filter(
+      (c) => c.resolution.jumpTriggered?.type === 'ladder',
+    );
+    if (directLadders.length > 0) {
+      directLadders.sort((a, b) => {
+        const score = (c: (typeof directLadders)[number]) => {
+          const ft = c.resolution.finalTile;
+          const nextLadderDist = tables.turnsToLadder[ft];
+          const chainBonus =
+            nextLadderDist === 1
+              ? 240
+              : nextLadderDist === 2
+                ? 110
+                : nextLadderDist === 3
+                  ? 45
+                  : 0;
+          const distTo100 = Number.isFinite(tables.minSafeTurnsTo100[ft])
+            ? tables.minSafeTurnsTo100[ft]
+            : 40;
+          return (
+            ft * 12 +
+            chainBonus +
+            (c.resolution.extraTurn ? 95 : 0) -
+            distTo100 * 14
+          );
+        };
+        return score(b) - score(a);
+      });
+      return directLadders[0];
+    }
+
+    // 4. Multi-Turn Ladder Setup: line up the next ladder (1 to 4 turns ahead) without overshooting it!
+    //    Only hunt ladders when the ladder actually advances beyond our current position and doesn't delay an immediate finish.
+    const canFinishNextTurn = safePool.some(
+      (c) => tables.minSafeTurnsTo100[c.resolution.finalTile] <= 1,
+    );
+
+    if (!canFinishNextTurn) {
+      const ladderSetups = safePool.filter((c) => {
+        const ft = c.resolution.finalTile;
+        return (
+          tables.turnsToLadder[ft] <= 4 &&
+          tables.bestLadderDest[ft] > Math.max(activePlayer.tile, ft)
+        );
+      });
+
+      if (ladderSetups.length > 0) {
+        ladderSetups.sort((a, b) => {
+          const score = (c: (typeof ladderSetups)[number]) => {
+            const ft = c.resolution.finalTile;
+            const tLad = tables.turnsToLadder[ft];
+            const dest = tables.bestLadderDest[ft];
+            // Strongly prefer landing 1 turn away from a ladder, especially with an extra turn to climb immediately!
+            const proximityScore = (5 - tLad) * 320;
+            const immediateBonus = c.resolution.extraTurn && tLad === 1 ? 260 : c.resolution.extraTurn ? 120 : 0;
+            const shieldBonus = c.resolution.shieldsDelta > 0 ? 55 : 0;
+            return proximityScore + dest * 6 + immediateBonus + shieldBonus + ft * 1.5;
+          };
+          return score(b) - score(a);
+        });
+        return ladderSetups[0];
+      }
+    }
+
+    // 5. Final Stretch / Safe Fast Sprint to Tile 100 (zero snakes, zero curses, grab shield/extra roll if helpful)
+    const sprintRanked = [...safePool].sort((a, b) => {
+      const score = (c: (typeof safePool)[number]) => {
+        const ft = c.resolution.finalTile;
+        const turnsLeft = Number.isFinite(tables.minSafeTurnsTo100[ft])
+          ? tables.minSafeTurnsTo100[ft]
+          : 50;
+        return (
+          -turnsLeft * 85 +
+          ft * 4 +
+          (c.resolution.extraTurn ? 95 : 0) +
+          (c.resolution.shieldsDelta > 0 && activePlayer.shields === 0 ? 55 : 0) +
+          (c.resolution.specialHit?.type === 'boost' ? 40 : 0)
+        );
+      };
+      return score(b) - score(a);
     });
-    const topSlice = ranked.slice(0, Math.min(2, ranked.length));
-    return topSlice[crypto.randomInt(0, topSlice.length)];
+    return sprintRanked[0];
   }
 
-  // Case B: Opponent -> Never win, repeatedly hit Snakes or fall behind naturally
+  // =========================================================================
+  // CASE B: NON-CHOSEN OPPONENT (Never Win, Never Touch Winner, Always Hit Snakes!)
+  // =========================================================================
+  // Hard Rule 1 & 2: Never win AND never battle-push the designated winner (or winner's team)
+  const nonWinningSafeForWinner = candidates.filter(
+    (c) =>
+      !c.resolution.won &&
+      !(c.resolution.battlePush && protectedIds.has(c.resolution.battlePush.targetPlayerId)),
+  );
   const nonWinning = candidates.filter((c) => !c.resolution.won);
-  const pool = nonWinning.length > 0 ? nonWinning : candidates;
+  const pool =
+    nonWinningSafeForWinner.length > 0
+      ? nonWinningSafeForWinner
+      : nonWinning.length > 0
+        ? nonWinning
+        : candidates;
 
-  // 1. Prioritize actual snake bites (or shield-breaking snake hits)
-  const snakeHits = pool.filter((c) => c.resolution.jumpTriggered?.type === 'snake');
-  if (snakeHits.length > 0) {
-    const unblockedSnakes = snakeHits
+  // 1. Direct Snake Bite RIGHT NOW!
+  const directSnakes = pool.filter((c) => c.resolution.jumpTriggered?.type === 'snake');
+  if (directSnakes.length > 0) {
+    const unblockedSnakes = directSnakes
       .filter((c) => !c.resolution.shieldBlocked)
-      .sort((a, b) => a.resolution.finalTile - b.resolution.finalTile);
+      .sort((a, b) => {
+        // Prefer the deepest drop (lowest finalTile), avoiding giving an extra turn if tied
+        if (a.resolution.finalTile !== b.resolution.finalTile) {
+          return a.resolution.finalTile - b.resolution.finalTile;
+        }
+        return (a.resolution.extraTurn ? 1 : 0) - (b.resolution.extraTurn ? 1 : 0);
+      });
     if (unblockedSnakes.length > 0) {
       return unblockedSnakes[0];
     }
-    return snakeHits[0];
+    // Even if they hold a shield, hit the snake immediately to break the shield!
+    const shieldBreaking = [...directSnakes].sort(
+      (a, b) => (a.resolution.extraTurn ? 1 : 0) - (b.resolution.extraTurn ? 1 : 0),
+    );
+    return shieldBreaking[0];
   }
 
-  // 2. Avoid ladders, shields, and extra turns; steer toward lowest tile / bounce-back
-  const noBonus = pool.filter(
+  // Build clean trap pool: NEVER climb a ladder, NEVER collect a shield, NEVER get a boost
+  const noGoodies = pool.filter(
     (c) =>
       c.resolution.jumpTriggered?.type !== 'ladder' &&
       c.resolution.shieldsDelta <= 0 &&
-      !c.resolution.extraTurn,
+      c.resolution.specialHit?.type !== 'boost',
   );
-  const weakPool = (noBonus.length > 0 ? noBonus : pool).sort(
-    (a, b) => a.resolution.finalTile - b.resolution.finalTile,
+  const trapPool = noGoodies.length > 0 ? noGoodies : pool;
+
+  // 2. If opponent holds a shield and a Curse is in reach, hit Curse to strip their shield right away
+  if (activePlayer.shields > 0) {
+    const curseStrip = trapPool.find((c) => c.resolution.specialHit?.type === 'curse');
+    if (curseStrip) return curseStrip;
+  }
+
+  // 3. Multi-Turn Snake-Hunting Setup: magnetically pull opponent straight into the next snake head!
+  const snakeHunters = trapPool.filter((c) =>
+    Number.isFinite(tables.turnsToSnake[c.resolution.finalTile]),
   );
 
-  // Near finish line, strictly keep them at the lowest bounce/tile; earlier on, vary bottom 2
-  if (activePlayer.tile >= 82 || weakPool.length === 1) {
-    return weakPool[0];
+  if (snakeHunters.length > 0) {
+    // Allow extraTurn (rolling 6 / Dadu Berkah) if it immediately lands 1 step away from a snake
+    // so the bonus roll devours them on the VERY SAME TURN! Otherwise prefer non-extra-turn rolls.
+    const instantTrapExtra = snakeHunters.filter(
+      (c) => c.resolution.extraTurn && tables.turnsToSnake[c.resolution.finalTile] === 1,
+    );
+    const nonExtraHunters = snakeHunters.filter((c) => !c.resolution.extraTurn);
+    const huntPool =
+      instantTrapExtra.length > 0
+        ? instantTrapExtra
+        : nonExtraHunters.length > 0
+          ? nonExtraHunters
+          : snakeHunters;
+
+    huntPool.sort((a, b) => {
+      const score = (c: (typeof huntPool)[number]) => {
+        const ft = c.resolution.finalTile;
+        const tSnake = tables.turnsToSnake[ft];
+        const sev = tables.bestSnakeSeverity[ft];
+        const curseBonus = c.resolution.specialHit?.type === 'curse' ? 45 : 0;
+        // Minimize turnsToSnake (1 turn away = huge priority), prefer higher drop severity,
+        // and advance closer (+ft * 0.9) so opponent walks briskly straight into the snake's mouth!
+        return -tSnake * 450 + sev * 3.0 + curseBonus + ft * 0.9;
+      };
+      return score(b) - score(a);
+    });
+    return huntPool[0];
   }
-  const bottomSlice = weakPool.slice(0, Math.min(2, weakPool.length));
-  return bottomSlice[crypto.randomInt(0, bottomSlice.length)];
+
+  // 4. Fallback (e.g., custom board with zero snakes ahead): hit Curse or stay at the lowest tile
+  const directCurses = trapPool.filter((c) => c.resolution.specialHit?.type === 'curse');
+  if (directCurses.length > 0) {
+    directCurses.sort((a, b) => a.resolution.finalTile - b.resolution.finalTile);
+    return directCurses[0];
+  }
+
+  const noExtraFallback = trapPool.filter((c) => !c.resolution.extraTurn);
+  const weakPool = (noExtraFallback.length > 0 ? noExtraFallback : trapPool).sort(
+    (a, b) => a.resolution.finalTile - b.resolution.finalTile,
+  );
+  return weakPool[0];
 }
 
 export function executeRoomTurnRoll(
@@ -829,6 +1147,10 @@ export function executeRoomTurnRoll(
   room.turnCount += 1;
   room.lastEventId += 1;
   room.updatedAt = Date.now();
+  // Only human-triggered rolls count as real movement; server auto-rolls do NOT reset the 2-minute inactivity timer
+  if (!autoRolled) {
+    room.lastActivityAt = room.updatedAt;
+  }
 
   if (resolution.won) {
     room.status = 'finished';
@@ -881,9 +1203,22 @@ export function executeRoomTurnRoll(
 
 export function tickRoomsMaintenance(): void {
   const now = Date.now();
-  const cutoff = now - 2 * 60 * 60 * 1000;
 
-  for (const [code, room] of rooms.entries()) {
+  for (const [code, room] of Array.from(rooms.entries())) {
+    // 0. Auto-close room if there has been ZERO human movement/activity for 2 minutes
+    const lastAct = room.lastActivityAt || room.updatedAt || room.createdAt;
+    if (now - lastAct >= ROOM_INACTIVITY_TIMEOUT_MS) {
+      const idleCloseMsg = 'Ruangan otomatis ditutup karena tidak ada pergerakan selama 2 menit.';
+      markRoomClosed(code, idleCloseMsg);
+      broadcastRoom(room, {
+        type: 'room:kicked',
+        message: idleCloseMsg,
+      });
+      rooms.delete(code);
+      saveRoomsToTmpCache();
+      continue;
+    }
+
     // 1. Check Time Attack expiry
     if (
       room.status === 'playing' &&
@@ -915,11 +1250,6 @@ export function tickRoomsMaintenance(): void {
       if (activePlayer) {
         executeRoomTurnRoll(room, activePlayer, true);
       }
-    }
-
-    const anyOpen = Array.from(room.clients.values()).some((c) => c.readyState === 1);
-    if (!anyOpen && room.updatedAt < cutoff) {
-      rooms.delete(code);
     }
   }
 }
@@ -977,7 +1307,10 @@ export function createRoomInstance(opts: {
   evictPlayerFromOtherRooms(playerId);
 
   const playerName = disambiguatePlayerName(String(opts.playerName || ''), [], playerId);
-  const archetypeIndex = Math.max(0, Math.min(3, Number(opts.archetypeIndex) || 0));
+  const archetypeIndex = Math.max(
+    0,
+    Math.min(PLAYER_ARCHETYPES.length - 1, Number(opts.archetypeIndex) || 0),
+  );
   const arch = PLAYER_ARCHETYPES[archetypeIndex];
   const code = generateRoomCode();
   const isPublic = opts.isPublic !== false;
@@ -1039,9 +1372,11 @@ export function createRoomInstance(opts: {
     turnEvents: [],
     chatMessages: [],
     kickedPlayerIds: [],
+    kickedReasons: {},
     clients: opts.wsClient ? new Map([[playerId, opts.wsClient]]) : new Map(),
     createdAt: now,
     updatedAt: now,
+    lastActivityAt: now,
   };
 
   closedRoomTombstones.delete(code);
@@ -1147,6 +1482,7 @@ export function registerApiRoutes(app: Express): void {
           chatCount: room.chatMessages.length,
           createdAt: room.createdAt,
           updatedAt: room.updatedAt,
+          lastActivityAt: room.lastActivityAt || room.updatedAt || room.createdAt,
           players: room.players.map((p) => ({
             id: p.id,
             name: p.name,
@@ -1263,6 +1599,145 @@ export function registerApiRoutes(app: Express): void {
     });
   });
 
+  // Admin Kick Player from Room (works in lobby, playing, or finished rooms for lagging/AFK moderation)
+  app.post('/api/admin/rooms/:code/kick-player', async (req: Request, res: Response) => {
+    const authCheck = await verifyAdminBearerToken(req);
+    if (!authCheck.ok) {
+      res.status(authCheck.status).json({ error: authCheck.error });
+      return;
+    }
+
+    loadRoomsFromTmpCache();
+    const code = String(req.params.code || '').trim().toUpperCase();
+    const targetPlayerId = String(req.body?.playerId || '').trim();
+    const customReason = String(req.body?.reason || '').trim().slice(0, 140);
+    const kickMsg =
+      customReason ||
+      'Anda dikeluarkan dari ruangan oleh Administrator (koneksi tidak stabil / moderasi).';
+
+    if (!targetPlayerId) {
+      res.status(400).json({ error: 'ID pemain yang akan dikeluarkan wajib diisi.' });
+      return;
+    }
+
+    const room =
+      rooms.get(code) ??
+      (req.body?.roomSnapshot
+        ? rehydrateRoomFromSnapshotIfNeeded(code, req.body.roomSnapshot)
+        : undefined);
+
+    if (!room) {
+      res.status(404).json({ error: `Room "${code}" tidak ditemukan di server aktif.` });
+      return;
+    }
+
+    const targetIdx = room.players.findIndex((p) => p.id === targetPlayerId);
+    if (targetIdx < 0) {
+      res.status(404).json({ error: 'Pemain tidak ditemukan di dalam room tersebut.' });
+      return;
+    }
+
+    const targetPlayer = room.players[targetIdx];
+
+    // Immediately notify kicked client over WebSocket if connected
+    const kickedWs = room.clients.get(targetPlayerId);
+    if (kickedWs && kickedWs.readyState === 1) {
+      kickedWs.send(
+        JSON.stringify({
+          type: 'room:kicked',
+          message: kickMsg,
+        }),
+      );
+    }
+    room.clients.delete(targetPlayerId);
+
+    // Record in kickedPlayerIds + kickedReasons so HTTP poll fallback clients are also kicked immediately
+    if (!room.kickedPlayerIds.includes(targetPlayerId)) {
+      room.kickedPlayerIds.push(targetPlayerId);
+    }
+    if (!room.kickedReasons) {
+      room.kickedReasons = {};
+    }
+    room.kickedReasons[targetPlayerId] = kickMsg;
+
+    const prevTurnIndex = room.currentTurnIndex;
+    room.players = room.players.filter((p) => p.id !== targetPlayerId);
+    if (room.designatedWinnerId === targetPlayerId) {
+      room.designatedWinnerId = null;
+    }
+
+    // If room is now empty, close it cleanly
+    if (room.players.length === 0) {
+      const emptyMsg = 'Ruangan ditutup karena semua pemain telah keluar.';
+      markRoomClosed(code, emptyMsg);
+      rooms.delete(code);
+      saveRoomsToTmpCache();
+      res.json({
+        ok: true,
+        roomCode: code,
+        roomClosed: true,
+        kickedPlayerId: targetPlayerId,
+        kickedPlayerName: targetPlayer.name,
+      });
+      return;
+    }
+
+    // Migrate host if the kicked player was host
+    if (room.hostId === targetPlayerId) {
+      room.hostId = room.players[0].id;
+      room.players[0].ready = true;
+    }
+
+    // Safely handle turn pointer if kicked mid-match so the game never freezes!
+    if (room.status === 'playing') {
+      if (room.players.length === 1) {
+        const soleSurvivor = room.players[0];
+        room.status = 'finished';
+        room.winnerId = soleSurvivor.id;
+        room.winningTeam = room.boardMode === 'team' ? soleSurvivor.team ?? 'A' : null;
+        room.designatedWinnerId = null;
+        room.turnDeadlineAt = null;
+        room.currentTurnIndex = 0;
+      } else {
+        if (targetIdx < room.currentTurnIndex) {
+          room.currentTurnIndex = Math.max(0, room.currentTurnIndex - 1);
+        }
+        if (room.currentTurnIndex >= room.players.length) {
+          room.currentTurnIndex = 0;
+        }
+        if (targetIdx === prevTurnIndex) {
+          room.turnDeadlineAt = Date.now() + ONLINE_TURN_TIMEOUT_SEC * 1000 + 2500;
+        }
+      }
+    }
+
+    // Log subtle moderation notice into room chat for remaining players
+    const ts = Date.now();
+    room.chatMessages = [
+      ...room.chatMessages.slice(-23),
+      {
+        id: ts,
+        senderId: 'system',
+        senderName: 'Moderator',
+        text: `${targetPlayer.name} dikeluarkan dari ruangan oleh Admin.`,
+        timestamp: ts,
+      },
+    ];
+
+    touchRoomActivity(room);
+    saveRoomsToTmpCache();
+    broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
+
+    res.json({
+      ok: true,
+      roomCode: code,
+      roomClosed: false,
+      kickedPlayerId: targetPlayerId,
+      kickedPlayerName: targetPlayer.name,
+      room: serializeRoom(room),
+    });
+  });
+
   app.delete('/api/admin/leaderboard/:id', async (req: Request, res: Response) => {
     const authCheck = await verifyAdminBearerToken(req);
     if (!authCheck.ok) {
@@ -1310,7 +1785,8 @@ export function registerApiRoutes(app: Express): void {
     if (playerId && room.kickedPlayerIds.includes(playerId)) {
       res.json({
         kicked: true,
-        message: 'Anda dikeluarkan oleh tuan rumah.',
+        message:
+          room.kickedReasons?.[playerId] || 'Anda dikeluarkan oleh tuan rumah.',
       });
       return;
     }
@@ -1398,9 +1874,11 @@ export function registerApiRoutes(app: Express): void {
           turnEvents: [],
           chatMessages: [],
           kickedPlayerIds: [],
+          kickedReasons: {},
           clients: new Map(),
           createdAt: now,
           updatedAt: now,
+          lastActivityAt: now,
         };
         rooms.set(code, room);
         saveRoomsToTmpCache();
@@ -1444,8 +1922,14 @@ export function registerApiRoutes(app: Express): void {
       );
       const usedIndices = new Set(room.players.map((p) => p.archetypeIndex));
       let archetypeIndex = Number(body.archetypeIndex);
-      if (!Number.isInteger(archetypeIndex) || usedIndices.has(archetypeIndex)) {
-        archetypeIndex = [0, 1, 2, 3].find((idx) => !usedIndices.has(idx)) ?? 0;
+      if (
+        !Number.isInteger(archetypeIndex) ||
+        archetypeIndex < 0 ||
+        archetypeIndex >= PLAYER_ARCHETYPES.length ||
+        usedIndices.has(archetypeIndex)
+      ) {
+        archetypeIndex =
+          PLAYER_ARCHETYPES.map((a) => a.archetypeIndex).find((idx) => !usedIndices.has(idx)) ?? 0;
       }
       const arch = PLAYER_ARCHETYPES[archetypeIndex];
 
@@ -1472,7 +1956,7 @@ export function registerApiRoutes(app: Express): void {
       };
 
       room.players.push(newPlayer);
-      room.updatedAt = Date.now();
+      touchRoomActivity(room);
       saveRoomsToTmpCache();
       broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
       res.json({
@@ -1495,6 +1979,7 @@ export function registerApiRoutes(app: Express): void {
       const player = room.players.find((p) => p.id === (isHostCaller ? targetId : playerId));
       if (player && room.status === 'lobby') {
         player.ready = player.id === room.hostId ? true : Boolean(body.ready);
+        touchRoomActivity(room);
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
       }
       res.json({ ok: true, room: serializeRoom(room) });
@@ -1507,6 +1992,7 @@ export function registerApiRoutes(app: Express): void {
         room.players.forEach((p) => {
           p.ready = true;
         });
+        touchRoomActivity(room);
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
       }
       res.json({ ok: true, room: serializeRoom(room) });
@@ -1521,6 +2007,7 @@ export function registerApiRoutes(app: Express): void {
           const player = room.players.find((p) => p.id === targetId);
           if (player) {
             player.team = body.team === 'B' ? 'B' : 'A';
+            touchRoomActivity(room);
             broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
           }
         }
@@ -1544,6 +2031,7 @@ export function registerApiRoutes(app: Express): void {
         if (Number.isFinite(Number(body.timeLimitSec))) {
           room.timeLimitSec = Math.max(60, Math.min(600, Number(body.timeLimitSec)));
         }
+        touchRoomActivity(room);
         broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
       }
       res.json({ ok: true, room: serializeRoom(room) });
@@ -1569,6 +2057,7 @@ export function registerApiRoutes(app: Express): void {
           if (!room.kickedPlayerIds.includes(targetId)) {
             room.kickedPlayerIds.push(targetId);
           }
+          touchRoomActivity(room);
           broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         }
       }
@@ -1584,6 +2073,7 @@ export function registerApiRoutes(app: Express): void {
         if (target) {
           room.hostId = target.id;
           target.ready = true;
+          touchRoomActivity(room);
           broadcastRoom(room, { type: 'room:state', room: serializeRoom(room) });
         }
       }
@@ -1627,7 +2117,7 @@ export function registerApiRoutes(app: Express): void {
         p.battleHits = 0;
         if (!p.team) p.team = idx % 2 === 0 ? 'A' : 'B';
       });
-      room.updatedAt = Date.now();
+      touchRoomActivity(room);
       saveRoomsToTmpCache();
       broadcastRoom(room, { type: 'room:started', room: serializeRoom(room) });
       res.json({ ok: true, type: 'room:started', room: serializeRoom(room) });
@@ -1668,7 +2158,7 @@ export function registerApiRoutes(app: Express): void {
         room.endsAt =
           room.boardMode === 'time_attack' ? Date.now() + room.timeLimitSec * 1000 : null;
         room.turnDeadlineAt = Date.now() + ONLINE_TURN_TIMEOUT_SEC * 1000 + 4000;
-        room.updatedAt = Date.now();
+        touchRoomActivity(room);
         room.players.forEach((p) => {
           p.tile = 1;
           p.score = 0;
@@ -1700,6 +2190,7 @@ export function registerApiRoutes(app: Express): void {
           timestamp: ts,
         };
         room.chatMessages = [...room.chatMessages.slice(-23), chatEntry];
+        touchRoomActivity(room);
         broadcastRoom(room, {
           type: 'room:chat_msg',
           senderId: player.id,

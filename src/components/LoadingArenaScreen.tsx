@@ -123,6 +123,9 @@ function getThemeVisualAccent(themeId?: BoardThemeId): {
   switch (themeId) {
     case 'dragon_volcano':
     case 'sakura_shogun':
+    case 'crimson_bloodmoon':
+    case 'crystal_rose_cathedral':
+    case 'solar_phoenix_sanctum':
       return {
         ringTone: 'rose',
         auraPrimary: 'bg-rose-500/15',
@@ -135,6 +138,10 @@ function getThemeVisualAccent(themeId?: BoardThemeId): {
     case 'atlantis_ocean':
     case 'celestial_sky':
     case 'cosmic_nebula':
+    case 'cyber_neon_citadel':
+    case 'storm_titan_peak':
+    case 'abyssal_kraken_trench':
+    case 'aether_infinity_nexus':
       return {
         ringTone: 'sky',
         auraPrimary: 'bg-sky-500/15',
@@ -146,6 +153,8 @@ function getThemeVisualAccent(themeId?: BoardThemeId): {
     case 'enchanted_forest':
     case 'ancient_temple':
     case 'jade_palace':
+    case 'mystic_fungi_grove':
+    case 'celestial_dragon_throne':
       return {
         ringTone: 'emerald',
         auraPrimary: 'bg-emerald-500/15',
@@ -157,6 +166,7 @@ function getThemeVisualAccent(themeId?: BoardThemeId): {
     case 'lost_desert':
     case 'shadow_realm':
     case 'clockwork_aether':
+    case 'golden_pharaoh_vault':
     default:
       return {
         ringTone: 'amber',

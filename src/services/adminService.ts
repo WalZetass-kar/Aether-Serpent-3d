@@ -99,6 +99,7 @@ export interface AdminRoomRecord {
   chatCount: number;
   createdAt: number;
   updatedAt: number;
+  lastActivityAt?: number;
   players: AdminRoomPlayer[];
 }
 
@@ -405,12 +406,15 @@ export async function adminGrantAllPremiumBoards(
     handleFirestoreError(err, OperationType.UPDATE, path);
   }
 
+  const premiumBoardCount = Object.values(BOARD_UNLOCK_RULES).filter(
+    (r) => r.unlockType === 'premium',
+  ).length;
   const notePart = note?.trim() ? ` Catatan: ${note.trim()}` : '';
   try {
     await sendAdminTopUpReply(
       adminUser,
       targetMember,
-      `Royal Pass Aktif! Admin telah membuka seluruh 5 papan Premium + menambahkan +${safeBonus.toLocaleString('id-ID')} Koin Aether ke akunmu (Saldo: ${nextCoins.toLocaleString('id-ID')} Koin).${notePart}`,
+      `Royal Pass Aktif! Admin telah membuka seluruh ${premiumBoardCount} papan Premium + menambahkan +${safeBonus.toLocaleString('id-ID')} Koin Aether ke akunmu (Saldo: ${nextCoins.toLocaleString('id-ID')} Koin).${notePart}`,
       { coinDelta: safeBonus, status: 'completed' },
     );
   } catch {
@@ -585,14 +589,20 @@ export async function fetchAdminServerOverview(user: User): Promise<AdminServerO
     }
   }
 
-  const cutoffMs = Date.now() - 2 * 60 * 60 * 1000;
+  const cutoffMs = Date.now() - 2 * 60 * 1000;
   if (firestoreRoomsSnap) {
     firestoreRoomsSnap.forEach((docSnap) => {
       const d = docSnap.data();
       const code = String(d.code || docSnap.id).trim().toUpperCase();
       if (!code) return;
       const updatedAt = toEpochMs(d.updatedAt) || Date.now();
-      if (updatedAt < cutoffMs) return;
+      if (updatedAt < cutoffMs) {
+        // Automatically prune stale Firestore room docs idle for >= 2 minutes
+        if (!byCode.has(code)) {
+          void deleteDoc(doc(db, 'activeRooms', code)).catch(() => {});
+        }
+        return;
+      }
 
       const rawPlayers = Array.isArray(d.players) ? d.players : [];
       const parsedPlayers: AdminRoomPlayer[] = rawPlayers.map((p: Record<string, unknown>) => ({
@@ -631,6 +641,7 @@ export async function fetchAdminServerOverview(user: User): Promise<AdminServerO
           chatCount: 0,
           createdAt: toEpochMs(d.createdAt) || updatedAt,
           updatedAt,
+          lastActivityAt: updatedAt,
           players: parsedPlayers,
         });
       } else if (parsedPlayers.length > existing.players.length) {
@@ -756,6 +767,113 @@ export async function adminDeclareRoomWinner(
     roomCode: payload.roomCode || room.code,
     designatedWinnerId: payload.designatedWinnerId ?? null,
     targetName: payload.targetName ?? null,
+  };
+}
+
+export async function adminKickRoomPlayer(
+  user: User,
+  room: AdminRoomRecord,
+  playerId: string,
+  reason?: string,
+): Promise<{ roomCode: string; roomClosed: boolean; kickedPlayerName: string }> {
+  if (!isAdminAccount(user)) {
+    throw new Error('Akses admin diperlukan.');
+  }
+  const token = await user.getIdToken();
+  const roomSnapshot = {
+    code: room.code,
+    name: room.name,
+    isPublic: room.isPublic,
+    boardMode: room.boardMode,
+    hostId: room.hostId,
+    status: room.status,
+    winnerId: room.winnerId ?? null,
+    winningTeam: room.winningTeam ?? null,
+    turnCount: room.turnCount,
+    players: room.players.map((p) => ({
+      ...p,
+      isAI: false,
+      color: '#f59e0b',
+      accentColor: '#fde68a',
+      turnsTaken: 0,
+      laddersClimbed: 0,
+      snakesBitten: 0,
+      specialTilesHit: 0,
+      shieldsUsed: 0,
+      battleHits: 0,
+    })),
+  };
+
+  const res = await fetch(
+    `/api/admin/rooms/${encodeURIComponent(room.code)}/kick-player`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        playerId,
+        reason:
+          reason?.trim() ||
+          'Anda dikeluarkan dari ruangan oleh Administrator (koneksi tidak stabil / lag).',
+        roomSnapshot,
+      }),
+    },
+  );
+  const payload = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    roomCode?: string;
+    roomClosed?: boolean;
+    kickedPlayerName?: string;
+  };
+  if (!res.ok) {
+    throw new Error(payload.error || 'Gagal mengeluarkan pemain dari room.');
+  }
+
+  // Sync mirrored Firestore activeRooms document cleanly
+  const remainingPlayers = room.players.filter((p) => p.id !== playerId);
+  const fsRoomRef = doc(db, 'activeRooms', room.code.trim().toUpperCase());
+  try {
+    if (payload.roomClosed || remainingPlayers.length === 0) {
+      await deleteDoc(fsRoomRef);
+    } else {
+      const nextHost =
+        remainingPlayers.find((p) => p.id === room.hostId) ?? remainingPlayers[0];
+      const nextStatus =
+        room.status === 'playing' && remainingPlayers.length === 1 ? 'finished' : room.status;
+      const nextWinnerId =
+        nextStatus === 'finished' && remainingPlayers.length === 1
+          ? remainingPlayers[0].id
+          : room.winnerId || '';
+      await updateDoc(fsRoomRef, {
+        hostName: nextHost.name,
+        status: nextStatus,
+        winnerId: nextWinnerId,
+        playerCount: remainingPlayers.length,
+        players: remainingPlayers.map((p) => ({
+          id: p.id,
+          name: p.name,
+          archetypeIndex: p.archetypeIndex ?? 0,
+          tile: p.tile,
+          score: p.score,
+          shields: p.shields,
+          connected: p.connected,
+          ready: p.ready,
+          pingMs: p.pingMs,
+          team: p.team ?? 'A',
+        })),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch {
+    // Non-critical if Firestore mirror doc already removed or absent
+  }
+
+  return {
+    roomCode: payload.roomCode || room.code,
+    roomClosed: Boolean(payload.roomClosed),
+    kickedPlayerName: payload.kickedPlayerName || 'Pemain',
   };
 }
 

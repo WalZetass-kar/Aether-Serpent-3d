@@ -109,13 +109,13 @@ export const CrownVictoryEmblem: React.FC<EmblemProps> = ({ className = 'w-6 h-6
 );
 
 /**
- * Distinct Fantasy Hero Class Insignia per archetypeIndex (0..3).
+ * Distinct Fantasy Hero Class Insignia per archetypeIndex (0..13).
  */
 export const ArchetypeEmblem: React.FC<{ archetypeIndex: number; className?: string }> = ({
   archetypeIndex,
   className = 'w-5 h-5',
 }) => {
-  const idx = ((archetypeIndex % 4) + 4) % 4;
+  const idx = ((Math.floor(archetypeIndex) % 14) + 14) % 14;
 
   // 0: Ksatria Ruby (Shield + Crest Blade)
   if (idx === 0) {
@@ -168,12 +168,190 @@ export const ArchetypeEmblem: React.FC<{ archetypeIndex: number; className?: str
   }
 
   // 3: Alkemis Amber (Solar Astrolabe)
+  if (idx === 3) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5" fill="#D97706" fillOpacity="0.22" stroke="#FBBF24" strokeWidth="1.5" />
+        <circle cx="12" cy="12" r="4.5" stroke="#FDE68A" strokeWidth="1.3" strokeDasharray="2 1.5" />
+        <path d="M12 2.5V5.2M12 18.8V21.5M2.5 12H5.2M18.8 12H21.5" stroke="#FBBF24" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="12" cy="12" r="2" fill="#FEF08A" />
+      </svg>
+    );
+  }
+
+  // 4: Samurai Naga (Crescent Kabuto + Katana Slash)
+  if (idx === 4) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M4.5 6.5C7 10.5 17 10.5 19.5 6.5C17.5 12 15 13 12 13C9 13 6.5 12 4.5 6.5Z"
+          fill="#FCD34D"
+          stroke="#F59E0B"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
+        <path d="M6.5 15.5L17.5 11.5" stroke="#EF4444" strokeWidth="2.2" strokeLinecap="round" />
+        <path d="M7.5 19.5H16.5L15 14H9L7.5 19.5Z" fill="#DC2626" fillOpacity="0.35" stroke="#F87171" strokeWidth="1.4" />
+      </svg>
+    );
+  }
+
+  // 5: Valkyrie Cahaya (Golden Wings + Dawn Spear)
+  if (idx === 5) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M12 14L4 7.5C4.5 12 7 15 11.5 16.5L12 21L12.5 16.5C17 15 19.5 12 20 7.5L12 14Z"
+          fill="#EAB308"
+          fillOpacity="0.28"
+          stroke="#FDE047"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path d="M12 3V19M9.5 6.5L12 3L14.5 6.5" stroke="#FEF08A" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  // 6: Ksatria Bayangan (Hooded Mask + Twin Violet Blades)
+  if (idx === 6) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M12 3L19 9.5L16 20H8L5 9.5L12 3Z"
+          fill="#7C3AED"
+          fillOpacity="0.26"
+          stroke="#A78BFA"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path d="M8.5 11.5L11 12.5M15.5 11.5L13 12.5" stroke="#E9D5FF" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M7 18L17 7M17 18L7 7" stroke="#C4B5FD" strokeWidth="1.2" strokeLinecap="round" opacity="0.7" />
+      </svg>
+    );
+  }
+
+  // 7: Pendeta Teratai (Sacred Cyan Lotus)
+  if (idx === 7) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M12 4C14.8 7.5 15 11.5 12 16C9 11.5 9.2 7.5 12 4Z"
+          fill="#06B6D4"
+          fillOpacity="0.38"
+          stroke="#67E8F9"
+          strokeWidth="1.4"
+        />
+        <path
+          d="M12 16.5C7.5 16.5 4.5 13.5 4 9.5C7.5 9.5 10.2 12 12 16.5ZM12 16.5C16.5 16.5 19.5 13.5 20 9.5C16.5 9.5 13.8 12 12 16.5Z"
+          fill="#22D3EE"
+          fillOpacity="0.24"
+          stroke="#A5F3FC"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+        <path d="M7 19.5H17" stroke="#67E8F9" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  // 8: Golem Obsidian (Magma Core Hex)
+  if (idx === 8) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M12 2.5L20 7V17L12 21.5L4 17V7L12 2.5Z"
+          fill="#431407"
+          stroke="#EA580C"
+          strokeWidth="1.7"
+          strokeLinejoin="round"
+        />
+        <path d="M12 7.5L15.5 12L12 16.5L8.5 12L12 7.5Z" fill="#FB923C" stroke="#FED7AA" strokeWidth="1.1" />
+      </svg>
+    );
+  }
+
+  // 9: Archon Siber (Holo Visor + Tech Halo)
+  if (idx === 9) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M4.5 9.5L8.5 5H15.5L19.5 9.5V14.5L15.5 19H8.5L4.5 14.5V9.5Z"
+          fill="#0284C7"
+          fillOpacity="0.26"
+          stroke="#38BDF8"
+          strokeWidth="1.5"
+        />
+        <rect x="7" y="10" width="10" height="3.6" rx="1.2" fill="#67E8F9" />
+        <path d="M12 2.5V5M12 19V21.5" stroke="#7DD3FC" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  // 10: Bajak Laut Aether (Sky Compass + Tricorn Crest)
+  if (idx === 10) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M3.5 14C7 14 9 9.5 12 7.5C15 9.5 17 14 20.5 14L18 18.5H6L3.5 14Z"
+          fill="#B45309"
+          fillOpacity="0.34"
+          stroke="#FBBF24"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <circle cx="12" cy="14" r="2.2" fill="#FDE047" />
+        <path d="M12 3.5L14 6.5H10L12 3.5Z" fill="#FEF08A" />
+      </svg>
+    );
+  }
+
+  // 11: Druid Bulan (Crescent Antlers + Spirit Leaf)
+  if (idx === 11) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <path
+          d="M7 4.5C5 7.5 6 11 9.5 12.5M17 4.5C19 7.5 18 11 14.5 12.5"
+          stroke="#86EFAC"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        <path
+          d="M15.2 12.5C13.8 11.4 11.7 11.4 10.3 12.5C8.9 13.7 8.9 15.8 10.3 17C11.7 18.1 13.8 18.1 15.2 17C13.4 16.8 12.6 15.8 12.6 14.7C12.6 13.7 13.4 12.7 15.2 12.5Z"
+          fill="#22C55E"
+          fillOpacity="0.4"
+          stroke="#BBF7D0"
+          strokeWidth="1.4"
+        />
+        <circle cx="12" cy="19.8" r="1.4" fill="#4ADE80" />
+      </svg>
+    );
+  }
+
+  // 12: Raja Firaun (Sacred Ankh + Nemes Gold)
+  if (idx === 12) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <circle cx="12" cy="7.5" r="3.4" fill="#CA8A04" fillOpacity="0.3" stroke="#FACC15" strokeWidth="1.8" />
+        <path d="M12 11V20.5M7.5 14H16.5" stroke="#FDE047" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="12" cy="7.5" r="1.2" fill="#38BDF8" />
+      </svg>
+    );
+  }
+
+  // 13: Kaisar Naga Abadi (Imperial Dragon Crown + Sovereign Flame)
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <circle cx="12" cy="12" r="8.5" fill="#D97706" fillOpacity="0.22" stroke="#FBBF24" strokeWidth="1.5" />
-      <circle cx="12" cy="12" r="4.5" stroke="#FDE68A" strokeWidth="1.3" strokeDasharray="2 1.5" />
-      <path d="M12 2.5V5.2M12 18.8V21.5M2.5 12H5.2M18.8 12H21.5" stroke="#FBBF24" strokeWidth="1.6" strokeLinecap="round" />
-      <circle cx="12" cy="12" r="2" fill="#FEF08A" />
+      <path
+        d="M3.5 17L5.5 7.5L9.5 11.5L12 4.5L14.5 11.5L18.5 7.5L20.5 17H3.5Z"
+        fill="#BE123C"
+        fillOpacity="0.32"
+        stroke="#FACC15"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <rect x="5" y="18.2" width="14" height="2.4" rx="1.2" fill="#FDE047" />
+      <path d="M12 11L13.6 13.5L12 16L10.4 13.5L12 11Z" fill="#FB7185" />
     </svg>
   );
 };

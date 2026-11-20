@@ -129,8 +129,8 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   const totalShieldsBlocked = players.reduce((acc, p) => acc + (p.shieldsUsed ?? 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 overflow-y-auto">
-      <div className="w-full max-w-xl rounded-2xl border border-amber-500/40 bg-slate-900 p-6 shadow-2xl my-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 overflow-y-auto">
+      <div className="w-full max-w-xl rounded-2xl border border-amber-500/45 bg-slate-900/92 p-6 shadow-2xl my-auto">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div

@@ -25,7 +25,7 @@ export interface PlayerConfig {
   id: string;
   name: string;
   isAI: boolean;
-  archetypeIndex: number; // 0: Ruby Knight, 1: Sapphire Mage, 2: Emerald Ranger, 3: Amber Alchemist
+  archetypeIndex: number; // 0..3 starter pawns, 4..13 purchasable premium pawns
   color: string;
   accentColor: string;
   team?: TeamId;
@@ -64,47 +64,228 @@ export interface DailyChallengeDef {
   bonusScore: number;
 }
 
-export const PLAYER_ARCHETYPES: Array<{
+export type PawnRarity = 'starter' | 'rare' | 'epic' | 'legendary' | 'mythic';
+
+export interface PlayerArchetypeDef {
   archetypeIndex: number;
   title: string;
+  role: string;
+  description: string;
   color: string;
   accentColor: string;
   hexNum: number;
   accentHexNum: number;
-}> = [
+  unlockType: 'free' | 'premium';
+  priceCoins: number;
+  rarity: PawnRarity;
+}
+
+export const STARTER_PAWN_INDICES = [0, 1, 2, 3] as const;
+
+export const PLAYER_ARCHETYPES: PlayerArchetypeDef[] = [
   {
     archetypeIndex: 0,
     title: 'Ksatria Ruby',
+    role: 'Pelindung Garda Depan',
+    description: 'Ksatria berbaju zirah baja dengan perisai lambang kerajaan dan pedang cahaya ruby.',
     color: '#e11d48',
     accentColor: '#fda4af',
     hexNum: 0xe11d48,
     accentHexNum: 0xfda4af,
+    unlockType: 'free',
+    priceCoins: 0,
+    rarity: 'starter',
   },
   {
     archetypeIndex: 1,
     title: 'Penyihir Safir',
+    role: 'Ahli Sihir Astral',
+    description: 'Magus bertopi runcing dengan tongkat kristal astral dan jubah konstelasi safir.',
     color: '#2563eb',
     accentColor: '#93c5fd',
     hexNum: 0x3b82f6,
     accentHexNum: 0x93c5fd,
+    unlockType: 'free',
+    priceCoins: 0,
+    rarity: 'starter',
   },
   {
     archetypeIndex: 2,
     title: 'Penjelajah Zamrud',
+    role: 'Pemanah Rimba',
+    description: 'Pengintai gesit berjubah hutan, lengkap dengan busur panjang lengkung dan tanduk rusa suci.',
     color: '#059669',
     accentColor: '#6ee7b7',
     hexNum: 0x10b981,
     accentHexNum: 0x6ee7b7,
+    unlockType: 'free',
+    priceCoins: 0,
+    rarity: 'starter',
   },
   {
     archetypeIndex: 3,
     title: 'Alkemis Amber',
+    role: 'Insinyur Clockwork',
+    description: 'Peneliti eksentrik berkacamata kuningan dengan lentera surya dan botol ramuan bercahaya.',
     color: '#d97706',
     accentColor: '#fde68a',
     hexNum: 0xf59e0b,
     accentHexNum: 0xfde68a,
+    unlockType: 'free',
+    priceCoins: 0,
+    rarity: 'starter',
+  },
+  {
+    archetypeIndex: 4,
+    title: 'Samurai Naga',
+    role: 'Pendekar Api',
+    description: 'Ronin berzirah lamela merah menyala dengan helm tanduk sabit emas dan katana bara.',
+    color: '#dc2626',
+    accentColor: '#fcd34d',
+    hexNum: 0xdc2626,
+    accentHexNum: 0xfcd34d,
+    unlockType: 'premium',
+    priceCoins: 550,
+    rarity: 'rare',
+  },
+  {
+    archetypeIndex: 5,
+    title: 'Valkyrie Cahaya',
+    role: 'Pelindung Sayap',
+    description: 'Kesatria langit bersayap emas megah yang menggenggam tombak fajar dan perisai surya.',
+    color: '#eab308',
+    accentColor: '#fef08a',
+    hexNum: 0xeab308,
+    accentHexNum: 0xfef08a,
+    unlockType: 'premium',
+    priceCoins: 750,
+    rarity: 'rare',
+  },
+  {
+    archetypeIndex: 6,
+    title: 'Ksatria Bayangan',
+    role: 'Pembunuh Senyap',
+    description: 'Pengembara malam bertopeng tudung ungu dengan bilah kembar violet dan jubah kabut.',
+    color: '#7c3aed',
+    accentColor: '#c4b5fd',
+    hexNum: 0x7c3aed,
+    accentHexNum: 0xc4b5fd,
+    unlockType: 'premium',
+    priceCoins: 900,
+    rarity: 'epic',
+  },
+  {
+    archetypeIndex: 7,
+    title: 'Pendeta Teratai',
+    role: 'Mistikus Air',
+    description: 'Biksu suci berkalung tasbih batu giok dengan mahkota teratai sian dan tongkat cincin.',
+    color: '#06b6d4',
+    accentColor: '#a5f3fc',
+    hexNum: 0x06b6d4,
+    accentHexNum: 0xa5f3fc,
+    unlockType: 'premium',
+    priceCoins: 1100,
+    rarity: 'epic',
+  },
+  {
+    archetypeIndex: 8,
+    title: 'Golem Obsidian',
+    role: 'Benteng Magma',
+    description: 'Raksasa batu vulkanik berinti lava menyala dengan bahu kristal api dan palu tektonik.',
+    color: '#ea580c',
+    accentColor: '#fdba74',
+    hexNum: 0xea580c,
+    accentHexNum: 0xfdba74,
+    unlockType: 'premium',
+    priceCoins: 1300,
+    rarity: 'epic',
+  },
+  {
+    archetypeIndex: 9,
+    title: 'Archon Siber',
+    role: 'Teknomanser',
+    description: 'Komandan futuristik dengan visor holografik biru elektrik, sayap halo mekanis, dan pedang plasma.',
+    color: '#0284c7',
+    accentColor: '#67e8f9',
+    hexNum: 0x0284c7,
+    accentHexNum: 0x67e8f9,
+    unlockType: 'premium',
+    priceCoins: 1500,
+    rarity: 'epic',
+  },
+  {
+    archetypeIndex: 10,
+    title: 'Bajak Laut Aether',
+    role: 'Kapten Langit',
+    description: 'Nakhoda kapal udara bertopi tricorn berbulu emas dengan pedang cutlass dan kompas astral.',
+    color: '#b45309',
+    accentColor: '#fde047',
+    hexNum: 0xb45309,
+    accentHexNum: 0xfde047,
+    unlockType: 'premium',
+    priceCoins: 1750,
+    rarity: 'legendary',
+  },
+  {
+    archetypeIndex: 11,
+    title: 'Druid Bulan',
+    role: 'Penjaga Hutan',
+    description: 'Pemanggil roh rimba bermahkota tanduk bulan sabit dengan tongkat lentera kunang-kunang.',
+    color: '#16a34a',
+    accentColor: '#bbf7d0',
+    hexNum: 0x16a34a,
+    accentHexNum: 0xbbf7d0,
+    unlockType: 'premium',
+    priceCoins: 2000,
+    rarity: 'legendary',
+  },
+  {
+    archetypeIndex: 12,
+    title: 'Raja Firaun',
+    role: 'Penguasa Pasir',
+    description: 'Penguasa gurun abadi dengan mahkota nemes emas-biru, tongkat Ankh suci, dan kerah permata.',
+    color: '#ca8a04',
+    accentColor: '#38bdf8',
+    hexNum: 0xca8a04,
+    accentHexNum: 0x38bdf8,
+    unlockType: 'premium',
+    priceCoins: 2400,
+    rarity: 'legendary',
+  },
+  {
+    archetypeIndex: 13,
+    title: 'Kaisar Naga Abadi',
+    role: 'Legenda Agung',
+    description: 'Penguasa tertinggi Lembah Aether dengan sayap naga kosmik, tombak naga emas, dan mahkota mitos.',
+    color: '#9333ea',
+    accentColor: '#facc15',
+    hexNum: 0x9333ea,
+    accentHexNum: 0xfacc15,
+    unlockType: 'premium',
+    priceCoins: 3000,
+    rarity: 'mythic',
   },
 ];
+
+export function getArchetypeDef(archetypeIndex: number): PlayerArchetypeDef {
+  const safe = Number.isFinite(archetypeIndex) ? Math.floor(archetypeIndex) : 0;
+  return PLAYER_ARCHETYPES[((safe % PLAYER_ARCHETYPES.length) + PLAYER_ARCHETYPES.length) % PLAYER_ARCHETYPES.length];
+}
+
+export function isPawnUnlocked(
+  archetypeIndex: number,
+  unlockedPawnIndices?: number[] | null,
+): boolean {
+  const safe = Math.floor(archetypeIndex);
+  if (safe >= 0 && safe <= 3) return true;
+  if (!Array.isArray(unlockedPawnIndices)) return false;
+  return unlockedPawnIndices.includes(safe);
+}
+
+export function getPawnUnlockCost(archetypeIndex: number): number {
+  const def = PLAYER_ARCHETYPES.find((a) => a.archetypeIndex === archetypeIndex);
+  return def ? def.priceCoins : 0;
+}
 
 export const BOARD_GAME_MODES: Array<{
   id: BoardGameMode;

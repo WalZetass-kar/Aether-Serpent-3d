@@ -27,7 +27,7 @@
         },
         "archetypeIndex": {
           "type": "integer",
-          "description": "Selected pawn archetype index (0-3)."
+          "description": "Selected pawn archetype index (0-13)."
         },
         "diceSkinId": {
           "type": "string",
@@ -114,6 +114,10 @@
         "unlockedBoardIds": {
           "type": "array",
           "description": "Bounded list of unlocked 3D board IDs (max 30)."
+        },
+        "unlockedPawnIndices": {
+          "type": "array",
+          "description": "Bounded list of unlocked hero pawn archetype indices (0-13, max 14)."
         },
         "createdAt": {
           "type": "string",
@@ -234,7 +238,7 @@
         },
         "archetypeIndex": {
           "type": "integer",
-          "description": "Selected pawn archetype index (0-3)."
+          "description": "Selected pawn archetype index (0-13)."
         },
         "diceSkinId": {
           "type": "string",

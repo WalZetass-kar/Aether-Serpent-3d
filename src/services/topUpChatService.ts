@@ -47,6 +47,7 @@ export interface TopUpChatMessage {
 export interface WalletSyncSnapshot {
   aetherCoins: number;
   unlockedBoardIds: string[];
+  unlockedPawnIndices?: number[];
 }
 
 function toMs(val: unknown): number {
@@ -114,13 +115,29 @@ export function subscribeToUserWalletSync(
     (docSnap) => {
       if (!docSnap.exists()) return;
       const d = docSnap.data();
-      if (typeof d.aetherCoins !== 'number' && !Array.isArray(d.unlockedBoardIds)) return;
+      if (
+        typeof d.aetherCoins !== 'number' &&
+        !Array.isArray(d.unlockedBoardIds) &&
+        !Array.isArray(d.unlockedPawnIndices)
+      ) {
+        return;
+      }
       onWalletChange({
         aetherCoins:
           typeof d.aetherCoins === 'number' ? Math.max(0, Math.floor(d.aetherCoins)) : 250,
         unlockedBoardIds: Array.isArray(d.unlockedBoardIds)
           ? d.unlockedBoardIds.filter((v): v is string => typeof v === 'string').slice(0, 30)
           : [],
+        ...(Array.isArray(d.unlockedPawnIndices)
+          ? {
+              unlockedPawnIndices: d.unlockedPawnIndices
+                .filter(
+                  (v): v is number =>
+                    typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 13,
+                )
+                .slice(0, 14),
+            }
+          : {}),
       });
     },
     () => {
