@@ -48,27 +48,27 @@
 }
 
 .safe-page-scroll {
-  padding-top: max(0.75rem, calc(var(--safe-top) + 0.5rem));
-  padding-bottom: max(0.875rem, calc(var(--safe-bottom) + 0.625rem));
+  padding-top: max(0.625rem, calc(var(--safe-top) + 0.375rem));
+  padding-bottom: max(0.75rem, calc(var(--safe-bottom) + 0.5rem));
   padding-left: max(0.75rem, calc(var(--safe-left) + 0.5rem));
   padding-right: max(0.75rem, calc(var(--safe-right) + 0.5rem));
 }
 
 @media (min-width: 640px) {
   .safe-page-scroll {
-    padding-top: max(1.5rem, calc(var(--safe-top) + 0.75rem));
-    padding-bottom: max(1.5rem, calc(var(--safe-bottom) + 0.75rem));
-    padding-left: max(1.5rem, calc(var(--safe-left) + 1rem));
-    padding-right: max(1.5rem, calc(var(--safe-right) + 1rem));
+    padding-top: max(0.875rem, calc(var(--safe-top) + 0.5rem));
+    padding-bottom: max(1rem, calc(var(--safe-bottom) + 0.625rem));
+    padding-left: max(1.25rem, calc(var(--safe-left) + 0.875rem));
+    padding-right: max(1.25rem, calc(var(--safe-right) + 0.875rem));
   }
 }
 
 @media (min-width: 1024px) {
   .safe-page-scroll {
-    padding-top: max(1.75rem, calc(var(--safe-top) + 1rem));
-    padding-bottom: max(1.75rem, calc(var(--safe-bottom) + 1rem));
-    padding-left: max(2.5rem, calc(var(--safe-left) + 1.5rem));
-    padding-right: max(2.5rem, calc(var(--safe-right) + 1.5rem));
+    padding-top: max(1rem, calc(var(--safe-top) + 0.625rem));
+    padding-bottom: max(1.125rem, calc(var(--safe-bottom) + 0.75rem));
+    padding-left: max(2rem, calc(var(--safe-left) + 1.25rem));
+    padding-right: max(2rem, calc(var(--safe-right) + 1.25rem));
   }
 }
 
@@ -341,13 +341,82 @@
     inset 0 1px 0 rgba(253, 230, 138, 0.16);
 }
 
+/* Cinematic 3D Backdrop Rack-Focus Blur for MainMenu <-> MultiplayerLobby Transitions */
+.menu-stage-3d {
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0px) brightness(1) saturate(1);
+  transition:
+    filter 460ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.menu-stage-3d[data-transition-phase="leaving"] {
+  will-change: filter, transform;
+  filter: blur(8px) brightness(0.92) saturate(1.06);
+  transform: translate3d(0, 0, 0) scale(1.03);
+  transition:
+    filter 240ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-stage-3d[data-transition-phase="flying"] {
+  will-change: filter, transform;
+  filter: blur(15px) brightness(0.84) saturate(1.12);
+  transform: translate3d(0, 0, 0) scale(1.055);
+  transition:
+    filter 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 340ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.menu-stage-3d[data-transition-phase="entering"] {
+  will-change: filter, transform;
+  filter: blur(3.5px) brightness(0.95) saturate(1.03);
+  transform: translate3d(0, 0, 0) scale(1.015);
+  transition:
+    filter 500ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 540ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.menu-stage-3d[data-screen-view="multiplayer_lobby"][data-transition-phase="idle"] {
+  filter: blur(2.5px) brightness(0.93) saturate(1.02);
+  transform: translate3d(0, 0, 0) scale(1.012);
+}
+
+.menu-transition-veil {
+  background: radial-gradient(
+    ellipse 74% 64% at 50% 45%,
+    rgba(245, 158, 11, 0.08) 0%,
+    rgba(7, 13, 28, 0.34) 58%,
+    rgba(2, 6, 23, 0.66) 100%
+  );
+  opacity: 0;
+  transition: opacity 340ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.menu-transition-veil[data-transition-phase="leaving"] {
+  opacity: 0.48;
+  transition-duration: 220ms;
+}
+
+.menu-transition-veil[data-transition-phase="flying"] {
+  opacity: 0.78;
+  transition-duration: 260ms;
+}
+
+.menu-transition-veil[data-transition-phase="entering"] {
+  opacity: 0.24;
+  transition-duration: 460ms;
+}
+
 @keyframes flyOutForward {
   0% {
     opacity: 1;
+    filter: blur(0px);
     transform: translate3d(0, 0, 0) scale(1);
   }
   100% {
     opacity: 0;
+    filter: blur(5px);
     transform: translate3d(0, -10px, 0) scale(1.045);
   }
 }
@@ -355,10 +424,12 @@
 @keyframes flyInForward {
   0% {
     opacity: 0;
+    filter: blur(6px);
     transform: translate3d(0, 18px, 0) scale(0.955);
   }
   100% {
     opacity: 1;
+    filter: blur(0px);
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
@@ -366,10 +437,12 @@
 @keyframes flyOutBack {
   0% {
     opacity: 1;
+    filter: blur(0px);
     transform: translate3d(0, 0, 0) scale(1);
   }
   100% {
     opacity: 0;
+    filter: blur(5px);
     transform: translate3d(0, 14px, 0) scale(0.96);
   }
 }
@@ -377,34 +450,36 @@
 @keyframes flyInBack {
   0% {
     opacity: 0;
+    filter: blur(6px);
     transform: translate3d(0, -12px, 0) scale(1.035);
   }
   100% {
     opacity: 1;
+    filter: blur(0px);
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 .animate-fly-out-forward {
-  animation: flyOutForward 0.25s cubic-bezier(0.4, 0, 0.9, 0.4) forwards;
-  will-change: transform, opacity;
+  animation: flyOutForward 0.26s cubic-bezier(0.4, 0, 0.9, 0.4) forwards;
+  will-change: transform, opacity, filter;
   pointer-events: none;
 }
 
 .animate-fly-in-forward {
-  animation: flyInForward 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+  animation: flyInForward 0.48s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
 }
 
 .animate-fly-out-back {
-  animation: flyOutBack 0.24s cubic-bezier(0.4, 0, 0.9, 0.4) forwards;
-  will-change: transform, opacity;
+  animation: flyOutBack 0.25s cubic-bezier(0.4, 0, 0.9, 0.4) forwards;
+  will-change: transform, opacity, filter;
   pointer-events: none;
 }
 
 .animate-fly-in-back {
-  animation: flyInBack 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+  animation: flyInBack 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
 }
 
 .animate-astrolabe-cw {
@@ -492,6 +567,22 @@
     transform: none;
     transition: none;
     will-change: auto;
+  }
+
+  .menu-stage-3d,
+  .menu-stage-3d[data-transition-phase="leaving"],
+  .menu-stage-3d[data-transition-phase="flying"],
+  .menu-stage-3d[data-transition-phase="entering"],
+  .menu-stage-3d[data-screen-view="multiplayer_lobby"][data-transition-phase="idle"] {
+    filter: none;
+    transform: none;
+    transition: none;
+    will-change: auto;
+  }
+
+  .menu-transition-veil {
+    opacity: 0 !important;
+    transition: none;
   }
 
   .animate-ring-glow,

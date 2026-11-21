@@ -178,7 +178,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
   return (
     <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden">
       {/* Left Catalog Column (7 cols on desktop, scrollable list) */}
-      <div className="order-2 lg:order-1 flex-1 lg:col-span-7 lg:h-full flex flex-col min-h-0 border-r border-slate-800/80 bg-slate-950/95 overflow-y-auto custom-scroll p-3 sm:p-5 space-y-4">
+      <div className="order-2 lg:order-1 flex-1 lg:col-span-7 lg:h-full flex flex-col min-h-0 border-r border-slate-800/80 bg-slate-950/95 overflow-y-auto custom-scroll p-3 sm:p-4 space-y-3.5">
         {/* Top Summary & Filter Segmented Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/75 p-3.5">
           <div className="min-w-0">
@@ -192,7 +192,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
             </p>
           </div>
 
-          <div className="inline-flex rounded-xl border border-slate-800 bg-slate-950 p-1">
+          <div className="inline-flex items-center rounded-xl border border-slate-800 bg-slate-950 p-1">
             {(
               [
                 { id: 'all', label: `Semua (${PLAYER_ARCHETYPES.length})` },
@@ -207,7 +207,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                   soundEngine.playUiClick();
                   setFilterTab(tab.id);
                 }}
-                className={`px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                className={`inline-flex items-center justify-center min-h-[32px] px-3 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                   filterTab === tab.id
                     ? 'bg-amber-500 text-slate-950 shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
@@ -220,7 +220,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
         </div>
 
         {/* Pawn Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
           {filteredPawns.map((arch) => {
             const unlocked = isPawnUnlocked(
               arch.archetypeIndex,
@@ -246,7 +246,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                     setSelectedIdx(arch.archetypeIndex);
                   }
                 }}
-                className={`group rounded-2xl border p-3.5 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                className={`group h-full rounded-2xl border p-3.5 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
                   selected
                     ? 'border-amber-400/80 bg-slate-900 shadow-lg ring-1 ring-amber-400/35'
                     : equipped
@@ -305,7 +305,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                 </div>
 
                 {/* Card Quick Actions */}
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-800/80">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -313,7 +313,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                       soundEngine.playUiClick();
                       setSelectedIdx(arch.archetypeIndex);
                     }}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                    className={`inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                       selected
                         ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
                         : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:text-white'
@@ -323,8 +323,8 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                   </button>
 
                   {equipped ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300 px-2">
-                      <UserCheck className="w-3.5 h-3.5" />
+                    <span className="inline-flex items-center justify-center gap-1 min-h-[36px] text-[11px] font-bold text-emerald-300 px-2 whitespace-nowrap">
+                      <UserCheck className="w-3.5 h-3.5 shrink-0" />
                       Aktif di Arena
                     </span>
                   ) : unlocked ? (
@@ -335,7 +335,7 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                         setSelectedIdx(arch.archetypeIndex);
                         handleEquipPawn(arch);
                       }}
-                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition-colors cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center justify-center min-h-[36px] px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition-colors cursor-pointer whitespace-nowrap"
                     >
                       Pasang Pion
                     </button>
@@ -347,9 +347,9 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                         setSelectedIdx(arch.archetypeIndex);
                         handleBuyPawn(arch);
                       }}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-xs font-bold text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center justify-center gap-1.5 min-h-[36px] px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-xs font-bold text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
                     >
-                      <ShoppingBag className="w-3.5 h-3.5" />
+                      <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
                       <span>
                         {isUnlimitedCoins
                           ? 'Buka Gratis (∞)'
@@ -364,9 +364,9 @@ export const PawnShowcase: React.FC<PawnShowcaseProps> = ({
                         setSelectedIdx(arch.archetypeIndex);
                         onOpenTopUpChat(arch.title);
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/45 bg-amber-950/40 hover:bg-amber-900/50 text-[11px] font-bold text-amber-200 transition-colors cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center justify-center gap-1.5 min-h-[36px] px-3 py-1.5 rounded-lg border border-amber-500/45 bg-amber-950/40 hover:bg-amber-900/50 text-[11px] font-bold text-amber-200 transition-colors cursor-pointer whitespace-nowrap"
                     >
-                      <Coins className="w-3.5 h-3.5 text-amber-400" />
+                      <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>Isi Koin</span>
                     </button>
                   )}

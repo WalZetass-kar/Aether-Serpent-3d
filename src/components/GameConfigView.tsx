@@ -195,26 +195,26 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
   return (
     <div className="relative z-10 flex flex-col w-full h-full safe-page-scroll overflow-y-auto custom-scroll">
       {/* Header */}
-      <header className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4 shrink-0">
+      <header className="mx-auto w-full max-w-6xl flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-2.5 sm:mb-3.5 shrink-0">
         <button
           type="button"
           onClick={onBackToModeSelection}
-          className="glass-panel-soft inline-flex items-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-200 hover:text-amber-200 hover:border-amber-400/50 transition-colors cursor-pointer whitespace-nowrap"
+          className="glass-panel-soft inline-flex items-center gap-1.5 sm:gap-2 min-h-[42px] px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-200 hover:text-amber-200 hover:border-amber-400/50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
         >
-          <ArrowLeft className="w-4 h-4 text-amber-400" />
+          <ArrowLeft className="w-4 h-4 text-amber-400 shrink-0" />
           <span>Pilih Mode</span>
         </button>
 
-        <div className="glass-panel-soft rounded-xl px-2.5 sm:px-3.5 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-2.5">
+        <div className="glass-panel-soft rounded-xl min-h-[42px] px-3 sm:px-3.5 py-2 flex items-center gap-2 shrink-0">
           <SerpentCrestEmblem className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
-          <span className="font-display text-xs sm:text-base font-bold text-gold-gradient">
+          <span className="font-display text-xs sm:text-base font-bold text-gold-gradient whitespace-nowrap">
             Konfigurasi Laga
           </span>
         </div>
       </header>
 
-      {/* Configuration Card */}
-      <main className="my-auto mx-auto w-full max-w-4xl shrink-0 overflow-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-7 space-y-4 sm:space-y-5">
+      {/* Configuration Card — Top-anchored cleanly below header */}
+      <main className="mx-auto w-full max-w-6xl shrink-0 overflow-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 space-y-4">
         {/* Selected Mode Banner */}
         <div className="rounded-2xl border border-amber-500/25 bg-slate-950/65 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
@@ -344,14 +344,14 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenBoardManager('pawns')}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/45 bg-sky-500/15 px-2.5 py-1 text-[11px] font-bold text-sky-200 hover:bg-sky-500/25 cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 min-h-[34px] rounded-lg border border-sky-500/45 bg-sky-500/15 px-3 py-1.5 text-[11px] font-bold text-sky-200 hover:bg-sky-500/25 cursor-pointer whitespace-nowrap"
                   >
-                    <ShoppingBag className="w-3.5 h-3.5 text-sky-300" />
+                    <ShoppingBag className="w-3.5 h-3.5 text-sky-300 shrink-0" />
                     <span>Toko &amp; Pratinjau Pion 3D (10 Baru)</span>
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 items-stretch">
                 {PLAYER_ARCHETYPES.filter((arch) =>
                   isPawnUnlocked(arch.archetypeIndex, profile.unlockedPawnIndices),
                 ).map((arch) => (
@@ -359,7 +359,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                     key={arch.archetypeIndex}
                     type="button"
                     onClick={() => setSoloArchetype(arch.archetypeIndex)}
-                    className={`min-w-0 overflow-hidden flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                    className={`h-full min-h-[44px] min-w-0 overflow-hidden flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
                       soloArchetype === arch.archetypeIndex
                         ? 'border-amber-400 bg-amber-500/15 text-amber-100'
                         : 'border-slate-700 bg-slate-900/70 text-slate-300 hover:bg-slate-800'
@@ -379,7 +379,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   Tier Adaptif Saat Ini: {adaptiveTier}
                 </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 items-stretch">
                 {(
                   [
                     { id: 'adaptive', label: 'Adaptif', desc: 'Mengikuti performa Anda' },
@@ -392,7 +392,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                     key={d.id}
                     type="button"
                     onClick={() => setDifficulty(d.id)}
-                    className={`min-w-0 overflow-hidden p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                    className={`h-full min-w-0 overflow-hidden flex flex-col justify-between p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
                       difficulty === d.id
                         ? 'border-amber-400 bg-amber-500/15 text-amber-200'
                         : 'border-slate-700 bg-slate-900/70 text-slate-300 hover:bg-slate-800'
@@ -529,13 +529,13 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                   key={m.id}
                   type="button"
                   onClick={() => handleQuickModeChange(m.id)}
-                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold cursor-pointer whitespace-nowrap ${
+                  className={`inline-flex items-center justify-center gap-1 min-h-[34px] rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer whitespace-nowrap ${
                     boardCollection.selectionMode === m.id
                       ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
                       : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-white'
                   }`}
                 >
-                  {m.id === 'random' && <Shuffle className="w-3 h-3" />}
+                  {m.id === 'random' && <Shuffle className="w-3 h-3 shrink-0" />}
                   {m.label}
                 </button>
               ))}
@@ -544,16 +544,16 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenBoardManager('collection')}
-                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25 cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center justify-center gap-1 min-h-[34px] rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25 cursor-pointer whitespace-nowrap"
                 >
-                  <Wand2 className="w-3 h-3" />
+                  <Wand2 className="w-3 h-3 shrink-0" />
                   Buka Studio Papan
                 </button>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1 custom-scroll">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-52 overflow-y-auto pr-1 custom-scroll items-stretch">
             {availableBoards.map((b) => {
               const unlockStatus = getBoardUnlockStatus(b.id, profile);
               const unlocked = unlockStatus.unlocked;
@@ -573,7 +573,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                         ? `Terkunci (Misi): ${unlockStatus.rule.mission?.description ?? ''}`
                         : `Terkunci (Premium): ${unlockStatus.rule.premium?.priceCoins.toLocaleString('id-ID') ?? 0} Koin Aether`
                   }
-                  className={`min-w-0 overflow-hidden rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
+                  className={`h-full min-w-0 overflow-hidden flex flex-col justify-between rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
                     isSelected
                       ? 'border-amber-400 bg-amber-500/15 text-white shadow'
                       : !unlocked
@@ -583,36 +583,38 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                         : 'border-slate-800 bg-slate-900/75 text-slate-300 hover:border-slate-700'
                   }`}
                 >
-                  <div className="flex items-center gap-1 mb-1 min-w-0">
-                    {b.previewSwatches.slice(0, 3).map((hex, i) => (
-                      <span
-                        key={`${b.id}_c_${i}`}
-                        className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
-                        style={{ backgroundColor: hex }}
-                      />
-                    ))}
-                    {!unlocked ? (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider ml-auto truncate">
-                        <Lock className="w-2.5 h-2.5 shrink-0" />
-                        {unlockStatus.canClaimMission ? (
-                          <span className="text-emerald-300">Klaim!</span>
-                        ) : unlockStatus.rule.unlockType === 'mission' ? (
-                          <span className="text-sky-300">Misi {unlockStatus.progressPct}%</span>
-                        ) : (
-                          <span className="text-amber-300">
-                            {unlockStatus.rule.premium?.priceCoins.toLocaleString('id-ID')} Koin
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 ml-auto truncate">
-                        {b.isCustom ? 'Custom' : BOARD_THEME_LABELS[b.themeId].split(' ')[0]}
-                      </span>
-                    )}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1 min-w-0">
+                      {b.previewSwatches.slice(0, 3).map((hex, i) => (
+                        <span
+                          key={`${b.id}_c_${i}`}
+                          className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
+                          style={{ backgroundColor: hex }}
+                        />
+                      ))}
+                      {!unlocked ? (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider ml-auto truncate">
+                          <Lock className="w-2.5 h-2.5 shrink-0" />
+                          {unlockStatus.canClaimMission ? (
+                            <span className="text-emerald-300">Klaim!</span>
+                          ) : unlockStatus.rule.unlockType === 'mission' ? (
+                            <span className="text-sky-300">Misi {unlockStatus.progressPct}%</span>
+                          ) : (
+                            <span className="text-amber-300">
+                              {unlockStatus.rule.premium?.priceCoins.toLocaleString('id-ID')} Koin
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 ml-auto truncate">
+                          {b.isCustom ? 'Custom' : BOARD_THEME_LABELS[b.themeId].split(' ')[0]}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs font-bold truncate">{b.name}</div>
+                    <div className="text-[10px] text-slate-400 truncate">{b.subtitle}</div>
                   </div>
-                  <div className="text-xs font-bold truncate">{b.name}</div>
-                  <div className="text-[10px] text-slate-400 truncate">{b.subtitle}</div>
-                  <div className="text-[9px] text-amber-300/90 truncate mt-0.5 font-mono-num">
+                  <div className="text-[9px] text-amber-300/90 truncate mt-1 font-mono-num">
                     {!unlocked
                       ? unlockStatus.rule.unlockType === 'mission'
                         ? unlockStatus.rule.mission?.title
@@ -636,7 +638,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
               Buka skin baru melalui menu Pencapaian
             </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 items-stretch">
             {DICE_SKINS.map((skin) => {
               const unlocked = isDiceSkinUnlocked(skin.id, unlockedAchievements);
               const selected = selectedDiceSkinId === skin.id;
@@ -653,7 +655,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                       ? `${skin.name} — ${skin.description}`
                       : `Terkunci — Syarat Pencapaian: ${skin.requiredAchievementTitle}`
                   }
-                  className={`min-w-0 overflow-hidden flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                  className={`h-full min-w-0 overflow-hidden flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
                     selected
                       ? 'border-amber-400 bg-amber-500/15 text-amber-100 shadow-md'
                       : unlocked
@@ -698,7 +700,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
               </span>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 items-stretch">
             {EMOTE_SETS.map((emoteSet) => {
               const status = getEmoteSetUnlockProgress(emoteSet.id, unlockedAchievements);
               const selected = status.unlocked && selectedEmoteSetId === emoteSet.id;
@@ -718,7 +720,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                       ? `${emoteSet.name} — ${emoteSet.description}`
                       : `Terkunci (${status.progressText}) — ${status.requirementLabel}`
                   }
-                  className={`min-w-0 overflow-hidden flex flex-col justify-between gap-1.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  className={`h-full min-w-0 overflow-hidden flex flex-col justify-between gap-1.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                     selected
                       ? 'border-amber-400 bg-amber-500/15 text-amber-100 shadow-md'
                       : status.unlocked
@@ -743,10 +745,10 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
         </div>
 
         {/* Camera & Audio Settings Strip */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3.5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 mr-1">
-              <Camera className="w-3.5 h-3.5 text-amber-400" />
+              <Camera className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               Kamera:
             </span>
             {CAMERA_MODES.map((m) => (
@@ -754,7 +756,7 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
                 key={m.id}
                 type="button"
                 onClick={() => onChangeCameraMode(m.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                className={`inline-flex items-center justify-center min-h-[38px] px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                   cameraSettings.mode === m.id
                     ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
                     : 'border-slate-700 bg-slate-900 text-slate-300 hover:text-white'
@@ -765,28 +767,28 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onOpenCameraSettings}
-              className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-200 hover:border-amber-400/50 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-200 hover:border-amber-400/50 cursor-pointer whitespace-nowrap"
             >
               Detail Kamera
             </button>
             <button
               type="button"
               onClick={onToggleMute}
-              className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-200 hover:border-amber-400/50 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-200 hover:border-amber-400/50 cursor-pointer whitespace-nowrap"
             >
               {muted ? (
                 <>
-                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-                  Bisu
+                  <VolumeX className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>Bisu</span>
                 </>
               ) : (
                 <>
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                  Suara Aktif
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Suara Aktif</span>
                 </>
               )}
             </button>
@@ -797,14 +799,14 @@ export const GameConfigView: React.FC<GameConfigViewProps> = ({
         <button
           type="button"
           onClick={handleLaunch}
-          className="w-full min-h-[50px] inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 font-bold text-sm sm:text-base hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer shadow-xl"
+          className="w-full min-h-[48px] inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 font-bold text-sm sm:text-base hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer shadow-xl whitespace-nowrap"
         >
-          <Play className="w-5 h-5" />
-          Mulai Permainan
+          <Play className="w-5 h-5 shrink-0" />
+          <span>Mulai Permainan</span>
         </button>
       </main>
 
-      <footer className="mt-4 text-center text-xs text-slate-400">
+      <footer className="mt-auto pt-3 pb-1 shrink-0 text-center text-xs text-slate-400">
         Developed By{' '}
         <a
           href="https://portfolionyaihwal.my.id"

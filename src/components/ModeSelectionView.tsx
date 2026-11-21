@@ -92,17 +92,17 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
   return (
     <div className="relative z-10 flex flex-col w-full h-full safe-page-scroll overflow-y-auto custom-scroll">
       {/* Header */}
-      <header className="flex items-center justify-between gap-2.5 mb-3 sm:mb-5 shrink-0">
+      <header className="mx-auto w-full max-w-6xl flex items-center justify-between gap-2.5 mb-2.5 sm:mb-3.5 shrink-0">
         <button
           type="button"
           onClick={onBack}
-          className="glass-panel-soft inline-flex items-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-200 hover:text-amber-200 hover:border-amber-400/50 transition-colors cursor-pointer whitespace-nowrap"
+          className="glass-panel-soft inline-flex items-center gap-1.5 sm:gap-2 min-h-[42px] px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-200 hover:text-amber-200 hover:border-amber-400/50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
         >
           <ArrowLeft className="w-4 h-4 text-amber-400 shrink-0" />
           <span>Menu Utama</span>
         </button>
 
-        <div className="glass-panel-soft rounded-xl px-3 sm:px-3.5 py-1.5 sm:py-2 flex items-center gap-2">
+        <div className="glass-panel-soft rounded-xl min-h-[42px] px-3 sm:px-3.5 py-2 flex items-center gap-2 shrink-0">
           <SerpentCrestEmblem className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
           <span className="font-display text-xs sm:text-base font-bold text-gold-gradient whitespace-nowrap">
             Pilih Mode Permainan
@@ -110,8 +110,8 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
         </div>
       </header>
 
-      {/* Main Selection Panel */}
-      <main className="my-auto mx-auto w-full max-w-5xl shrink-0 overflow-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-7 space-y-4 sm:space-y-5">
+      {/* Main Selection Panel — Top-anchored cleanly below header (zero top dead gap) */}
+      <main className="mx-auto w-full max-w-6xl shrink-0 overflow-hidden glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <div className="text-[10px] sm:text-[11px] uppercase tracking-widest font-bold text-amber-300">
@@ -126,48 +126,44 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
           </p>
         </div>
 
-        {/* 4 Compact Mode Cards Side-by-Side (1 Row of 4 on both Mobile & Desktop, fluid padding & typography) */}
-        <div className="grid grid-cols-4 gap-1.5 sm:gap-3 items-stretch">
+        {/* 4 Precision Mode Cards (2x2 on compact phones, 4-col on sm+ & desktop) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 items-stretch">
           {BOARD_GAME_MODES.map((m) => {
             const detail = MODE_DETAILS[m.id];
             const active = selectedMode === m.id;
             const shortTitle = m.label.replace(' Mode', '');
-            const compactPlayers = m.id === 'team' ? '2v2' : '2–4P';
             return (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => onSelectMode(m.id)}
-                className={`h-full min-w-0 overflow-hidden relative flex flex-col items-center sm:items-start justify-between rounded-xl sm:rounded-2xl border p-2 sm:p-3.5 md:p-4 text-center sm:text-left transition-all cursor-pointer ${
+                className={`h-full min-w-0 overflow-hidden relative flex flex-col items-start justify-between gap-2 rounded-xl sm:rounded-2xl border p-3 sm:p-4 text-left transition-all cursor-pointer ${
                   active
                     ? `${detail.accentBorder} ${detail.accentBg} shadow-lg ring-1 ring-amber-400/40`
                     : 'border-slate-700/80 bg-slate-900/75 hover:bg-slate-800/85 hover:border-slate-500'
                 }`}
               >
-                <div className="w-full flex items-center justify-center sm:justify-between gap-1.5 mb-1.5 sm:mb-2">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl border border-slate-700/90 bg-slate-950/85 flex items-center justify-center shrink-0">
+                <div className="w-full flex items-center justify-between gap-2">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-slate-700/90 bg-slate-950/85 flex items-center justify-center shrink-0">
                     {detail.icon}
                   </div>
                   {active && (
-                    <CheckCircle2 className="hidden sm:block w-4 h-4 text-amber-300 shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-amber-300 shrink-0" />
                   )}
                 </div>
 
                 <div className="w-full min-w-0">
-                  <h3 className="font-display text-[10px] sm:text-sm font-bold text-white truncate">
+                  <h3 className="font-display text-xs sm:text-sm font-bold text-white truncate">
                     {shortTitle}
                   </h3>
-                  <p className="hidden md:block text-[11px] text-amber-200/90 font-medium mt-0.5 line-clamp-1">
+                  <p className="text-[11px] text-amber-200/90 font-medium mt-0.5 line-clamp-2 leading-snug">
                     {m.shortDesc}
                   </p>
                 </div>
 
-                <div className="w-full mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-slate-800/80 flex items-center justify-center sm:justify-between text-[9px] sm:text-[11px] font-semibold text-slate-400 min-w-0">
-                  <span className="hidden md:inline shrink-0">Pemain</span>
-                  <span className="sm:hidden text-slate-200 font-mono-num truncate">
-                    {compactPlayers}
-                  </span>
-                  <span className="hidden sm:inline text-slate-200 truncate">
+                <div className="w-full pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1 text-[10px] sm:text-[11px] font-semibold text-slate-400 min-w-0">
+                  <span className="shrink-0">Pemain</span>
+                  <span className="text-slate-200 font-mono-num truncate">
                     {detail.playersLabel}
                   </span>
                 </div>
@@ -177,14 +173,14 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
         </div>
 
         {/* Active Mode Detailed Highlights & Route Buttons */}
-        <div className="rounded-2xl border border-amber-500/25 bg-slate-950/75 p-3 sm:p-5 space-y-3.5 sm:space-y-4 overflow-hidden">
+        <div className="rounded-2xl border border-amber-500/25 bg-slate-950/75 p-3.5 sm:p-5 space-y-3.5 overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/90 pb-3">
-            <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-center shrink-0">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-center shrink-0">
                 {activeDetail.icon}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-display text-sm sm:text-base font-bold text-amber-300 truncate">
                     {activeModeMeta.label}
                   </span>
@@ -199,12 +195,12 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
             </div>
           </div>
 
-          {/* 3 Compact Rule Highlights */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* 3 Equal-Height Rule Highlights */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-stretch">
             {activeDetail.highlights.map((item) => (
               <div
                 key={item}
-                className="min-w-0 rounded-xl border border-slate-800/90 bg-slate-900/70 px-3 py-2 text-[11px] text-slate-200 leading-snug flex items-start gap-2"
+                className="h-full min-w-0 rounded-xl border border-slate-800/90 bg-slate-900/70 px-3 py-2.5 text-xs text-slate-200 leading-snug flex items-start gap-2"
               >
                 <span className="text-amber-400 font-bold shrink-0">•</span>
                 <span className="min-w-0">{item}</span>
@@ -212,12 +208,12 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
             ))}
           </div>
 
-          {/* Primary Navigation Actions */}
+          {/* Primary Navigation Actions — Uniform height & baseline */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
             <button
               type="button"
               onClick={() => onProceedToMultiplayer(selectedMode)}
-              className="min-w-0 inline-flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px] px-4 py-2.5 rounded-xl border border-sky-500/45 bg-sky-500/15 text-xs sm:text-sm font-bold text-sky-200 hover:bg-sky-500/25 hover:border-sky-400 transition-colors cursor-pointer"
+              className="min-w-0 inline-flex items-center justify-center gap-2 min-h-[46px] px-4 py-2.5 rounded-xl border border-sky-500/45 bg-sky-500/15 text-xs sm:text-sm font-bold text-sky-200 hover:bg-sky-500/25 hover:border-sky-400 transition-colors cursor-pointer whitespace-nowrap"
             >
               <Globe className="w-4 h-4 text-sky-300 shrink-0" />
               <span className="truncate">Lobi Multiplayer Daring</span>
@@ -225,7 +221,7 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
             <button
               type="button"
               onClick={() => onProceedToConfig(selectedMode)}
-              className="min-w-0 inline-flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px] px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 text-xs sm:text-sm font-bold hover:brightness-105 transition-all cursor-pointer shadow-lg"
+              className="min-w-0 inline-flex items-center justify-center gap-2 min-h-[46px] px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 text-xs sm:text-sm font-bold hover:brightness-105 transition-all cursor-pointer shadow-lg whitespace-nowrap"
             >
               <SlidersHorizontal className="w-4 h-4 shrink-0" />
               <span className="truncate">Konfigurasi Solo / Lokal</span>
@@ -235,7 +231,7 @@ export const ModeSelectionView: React.FC<ModeSelectionViewProps> = ({
         </div>
       </main>
 
-      <footer className="mt-3 pb-1 shrink-0 text-center text-xs text-slate-400">
+      <footer className="mt-auto pt-3 pb-1 shrink-0 text-center text-xs text-slate-400">
         Developed By{' '}
         <a
           href="https://portfolionyaihwal.my.id"

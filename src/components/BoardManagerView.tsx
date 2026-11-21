@@ -869,14 +869,14 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
   return (
     <div className="relative safe-viewport bg-slate-950 text-slate-100 flex flex-col select-none">
       {/* Top Navigation Header */}
-      <header className="relative z-20 flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/25 bg-slate-950/92 safe-header-bar pb-2 sm:px-4 sm:py-3 backdrop-blur-md">
+      <header className="relative z-20 flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/25 bg-slate-950/92 safe-header-bar pb-2 sm:px-4 sm:py-2.5 backdrop-blur-md">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-white transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 sm:px-3.5 py-2 text-xs font-semibold text-slate-200 hover:border-amber-400/50 hover:text-white transition-colors cursor-pointer shrink-0 whitespace-nowrap"
           >
-            <ArrowLeft className="w-4 h-4 text-amber-400" />
+            <ArrowLeft className="w-4 h-4 text-amber-400 shrink-0" />
             <span className="hidden xs:inline sm:inline">Kembali</span>
           </button>
           <div className="min-w-0">
@@ -912,7 +912,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
           <button
             type="button"
             onClick={() => handleOpenTopUpChat(null)}
-            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border px-3 py-2 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               isUnlimitedCoins
                 ? 'border-cyan-400/50 bg-cyan-950/45 text-cyan-200 hover:bg-cyan-900/55 hover:border-cyan-300'
                 : 'border-amber-500/40 bg-amber-950/40 text-amber-200 hover:bg-amber-900/50 hover:border-amber-400'
@@ -941,11 +941,11 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             )}
           </button>
 
-          <div className="inline-flex flex-1 sm:flex-initial rounded-xl border border-slate-800 bg-slate-900/90 p-0.5 sm:p-1">
+          <div className="inline-flex flex-1 sm:flex-initial items-center min-h-[40px] rounded-xl border border-slate-800 bg-slate-900/90 p-1">
             <button
               type="button"
               onClick={() => setActiveModeTab('collection')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[32px] rounded-lg px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'collection'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -957,7 +957,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveModeTab('community')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[32px] rounded-lg px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'community'
                   ? 'bg-cyan-500 text-slate-950 shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -969,7 +969,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveModeTab('creator')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[32px] rounded-lg px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'creator'
                   ? 'bg-amber-500 text-slate-950 shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -981,7 +981,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveModeTab('pawns')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[32px] rounded-lg px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 activeModeTab === 'pawns'
                   ? 'bg-sky-500 text-slate-950 shadow'
                   : 'text-slate-400 hover:text-slate-200'
@@ -1001,7 +1001,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
               }
               handlePlayBoard(activeModeTab === 'pawns' ? selectedBoard : active3DBoard);
             }}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-xs font-bold shadow-lg transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+            className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl px-3.5 sm:px-4 py-2 text-[11px] sm:text-xs font-bold shadow-lg transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
               activeModeTab === 'collection' && !activePreviewStatus.unlocked
                 ? activePreviewStatus.canClaimMission
                   ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
@@ -1012,18 +1012,18 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
             {activeModeTab === 'collection' && !activePreviewStatus.unlocked ? (
               activePreviewStatus.canClaimMission ? (
                 <>
-                  <Unlock className="w-3.5 h-3.5" />
+                  <Unlock className="w-3.5 h-3.5 shrink-0" />
                   <span>Klaim Misi</span>
                 </>
               ) : (
                 <>
-                  <Lock className="w-3.5 h-3.5" />
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
                   <span>Buka Papan</span>
                 </>
               )
             ) : (
               <>
-                <Play className="w-3.5 h-3.5 fill-current" />
+                <Play className="w-3.5 h-3.5 fill-current shrink-0" />
                 <span>
                   {activeModeTab === 'creator'
                     ? 'Simpan & Main'
@@ -1048,7 +1048,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
       ) : (
         <div className="relative flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] min-h-0 overflow-hidden">
         {/* Left Control Column (7 cols on desktop, scrollable bottom panel on mobile) */}
-        <div className="order-2 lg:order-1 flex-1 lg:col-span-7 lg:h-full flex flex-col min-h-0 border-r border-slate-800/80 bg-slate-950/95 overflow-y-auto custom-scroll p-3 sm:p-5 space-y-3.5 sm:space-y-4">
+        <div className="order-2 lg:order-1 flex-1 lg:col-span-7 lg:h-full flex flex-col min-h-0 border-r border-slate-800/80 bg-slate-950/95 overflow-y-auto custom-scroll p-3 sm:p-4 space-y-3.5">
           {activeModeTab === 'collection' ? (
             <>
               {/* Board Selection Mode Bar (Manual / Random / Custom) */}
@@ -1065,14 +1065,14 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                   <button
                     type="button"
                     onClick={handleRandomPick}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-950/50 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-900/60 transition-colors cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded-lg border border-cyan-500/40 bg-cyan-950/50 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-900/60 transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <Shuffle className="w-3.5 h-3.5" />
+                    <Shuffle className="w-3.5 h-3.5 shrink-0" />
                     Acak Papan Sekarang
                   </button>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-stretch">
                   {(
                     [
                       {
@@ -1098,15 +1098,15 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                         key={m.id}
                         type="button"
                         onClick={() => handleModeSwitch(m.id)}
-                        className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
+                        className={`h-full rounded-xl border p-2.5 text-left flex flex-col justify-between transition-all cursor-pointer ${
                           active
                             ? 'border-emerald-400/70 bg-emerald-950/40 text-white shadow-md'
                             : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-amber-300">{m.title}</span>
-                          {active && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="text-xs font-bold text-amber-300 truncate">{m.title}</span>
+                          {active && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5 truncate">{m.desc}</div>
                       </button>
@@ -1135,14 +1135,14 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenTopUpChat(null)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-950/45 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-900/55 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      className="inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded-xl border border-amber-500/40 bg-amber-950/45 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-900/55 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                     >
                       <MessageCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>Chat Admin Beli Koin</span>
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-stretch">
                     {lockedSpotlightBoards.map((board) => {
                       const status = getBoardUnlockStatus(board.id, profile);
                       const isMission = status.rule.unlockType === 'mission';
@@ -1153,7 +1153,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                           key={`locked_spot_${board.id}`}
                           type="button"
                           onClick={() => handleLockedBoardAttempt(board)}
-                          className={`group text-left rounded-xl border p-3 transition-all cursor-pointer flex items-center gap-3 ${
+                          className={`group h-full text-left rounded-xl border p-3 transition-all cursor-pointer flex items-center gap-3 ${
                             status.canClaimMission
                               ? 'border-emerald-400/70 bg-emerald-950/25 hover:bg-emerald-950/40'
                               : isSelectedPreview
@@ -1339,7 +1339,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
                   {filteredBoards.map((board) => {
                     const unlockStatus = getBoardUnlockStatus(board.id, profile);
                     const isUnlocked = unlockStatus.unlocked;
@@ -1352,7 +1352,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                     return (
                       <div
                         key={board.id}
-                        className={`rounded-2xl border p-4 transition-all flex flex-col justify-between ${
+                        className={`h-full rounded-2xl border p-4 transition-all flex flex-col justify-between ${
                           isSelected
                             ? 'border-amber-400/70 bg-slate-900/95 shadow-lg shadow-amber-500/5'
                             : unlockStatus.canClaimMission
@@ -1555,13 +1555,13 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleSelectBoard(board)}
-                                  className={`inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                                  className={`inline-flex items-center justify-center gap-1 min-h-[36px] rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                                     isSelected
                                       ? 'bg-emerald-600 text-white'
                                       : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
                                   }`}
                                 >
-                                  <Check className="w-3.5 h-3.5" />
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
                                   {isSelected ? 'Terpilih' : 'Pilih'}
                                 </button>
                                 <button
@@ -1572,17 +1572,17 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                                       setMobilePreviewSize('compact');
                                     }
                                   }}
-                                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-cyan-500/30 bg-cyan-950/40 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/50 cursor-pointer whitespace-nowrap"
+                                  className="inline-flex items-center justify-center gap-1 min-h-[36px] rounded-lg border border-cyan-500/30 bg-cyan-950/40 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/50 cursor-pointer whitespace-nowrap"
                                 >
-                                  <Eye className="w-3.5 h-3.5" />
+                                  <Eye className="w-3.5 h-3.5 shrink-0" />
                                   Preview
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handlePlayBoard(board)}
-                                  className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap"
+                                  className="inline-flex items-center justify-center gap-1 min-h-[36px] rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap"
                                 >
-                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                  <Play className="w-3.5 h-3.5 fill-current shrink-0" />
                                   Main
                                 </button>
                               </div>
@@ -1792,7 +1792,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
                   {filteredCommunityBoards.map((record) => {
                     const localId = `community_${record.id}`;
                     const isDownloaded = downloadedCommunityIds.has(localId);
@@ -1802,7 +1802,7 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                     return (
                       <div
                         key={record.id}
-                        className={`rounded-2xl border p-4 transition-all flex flex-col justify-between ${
+                        className={`h-full rounded-2xl border p-4 transition-all flex flex-col justify-between ${
                           isPreviewing
                             ? 'border-cyan-400/75 bg-slate-900/95 shadow-lg shadow-cyan-500/10'
                             : 'border-slate-800 bg-slate-900/70 hover:border-slate-700'
@@ -1877,29 +1877,29 @@ export const BoardManagerView: React.FC<BoardManagerViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handlePreviewCommunityBoard(record)}
-                              className="inline-flex items-center justify-center gap-1 rounded-lg border border-cyan-500/35 bg-cyan-950/45 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/55 cursor-pointer whitespace-nowrap"
+                              className="inline-flex items-center justify-center gap-1 min-h-[36px] rounded-lg border border-cyan-500/35 bg-cyan-950/45 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-900/55 cursor-pointer whitespace-nowrap"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5 shrink-0" />
                               Preview
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDownloadCommunityBoard(record, false)}
-                              className={`inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                              className={`inline-flex items-center justify-center gap-1 min-h-[36px] rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                                 isDownloaded
                                   ? 'bg-emerald-700/80 text-white hover:bg-emerald-600'
                                   : 'bg-slate-800 text-slate-100 hover:bg-slate-700'
                               }`}
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download className="w-3.5 h-3.5 shrink-0" />
                               {isDownloaded ? 'Perbarui' : 'Unduh'}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDownloadCommunityBoard(record, true)}
-                              className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap"
+                              className="inline-flex items-center justify-center gap-1 min-h-[36px] rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 cursor-pointer whitespace-nowrap"
                             >
-                              <Play className="w-3.5 h-3.5 fill-current" />
+                              <Play className="w-3.5 h-3.5 fill-current shrink-0" />
                               Main
                             </button>
                           </div>

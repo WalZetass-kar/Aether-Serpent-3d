@@ -891,10 +891,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </aside>
 
         {/* Scrollable Content Viewport */}
-        <main className="flex-1 min-h-0 overflow-y-auto custom-scroll p-4 sm:p-6 space-y-6">
+        <main className="flex-1 min-h-0 overflow-y-auto custom-scroll p-3.5 sm:p-5 space-y-4">
           {/* 4-Column Tabular KPI Strip */}
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 items-stretch">
+            <div className="h-full flex flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
               <div className="text-[11px] font-medium text-slate-400">Akun Member Terdaftar</div>
               <div className="mt-1 font-mono-num text-xl sm:text-2xl font-bold text-white">
                 {summaryStats.totalMembers}
@@ -902,7 +902,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <div className="mt-1 text-[11px] text-slate-400">Seluruh jaringan terdaftar</div>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
+            <div className="h-full flex flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
               <div className="text-[11px] font-medium text-slate-400">Room Aktif Sekarang</div>
               <div className="mt-1 font-mono-num text-xl sm:text-2xl font-bold text-amber-300">
                 {summaryStats.activeRooms}
@@ -912,7 +912,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
+            <div className="h-full flex flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
               <div className="text-[11px] font-medium text-slate-400">Total Pertandingan Member</div>
               <div className="mt-1 font-mono-num text-xl sm:text-2xl font-bold text-emerald-300">
                 {summaryStats.totalMatches.toLocaleString('id-ID')}
@@ -920,7 +920,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <div className="mt-1 text-[11px] text-slate-400">Akumulasi seluruh akun</div>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
+            <div className="h-full flex flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/65 p-3.5 sm:p-4">
               <div className="text-[11px] font-medium text-slate-400">Cadangan PIN Cloud Sync</div>
               <div className="mt-1 font-mono-num text-xl sm:text-2xl font-bold text-sky-300">
                 {summaryStats.cloudSyncCount}

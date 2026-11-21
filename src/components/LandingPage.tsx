@@ -259,72 +259,74 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         id="hero"
         className="relative overflow-hidden border-b border-slate-800/80"
       >
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-5 pb-8 sm:pt-7 sm:pb-10 lg:pt-9 lg:pb-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
             {/* Editorial Copy Column */}
             <div
               data-scroll-reveal
               data-reveal-variant="up"
               data-reveal="visible"
               style={revealDelay(0)}
-              className="scroll-reveal lg:col-span-6 space-y-5 sm:space-y-6"
+              className="scroll-reveal lg:col-span-6 flex flex-col justify-between gap-4 sm:gap-5"
             >
-              <div className="text-xs font-semibold tracking-widest uppercase text-amber-300/90">
-                Aether Serpent 3D · Arena Ular Tangga Fantasi
-              </div>
+              <div className="space-y-3.5 sm:space-y-4">
+                <div className="text-xs font-semibold tracking-widest uppercase text-amber-300/90">
+                  Aether Serpent 3D · Arena Ular Tangga Fantasi
+                </div>
 
-              <h1
-                className="font-display font-bold tracking-tight text-white leading-[1.08]"
-                style={{ fontSize: 'clamp(2.1rem, 4.2vw, 3.65rem)' }}
-              >
-                Taklukkan Papan{' '}
-                <span className="text-gold-gradient">Naga 3D</span> Bersama Sahabat
-              </h1>
-
-              <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl">
-                Lempar dadu kristal 3D, naiki tangga cahaya suci, hindari ular mistis, dan
-                susun taktik di papan 100 petak. Bermain solo melawan AI adaptif, mabar lokal,
-                atau buat room daring dengan sinkronisasi akun cloud.
-              </p>
-
-              {/* Primary + Secondary CTA Row */}
-              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={onEnterGame}
-                  className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-6 py-3 text-sm sm:text-base font-bold text-slate-950 shadow-xl hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap"
+                <h1
+                  className="font-display font-bold tracking-tight text-white leading-[1.08]"
+                  style={{ fontSize: 'clamp(2rem, 4vw, 3.5rem)' }}
                 >
-                  <span>Masuk ke Menu Game</span>
-                  <ArrowRight className="w-4 h-4 shrink-0" />
-                </button>
+                  Taklukkan Papan{' '}
+                  <span className="text-gold-gradient">Naga 3D</span> Bersama Sahabat
+                </h1>
 
-                {user ? (
+                <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl">
+                  Lempar dadu kristal 3D, naiki tangga cahaya suci, hindari ular mistis, dan
+                  susun taktik di papan 100 petak. Bermain solo melawan AI adaptif, mabar lokal,
+                  atau buat room daring dengan sinkronisasi akun cloud.
+                </p>
+
+                {/* Primary + Secondary CTA Row */}
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 pt-1">
                   <button
                     type="button"
-                    onClick={onOpenOnlineLobby}
-                    className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl border border-sky-500/40 bg-sky-500/10 px-5 py-3 text-sm font-semibold text-sky-200 hover:bg-sky-500/20 transition-colors cursor-pointer"
+                    onClick={onEnterGame}
+                    className="inline-flex items-center justify-center gap-2 min-h-[46px] rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-5 py-2.5 text-sm font-bold text-slate-950 shadow-xl hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap"
                   >
-                    <Globe className="w-4 h-4 text-sky-300 shrink-0" />
-                    <span>Buka Room Daring</span>
+                    <span>Masuk ke Menu Game</span>
+                    <ArrowRight className="w-4 h-4 shrink-0" />
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onOpenAuth('register')}
-                    className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl border border-amber-500/35 bg-slate-900/90 px-5 py-3 text-sm font-semibold text-amber-200 hover:border-amber-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
-                    <LogIn className="w-4 h-4 text-amber-300 shrink-0" />
-                    <span>Daftar / Login Akun</span>
-                  </button>
-                )}
-                <PWAInstallButton
-                  variant="button"
-                  className="min-h-[48px] rounded-2xl"
-                />
+
+                  {user ? (
+                    <button
+                      type="button"
+                      onClick={onOpenOnlineLobby}
+                      className="inline-flex items-center justify-center gap-2 min-h-[46px] rounded-xl border border-sky-500/40 bg-sky-500/10 px-5 py-2.5 text-sm font-semibold text-sky-200 hover:bg-sky-500/20 transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <Globe className="w-4 h-4 text-sky-300 shrink-0" />
+                      <span>Buka Room Daring</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAuth('register')}
+                      className="inline-flex items-center justify-center gap-2 min-h-[46px] rounded-xl border border-amber-500/35 bg-slate-900/90 px-5 py-2.5 text-sm font-semibold text-amber-200 hover:border-amber-400 hover:bg-slate-800 transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <LogIn className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span>Daftar / Login Akun</span>
+                    </button>
+                  )}
+                  <PWAInstallButton
+                    variant="button"
+                    className="min-h-[46px] rounded-xl"
+                  />
+                </div>
               </div>
 
               {/* Grounded Numeric Snapshot */}
-              <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-800/80 max-w-lg">
+              <div className="grid grid-cols-3 gap-3 pt-3.5 border-t border-slate-800/80 max-w-lg">
                 <div
                   data-scroll-reveal
                   data-reveal-variant="up"
@@ -358,23 +360,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
 
-            {/* Dominant 16:9 Focal Key Art */}
+            {/* Dominant Focal Key Art — full-bleed stretch matching copy column height */}
             <div
               data-scroll-reveal
               data-reveal-variant="zoom"
               data-reveal="visible"
               style={revealDelay(90)}
-              className="scroll-reveal lg:col-span-6"
+              className="scroll-reveal lg:col-span-6 flex"
             >
-              <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-amber-500/25 bg-slate-900 shadow-2xl">
+              <div className="relative w-full h-full min-h-[240px] sm:min-h-[300px] overflow-hidden rounded-2xl sm:rounded-3xl border border-amber-500/25 bg-slate-900 shadow-2xl">
                 <img
                   src={heroArtwork}
                   alt="Ilustrasi arena 3D Naga Tangga Nih Bos dengan tangga cahaya dan naga zamrud"
-                  className="w-full aspect-video object-cover block"
+                  className="w-full h-full object-cover block"
                 />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#060913]/85 via-transparent to-transparent" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#060913]/90 via-[#060913]/20 to-transparent" />
                 <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 flex items-end justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs font-bold text-amber-300">
                       Papan Obsidian & Naga Zamrud
                     </div>
@@ -385,7 +387,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <button
                     type="button"
                     onClick={onEnterGame}
-                    className="pointer-events-auto shrink-0 rounded-xl border border-amber-400/50 bg-slate-950/85 px-3.5 py-2 text-xs font-bold text-amber-200 hover:bg-amber-400 hover:text-slate-950 transition-colors cursor-pointer"
+                    className="pointer-events-auto shrink-0 inline-flex items-center justify-center min-h-[40px] rounded-xl border border-amber-400/50 bg-slate-950/90 px-4 py-2 text-xs font-bold text-amber-200 hover:bg-amber-400 hover:text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
                   >
                     Coba Arena
                   </button>
@@ -398,43 +400,43 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Section 2: Asymmetric Bento Capabilities */}
       <section id="fitur" className="border-b border-slate-800/80 bg-[#080d1a]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-7 sm:py-10">
           <div
             data-scroll-reveal
             data-reveal-variant="up"
             style={revealDelay(0)}
-            className="scroll-reveal mb-8 max-w-2xl"
+            className="scroll-reveal mb-5 sm:mb-6 max-w-2xl"
           >
             <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
               Dirancang untuk Mabar Cepat & Ringan di Semua Perangkat
             </h2>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+            <p className="mt-1.5 text-sm text-slate-400 leading-relaxed">
               Setiap detail mulai dari manajemen GPU WebGL hingga sinkronisasi room daring dibangun
               agar tetap stabil di ponsel kelas menengah ke bawah tanpa mengorbankan atmosfer 3D.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-            {/* Showcase Visual Card */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            {/* Showcase Visual Card — full-bleed flex-1 artwork so zero dead gap ever appears */}
             <div
               data-scroll-reveal
               data-reveal-variant="left"
               style={revealDelay(60)}
-              className="scroll-reveal lg:col-span-7 flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70"
+              className="scroll-reveal lg:col-span-7 flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70"
             >
-              <div className="relative overflow-hidden">
+              <div className="relative flex-1 min-h-[220px] sm:min-h-[280px] overflow-hidden">
                 <img
                   src={arenaShowcaseArt}
                   alt="Tampilan arena papan elemen langit dan gunung berapi di Naga Tangga Nih Bos"
-                  className="w-full aspect-video object-cover block"
+                  className="w-full h-full object-cover block"
                   loading="lazy"
                 />
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent" />
               </div>
-              <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="font-display text-lg font-bold text-white">
-                    8 Dunia Papan & Studio Kustomisasi
+              <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 shrink-0 border-t border-slate-800/80">
+                <div className="min-w-0">
+                  <h3 className="font-display text-base sm:text-lg font-bold text-white">
+                    12 Dunia Papan & Studio Kustomisasi
                   </h3>
                   <p className="mt-1 text-xs sm:text-sm text-slate-300 leading-relaxed">
                     Ganti tema arena dari Hutan Aether, Kawah Naga, hingga Kuil Langit atau susun
@@ -444,7 +446,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <button
                   type="button"
                   onClick={onOpenBoardStudio}
-                  className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                  className="shrink-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   {user ? (
                     <Layers className="w-4 h-4 text-amber-300 shrink-0" />
@@ -457,7 +459,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             {/* Numbered Editorial Architecture List */}
-            <div className="lg:col-span-5 grid grid-cols-1 gap-3.5">
+            <div className="lg:col-span-5 grid grid-cols-1 gap-3">
               <div
                 data-scroll-reveal
                 data-reveal-variant="right"
@@ -528,10 +530,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Section 3: Game Modes & Live Cloud Leaderboard */}
       <section id="mode" className="border-b border-slate-800/80">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-7 sm:py-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 items-stretch">
             {/* 4 Modes Interactive Picker */}
-            <div className="lg:col-span-7 space-y-5">
+            <div className="lg:col-span-7 flex flex-col gap-4">
               <div
                 data-scroll-reveal
                 data-reveal-variant="up"
@@ -541,12 +543,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
                   Pilih Gaya Bermainmu
                 </h2>
-                <p className="mt-1.5 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-slate-400">
                   Klik salah satu mode di bawah untuk langsung mengatur pertandingan di menu game.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-2 gap-3 items-stretch">
                 {BOARD_GAME_MODES.map((m, idx) => (
                   <button
                     key={m.id}
@@ -555,7 +557,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     data-reveal-variant="up"
                     style={revealDelay(idx * 75)}
                     onClick={() => onQuickStartMode(m.id)}
-                    className="scroll-reveal group rounded-2xl border border-slate-800 bg-slate-900/75 p-4 text-left hover:border-amber-400/55 hover:bg-slate-900 transition-all cursor-pointer flex flex-col justify-between"
+                    className="scroll-reveal group h-full rounded-2xl border border-slate-800 bg-slate-900/75 p-4 text-left hover:border-amber-400/55 hover:bg-slate-900 transition-all cursor-pointer flex flex-col justify-between gap-2.5"
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2">
@@ -563,11 +565,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           {MODE_ICON_MAP[m.id]}
                           {m.label}
                         </span>
-                        <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-amber-300 transition-colors" />
+                        <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-amber-300 transition-colors shrink-0" />
                       </div>
                       <p className="mt-2 text-xs text-slate-400 leading-relaxed">
                         {m.shortDesc}
                       </p>
+                    </div>
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-semibold text-amber-300/90">
+                      <span>Mainkan Sekarang</span>
+                      <span className="text-slate-400 group-hover:text-amber-200 transition-colors">
+                        {m.id === 'team' ? '2v2 Tim' : '2–4 Pemain'}
+                      </span>
                     </div>
                   </button>
                 ))}
@@ -580,16 +588,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               data-scroll-reveal
               data-reveal-variant="zoom"
               style={revealDelay(80)}
-              className="scroll-reveal lg:col-span-5 rounded-2xl border border-amber-500/20 bg-slate-900/70 p-5 sm:p-6 space-y-4"
+              className="scroll-reveal lg:col-span-5 rounded-2xl border border-amber-500/20 bg-slate-900/70 p-4 sm:p-5 flex flex-col gap-3.5"
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <Trophy className="w-5 h-5 text-amber-400 shrink-0" />
-                  <div>
-                    <h3 className="font-display text-base sm:text-lg font-bold text-white">
+                  <div className="min-w-0">
+                    <h3 className="font-display text-base sm:text-lg font-bold text-white truncate">
                       Papan Kehormatan Cloud
                     </h3>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-slate-400 truncate">
                       Pemain terdaftar dengan skor tertinggi
                     </p>
                   </div>
@@ -598,7 +606,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenAuth('register')}
-                    className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer shrink-0"
+                    className="min-h-[36px] rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
                     Daftar Sekarang
                   </button>
@@ -664,12 +672,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Section 4: Account Action Banner */}
       <section id="akun" className="bg-[#080d1a]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-7 sm:py-10">
           <div
             data-scroll-reveal
             data-reveal-variant="zoom"
             style={revealDelay(40)}
-            className="scroll-reveal rounded-3xl border border-amber-500/25 bg-gradient-to-br from-slate-900 via-[#0b1224] to-slate-950 p-6 sm:p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+            className="scroll-reveal rounded-2xl sm:rounded-3xl border border-amber-500/25 bg-gradient-to-br from-slate-900 via-[#0b1224] to-slate-950 p-5 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-5"
           >
             <div className="space-y-2 max-w-2xl">
               <div className="inline-flex items-center gap-2 text-xs font-semibold text-amber-300">
@@ -688,25 +696,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
               {!user && (
                 <button
                   type="button"
                   onClick={() => onOpenAuth('register')}
-                  className="inline-flex items-center justify-center gap-2 min-h-[46px] rounded-xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-xs sm:text-sm font-bold text-white hover:border-amber-400/60 transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 min-h-[46px] rounded-xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-xs sm:text-sm font-bold text-white hover:border-amber-400/60 transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  <LogIn className="w-4 h-4 text-amber-300" />
+                  <LogIn className="w-4 h-4 text-amber-300 shrink-0" />
                   <span>Buat Akun Gratis</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={onEnterGame}
-                className="inline-flex items-center justify-center gap-2 min-h-[46px] rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-950 shadow-lg hover:brightness-105 transition-all cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 min-h-[46px] rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 shadow-lg hover:brightness-105 transition-all cursor-pointer whitespace-nowrap"
               >
                 {!user && <Lock className="w-4 h-4 shrink-0" />}
                 <span>{user ? 'Masuk ke Menu Game' : 'Login & Masuk Game'}</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 shrink-0" />
               </button>
             </div>
           </div>

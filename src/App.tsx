@@ -3229,7 +3229,21 @@ export default function App() {
   return (
     <div className="relative safe-viewport bg-slate-950">
       {/* 1. Dedicated 3D Fantasy Forest / Waterfall / Serpent Mascot Backdrop (outside Arena, Loading & 3D Board Studio) */}
-      {isMenuBackdropMounted && <div ref={menuCanvasRef} className="safe-canvas-stage z-0" />}
+      {isMenuBackdropMounted && (
+        <>
+          <div
+            ref={menuCanvasRef}
+            data-screen-view={screen}
+            data-transition-phase={menuLobbyTransition?.phase ?? 'idle'}
+            className="safe-canvas-stage menu-stage-3d z-0"
+          />
+          <div
+            aria-hidden="true"
+            data-transition-phase={menuLobbyTransition?.phase ?? 'idle'}
+            className="pointer-events-none fixed inset-0 z-[5] menu-transition-veil"
+          />
+        </>
+      )}
 
       {/* 2. Dedicated 3D Snakes & Ladders Board Canvas (mounted during Loading & Arena) */}
       {isArenaMounted && (
@@ -3448,8 +3462,7 @@ export default function App() {
           onProceedToMultiplayer={(chosen) => {
             soundEngine.playUiClick();
             setSelectedBoardMode(chosen);
-            setMultiplayerTabIntent('create');
-            setScreen('multiplayer_lobby');
+            navigateMenuLobby('multiplayer_lobby', { tab: 'create' });
           }}
         />
       )}
@@ -3514,6 +3527,14 @@ export default function App() {
             defaultPlayerName={profile.name}
             defaultArchetypeIndex={profile.archetypeIndex}
             unlockedPawnIndices={profile.unlockedPawnIndices}
+            playerStats={{
+              wins: profile.wins,
+              onlineWins: profile.onlineWins,
+              totalGames: profile.totalGames,
+              bestScore: profile.bestScore,
+              loginStreak: profile.loginStreak,
+            }}
+            activeBoard={activeBoardConfig}
             isOnlineNetwork={isOnline}
             muted={profile.muted}
             onlineLobby={onlineLobby}
@@ -3524,6 +3545,12 @@ export default function App() {
             onOpenPawnShowcase={() => {
               soundEngine.playUiClick();
               setBoardManagerTab('pawns');
+              setBoardManagerReturnScreen('multiplayer_lobby');
+              setScreen('board_manager');
+            }}
+            onOpenBoardManager={() => {
+              soundEngine.playUiClick();
+              setBoardManagerTab('collection');
               setBoardManagerReturnScreen('multiplayer_lobby');
               setScreen('board_manager');
             }}

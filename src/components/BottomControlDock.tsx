@@ -726,9 +726,9 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
             </div>
 
             {/* Center Primary Roll CTA + Multiplayer Emote Picker */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {isSpectator ? (
-                <div className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-2.5 text-xs font-bold text-sky-200 whitespace-nowrap">
+                <div className="inline-flex items-center justify-center gap-2 min-h-[40px] rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-2 text-xs font-bold text-sky-200 whitespace-nowrap">
                   <Eye className="w-4 h-4 text-sky-300 shrink-0" />
                   <span>Mode Penonton (Read-Only)</span>
                 </div>
@@ -737,13 +737,13 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                   type="button"
                   disabled={rollDisabled}
                   onClick={onRollDice}
-                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all cursor-pointer ${
+                  className={`inline-flex items-center justify-center gap-2 min-h-[40px] rounded-xl px-5 py-2 text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
                     rollDisabled
                       ? 'border border-slate-700 bg-slate-800/80 text-slate-400 cursor-not-allowed'
                       : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 active:scale-95'
                   }`}
                 >
-                  <FacetedDiceIcon className="w-5 h-5" />
+                  <FacetedDiceIcon className="w-5 h-5 shrink-0" />
                   <span>{rollLabel}</span>
                 </button>
               )}
@@ -793,7 +793,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                         setEmoteMenuOpen((o) => !o);
                       }
                     }}
-                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    className={`inline-flex items-center justify-center gap-1.5 min-h-[40px] rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                       emoteMenuOpen
                         ? 'border-amber-400 bg-amber-500/20 text-amber-200'
                         : 'border-amber-500/35 bg-slate-900/80 text-amber-200 hover:border-amber-400/70 hover:bg-amber-500/15'
@@ -801,7 +801,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                     title="Buka Emote Wheel"
                     aria-label="Buka Emote Wheel"
                   >
-                    <Smile className="w-4 h-4" />
+                    <Smile className="w-4 h-4 shrink-0" />
                     <span>Emote</span>
                   </button>
                 </div>
@@ -809,8 +809,8 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
             </div>
 
             {/* Camera & Secondary Utility Controls */}
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center rounded-lg border border-slate-700/80 bg-slate-900/75 p-0.5 text-[11px]">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center min-h-[40px] rounded-xl border border-slate-700/80 bg-slate-900/75 p-1 text-[11px]">
                 {(['cinematic', 'auto_follow', 'isometric'] as CameraMode[]).map((cm) => {
                   const label =
                     cm === 'cinematic'
@@ -823,7 +823,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
                       key={cm}
                       type="button"
                       onClick={() => onChangeCameraMode(cm)}
-                      className={`px-2 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                      className={`inline-flex items-center justify-center min-h-[30px] px-2.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
                         cameraMode === cm
                           ? 'bg-amber-500 text-slate-950 font-semibold'
                           : 'text-slate-300 hover:text-white'
@@ -838,7 +838,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
               <button
                 type="button"
                 onClick={onOpenCameraSettings}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/75 p-2 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center w-[40px] h-[40px] rounded-xl border border-slate-700/80 bg-slate-900/75 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer shrink-0"
                 title="Pengaturan Kamera & Grafis"
                 aria-label="Pengaturan Kamera & Grafis"
               >
@@ -848,7 +848,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
               <button
                 type="button"
                 onClick={onOpenLeaderboard}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/75 p-2 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center w-[40px] h-[40px] rounded-xl border border-slate-700/80 bg-slate-900/75 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer shrink-0"
                 title="Peringkat"
                 aria-label="Peringkat"
               >
@@ -858,7 +858,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
               <button
                 type="button"
                 onClick={onOpenAchievements}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/75 p-2 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center w-[40px] h-[40px] rounded-xl border border-slate-700/80 bg-slate-900/75 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer shrink-0"
                 title="Pencapaian & Misi"
                 aria-label="Pencapaian & Misi"
               >
@@ -868,7 +868,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
               <button
                 type="button"
                 onClick={onOpenCloud}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/75 p-2 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center w-[40px] h-[40px] rounded-xl border border-slate-700/80 bg-slate-900/75 text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors cursor-pointer shrink-0"
                 title="Simpan Cloud"
                 aria-label="Simpan Cloud"
               >
@@ -878,7 +878,7 @@ export const BottomControlDock: React.FC<BottomControlDockProps> = ({
               <button
                 type="button"
                 onClick={onToggleCollapse}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/75 p-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center w-[40px] h-[40px] rounded-xl border border-slate-700/80 bg-slate-900/75 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="Sembunyikan Kontrol (H)"
                 aria-label="Sembunyikan Kontrol"
               >

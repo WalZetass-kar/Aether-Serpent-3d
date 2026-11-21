@@ -157,12 +157,12 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
     PLAYER_ARCHETYPES[profile.archetypeIndex % PLAYER_ARCHETYPES.length];
 
   return (
-    <div className="relative z-10 flex flex-col w-full h-full justify-start lg:justify-between safe-page-scroll pointer-events-none overflow-y-auto custom-scroll">
+    <div className="relative z-10 flex flex-col w-full h-full justify-start safe-page-scroll pointer-events-none overflow-y-auto custom-scroll">
       {/* Top Bar: Mobile shows ONLY precise Brand Title + Sidebar Menu button */}
       <header className="pointer-events-auto flex items-center justify-between gap-2.5 shrink-0">
         {/* Brand Title */}
-        <div className="glass-panel-soft rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <SerpentCrestEmblem className="w-9 h-9 sm:w-12 sm:h-12 shrink-0" />
+        <div className="glass-panel-soft rounded-2xl px-3 sm:px-4 py-2 flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <SerpentCrestEmblem className="w-9 h-9 sm:w-11 sm:h-11 shrink-0" />
           <div className="min-w-0">
             <h1 className="font-display text-sm sm:text-xl font-bold text-gold-gradient leading-tight truncate">
               Aether Serpent 3D
@@ -179,7 +179,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             <button
               type="button"
               onClick={() => onOpenAuth('login')}
-              className="hidden sm:inline-flex glass-panel-soft items-center justify-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border border-amber-400/40 bg-amber-500/10 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
+              className="hidden sm:inline-flex glass-panel-soft items-center justify-center gap-1.5 min-h-[42px] sm:min-h-[44px] px-3.5 py-2 rounded-xl border border-amber-400/40 bg-amber-500/10 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
             >
               <span>Masuk / Daftar</span>
             </button>
@@ -193,7 +193,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             title="Buka Sidebar Profil & Pengaturan"
           >
             <ArchetypeEmblem archetypeIndex={profile.archetypeIndex} className="w-5 h-5 shrink-0" />
-            <div className="text-xs">
+            <div className="text-xs leading-tight">
               <div className="font-bold text-white truncate max-w-[140px]">{profile.name}</div>
               <div className="text-[11px] font-mono-num text-amber-300/90">
                 {user ? (user.emailVerified ? 'Akun Cloud Aktif' : 'Perlu Verifikasi') : `${profile.wins} Menang · ${profile.bestScore.toLocaleString('id-ID')}`}
@@ -205,7 +205,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
           <button
             type="button"
             onClick={onOpenFriends}
-            className="relative glass-panel-soft inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 sm:px-3.5 py-2 rounded-xl border border-sky-400/40 bg-sky-500/12 text-xs font-bold text-sky-200 hover:bg-sky-500/22 transition-colors cursor-pointer whitespace-nowrap"
+            className="relative glass-panel-soft inline-flex items-center justify-center gap-1.5 min-h-[42px] sm:min-h-[44px] px-3 sm:px-3.5 py-2 rounded-xl border border-sky-400/40 bg-sky-500/12 text-xs font-bold text-sky-200 hover:bg-sky-500/22 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Users className="w-4 h-4 text-sky-300 shrink-0" />
             <span className="hidden sm:inline">Teman</span>
@@ -223,7 +223,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
               onClick={onOpenOracleAI}
               className="hidden md:inline-flex glass-panel-soft items-center justify-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border border-amber-400/45 bg-amber-500/15 text-xs font-bold text-amber-200 hover:bg-amber-500/25 transition-colors cursor-pointer whitespace-nowrap"
             >
-              <Sparkles className="w-4 h-4 text-amber-300" />
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
               <span>Oracle AI</span>
             </button>
           )}
@@ -233,7 +233,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             <button
               type="button"
               onClick={onOpenAdmin}
-              className="hidden sm:inline-flex glass-panel-soft items-center justify-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl border border-emerald-400/45 bg-emerald-500/15 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 transition-colors cursor-pointer whitespace-nowrap"
+              className="hidden sm:inline-flex glass-panel-soft items-center justify-center gap-1.5 min-h-[42px] sm:min-h-[44px] px-3.5 py-2 rounded-xl border border-emerald-400/45 bg-emerald-500/15 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 transition-colors cursor-pointer whitespace-nowrap"
             >
               <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
               <span>Panel Admin</span>
@@ -245,7 +245,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             type="button"
             onClick={openSidebar}
             aria-label="Buka Menu Samping & Pengaturan"
-            className="glass-panel-soft inline-flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-3 sm:px-3.5 py-2 rounded-xl border border-amber-500/35 text-xs font-semibold text-slate-100 hover:border-amber-400/60 hover:text-amber-200 transition-colors cursor-pointer whitespace-nowrap"
+            className="glass-panel-soft inline-flex items-center justify-center gap-2 min-h-[42px] sm:min-h-[44px] min-w-[44px] px-3 sm:px-3.5 py-2 rounded-xl border border-amber-500/35 text-xs font-semibold text-slate-100 hover:border-amber-400/60 hover:text-amber-200 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Menu className="w-4 h-4 text-amber-300 shrink-0" />
             <span className="text-xs font-bold">Menu</span>
@@ -253,8 +253,8 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
         </div>
       </header>
 
-      {/* Main Content: Anchored closely below header with elegant breathing room and balanced bottom fill */}
-      <main className="flex-1 flex flex-col lg:flex-row items-stretch justify-between gap-3 lg:gap-6 mt-1.5 sm:mt-2 mb-1">
+      {/* Main Content: Tightly anchored below header with natural content rhythm & zero dead gaps */}
+      <main className="flex-1 flex flex-col lg:flex-row items-start justify-between gap-3 lg:gap-6 mt-2.5 sm:mt-3 mb-1">
         {/* Desktop-only subtle caption leaving 3D dragon unobstructed */}
         <div className="hidden lg:flex flex-col justify-end self-end mr-auto max-w-sm pb-1 pointer-events-none">
           <div className="glass-panel-soft rounded-2xl px-4 py-3 border border-slate-800/80">
@@ -267,17 +267,17 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
           </div>
         </div>
 
-        {/* Right Command Hub Card: Tighter top margin right below title header, balanced bottom fill */}
-        <section className="pointer-events-auto flex-1 flex flex-col justify-between w-full max-w-xl lg:max-w-[450px] mx-auto lg:mx-0 glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 gap-3 sm:gap-3.5 shrink-0">
+        {/* Right Command Hub Card: Crisp compact rhythm without artificial middle voids */}
+        <section className="pointer-events-auto flex flex-col w-full max-w-xl lg:max-w-[460px] mx-auto lg:mx-0 glass-panel rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 gap-3 sm:gap-3.5 shrink-0">
           <div className="space-y-2.5 sm:space-y-3">
             <div className="flex items-center justify-between gap-2 min-w-0">
               <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                <SerpentCrestEmblem className="w-10 h-10 sm:w-12 sm:h-12 shrink-0" />
+                <SerpentCrestEmblem className="w-10 h-10 sm:w-11 sm:h-11 shrink-0" />
                 <div className="min-w-0">
                   <div className="text-[10px] sm:text-[11px] font-semibold text-amber-300/90 truncate">
                     Gerbang Petualangan
                   </div>
-                  <h2 className="font-display text-base sm:text-2xl font-bold text-white truncate">
+                  <h2 className="font-display text-base sm:text-xl font-bold text-white truncate">
                     Menu Permainan
                   </h2>
                 </div>
@@ -285,7 +285,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
               <button
                 type="button"
                 onClick={openSidebar}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-1.5 text-xs text-slate-300 hover:border-amber-400/40 hover:text-amber-200 transition-colors cursor-pointer shrink-0 max-w-[44%]"
+                className="inline-flex items-center gap-1.5 min-h-[38px] rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-1.5 text-xs text-slate-300 hover:border-amber-400/40 hover:text-amber-200 transition-colors cursor-pointer shrink-0 max-w-[44%]"
                 title="Ubah Nama & Bidak di Sidebar"
               >
                 <ArchetypeEmblem archetypeIndex={profile.archetypeIndex} className="w-4 h-4 shrink-0" />
@@ -327,7 +327,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
               <button
                 type="button"
                 onClick={() => setTopUpDrawerOpen(true)}
-                className="inline-flex items-center gap-1.5 min-h-[38px] rounded-lg border border-amber-400/55 bg-amber-400 px-3 py-1.5 text-[11px] font-bold text-slate-950 hover:bg-amber-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[38px] rounded-lg border border-amber-400/55 bg-amber-400 px-3 py-1.5 text-[11px] font-bold text-slate-950 hover:bg-amber-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Coins className="w-3.5 h-3.5 shrink-0" />
                 <span>{isUnlimitedCoins ? 'Info Dompet' : 'TopUp Aether Coins'}</span>
@@ -353,22 +353,22 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             <button
               type="button"
               onClick={onNavigateModeSelection}
-              className="w-full min-h-[46px] sm:min-h-[50px] inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-4 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-base font-bold text-slate-950 shadow-lg hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap"
+              className="w-full min-h-[46px] sm:min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 shadow-lg hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap"
             >
-              <SlidersHorizontal className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+              <SlidersHorizontal className="w-4 h-4 shrink-0" />
               <span>Pilih Mode Permainan</span>
             </button>
           </div>
 
-          {/* 4 Quick Game Modes: Responsive 2x2 on phone/desktop, 4x1 option on wide tablet */}
-          <div className="flex-1 flex flex-col justify-center space-y-2 min-h-0">
+          {/* 4 Quick Game Modes: Uniform precision grid with zero empty vertical stretching */}
+          <div className="space-y-2">
             <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-300">
               <span className="truncate">Mode Cepat</span>
               <span className="text-[10px] sm:text-[11px] font-mono-num text-amber-300/90 shrink-0">
                 {profile.wins} Menang · Skor {profile.bestScore.toLocaleString('id-ID')}
               </span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 sm:gap-2.5 flex-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 items-stretch">
               {BOARD_GAME_MODES.map((m) => {
                 const st = MODE_STYLE[m.id];
                 return (
@@ -376,10 +376,10 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
                     key={m.id}
                     type="button"
                     onClick={() => onQuickSelectMode(m.id)}
-                    className={`min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 p-2.5 sm:p-3.5 text-left flex flex-col justify-between transition-all hover:bg-slate-800/90 ${st.accent} cursor-pointer group`}
+                    className={`h-full min-h-[82px] min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 p-2.5 sm:p-3 text-left flex flex-col justify-between transition-all hover:bg-slate-800/90 ${st.accent} cursor-pointer group`}
                   >
-                    <div className="flex items-center justify-between gap-1 min-w-0">
-                      <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white group-hover:text-amber-200 min-w-0 truncate">
+                    <div className="flex items-center justify-between gap-1.5 min-w-0">
+                      <span className="inline-flex items-center gap-1.5 text-xs sm:text-[13px] font-bold text-white group-hover:text-amber-200 min-w-0 truncate">
                         {st.icon}
                         <span className="truncate">{m.label.replace(' Mode', '')}</span>
                       </span>
@@ -396,13 +396,13 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
             </div>
           </div>
 
-          <div className="space-y-2.5 sm:space-y-3 pt-2.5 border-t border-slate-800/80 shrink-0">
+          <div className="space-y-2.5 pt-2.5 border-t border-slate-800/80 shrink-0">
             {/* Multiplayer Daring & Dunia Papan 3D */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 sm:gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => onOpenMultiplayer('create')}
-                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] sm:min-h-[46px] px-2.5 sm:px-3 py-2 rounded-xl border border-amber-500/35 bg-amber-500/10 text-[11px] sm:text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl border border-amber-500/35 bg-amber-500/10 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <PlusSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                 <span className="truncate">Buat Room</span>
@@ -410,7 +410,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenMultiplayer('join')}
-                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] sm:min-h-[46px] px-2.5 sm:px-3 py-2 rounded-xl border border-sky-500/35 bg-sky-500/10 text-[11px] sm:text-xs font-bold text-sky-200 hover:bg-sky-500/20 transition-colors cursor-pointer"
+                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl border border-sky-500/35 bg-sky-500/10 text-xs font-bold text-sky-200 hover:bg-sky-500/20 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <DoorOpen className="w-3.5 h-3.5 text-sky-300 shrink-0" />
                 <span className="truncate">Gabung Room</span>
@@ -418,7 +418,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenBoardManager('collection')}
-                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] sm:min-h-[46px] px-2.5 sm:px-3 py-2 rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-[11px] sm:text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl border border-emerald-500/35 bg-emerald-500/10 text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Layers className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                 <span className="truncate">Koleksi Papan</span>
@@ -426,7 +426,7 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenBoardManager('creator')}
-                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] sm:min-h-[46px] px-2.5 sm:px-3 py-2 rounded-xl border border-cyan-500/35 bg-cyan-500/10 text-[11px] sm:text-xs font-bold text-cyan-200 hover:bg-cyan-500/20 transition-colors cursor-pointer"
+                className="min-w-0 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-xl border border-cyan-500/35 bg-cyan-500/10 text-xs font-bold text-cyan-200 hover:bg-cyan-500/20 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Wand2 className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
                 <span className="truncate">Buat Papan 3D</span>
